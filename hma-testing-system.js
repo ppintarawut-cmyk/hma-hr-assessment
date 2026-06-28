@@ -1058,7 +1058,7 @@ function submitLogin() {
   btn.innerHTML='<span class="spin"></span> กำลังเข้าสู่ระบบ...'; btn.disabled=true;
   setTimeout(()=>{
     btn.innerHTML='เข้าสู่ระบบ'; btn.disabled=false;
-    if (u==='admin'&&p==='hma2024') {
+    if (u==='admin'&&p==='Hino@HMA-2026#R7vq') {
       document.getElementById('login-expired').style.display='none';
       nav('p-admin');
       setTimeout(()=>{ document.getElementById('expiry-banner').classList.add('show'); },3000);
@@ -2156,9 +2156,9 @@ const ROLE_INFO = {
 };
 
 const DEFAULT_ADMIN_USERS = [
-  { name:'Super Admin', username:'admin',  password:'hma2024',  role:'superadmin' },
-  { name:'Pin (HR)',    username:'pin',    password:'pin1234',   role:'hr'         },
-  { name:'Viewer',      username:'viewer', password:'view1234',  role:'viewer'     },
+  { name:'Super Admin', username:'admin',  password:'Hino@HMA-2026#R7vq',  role:'superadmin' },
+  { name:'Pin (HR)',    username:'pin',    password:'Hma-HR#2026!m3k',     role:'hr'         },
+  { name:'Viewer',      username:'viewer', password:'Hma-View#2026!z5p',   role:'viewer'     },
 ];
 
 function getAdminUsers() {

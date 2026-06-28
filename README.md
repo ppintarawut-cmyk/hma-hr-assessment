@@ -79,11 +79,15 @@ python3 -m http.server 8080
 
 ## Admin Access
 
-| Username | Password | Role |
-|---|---|---|
-| `admin` | `hma2024` | Super Admin |
+| Username | Role |
+|---|---|
+| `admin` | Super Admin |
+| `pin` | HR Admin |
+| `viewer` | Viewer |
 
-> 🔐 **เปลี่ยนรหัสก่อน deploy จริงทุกครั้ง** — หาใน HTML ที่บรรทัด `ADMIN_DATA` และแก้ค่า `password`
+> 🔐 รหัสผ่านถูกตั้งไว้ใน HTML (ค้นหา `DEFAULT_ADMIN_USERS`) — **เปลี่ยนรหัสทันทีหลัง deploy** และไม่ commit รหัสจริงลง public repo
+>
+> ⚠️ เนื่องจากเป็น static app รหัสผ่านอยู่ใน client-side code — สำหรับงานจริงที่ต้องการความปลอดภัยสูง ควรมี backend auth
 
 การเพิ่ม admin เพิ่มเติมทำได้ที่ **Admin → ☰ → จัดการทีม**
 
