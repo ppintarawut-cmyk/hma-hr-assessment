@@ -1079,6 +1079,10 @@ function adminLogout() {
 // ADMIN DASHBOARD
 // ══════════════════════════════════════════
 
+// Demo/example rows for the admin dashboard. Empty in production —
+// real results come from live sessions + saved exam records.
+const ADMIN_DATA = [];
+
 // แปลง sessions จริง (ที่ผู้สมัครทำ) เป็น row format เดียวกับ ADMIN_DATA
 function getLiveRows() {
   if (!applicant || !sessions.length) return [];

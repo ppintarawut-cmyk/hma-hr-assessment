@@ -6,6 +6,8 @@
 <title>HMA — Hino Testing System</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 :root {
   /* ── Hino Red/White/Gray theme ── */
@@ -1960,6 +1962,13 @@ function adminLogout() {
 // ADMIN DASHBOARD
 // ══════════════════════════════════════════
 
+// Demo/example rows for the admin dashboard. Empty in production —
+// real results come from live sessions (getLiveRows) + saved exam
+// records (getStoredRows). Previously this constant was referenced but
+// never declared, which threw "ADMIN_DATA is not defined" and broke
+// getAllRows() (dashboard table, individual result modal, exports).
+const ADMIN_DATA = [];
+
 // แปลง sessions จริง (ที่ผู้สมัครทำ) เป็น row format เดียวกับ ADMIN_DATA
 function getLiveRows() {
   if (!applicant || !sessions.length) return [];
@@ -2500,7 +2509,8 @@ document.querySelector('#p-register .alert-info').style.display='flex';
     <div class="modal-body" id="ipdf-content"></div>
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal('mod-indiv-pdf')">ปิด</button>
-      <button class="btn btn-primary" onclick="downloadIndivCSV()" id="ipdf-dl-btn">⬇ Export Excel รายบุคคล</button>
+      <button class="btn btn-secondary" onclick="downloadIndivCSV()" id="ipdf-dl-btn">⬇ Excel</button>
+      <button class="btn btn-primary" onclick="exportIndivPDF(this)" id="ipdf-pdf-btn">📄 ดาวน์โหลด PDF</button>
     </div>
   </div>
 </div>
@@ -3145,11 +3155,11 @@ function checkResumable() {
 
 function restoreSession(data) {
   applicant = data.applicant;
-  sessions  = data.sessions.map(s => ({
-    ...s,
-    test: TESTS.find(t => t.code === s.test.code) || s.test,
-    answers: s.answers || new Array(10).fill(null),
-  }));
+  sessions  = data.sessions.map(s => {
+    const test = TESTS.find(t => t.code === s.test.code) || s.test;
+    const qLen = (ALL_QUESTIONS[test.code] || []).length || 10;
+    return { ...s, test, answers: s.answers || new Array(qLen).fill(null) };
+  });
   curSess = data.curSess;
   curQ    = data.curQ ?? 0;
 }
@@ -3174,6 +3184,47 @@ window.chooseAns = function(i) {
   _chooseAnsBase(i);
   persistSession();
 };
+// Persist on question navigation (moving/jumping between questions)
+const _moveQBase = moveQ;
+window.moveQ = function(d) { _moveQBase(d); persistSession(); };
+const _jumpQBase = jumpQ;
+window.jumpQ = function(i) { _jumpQBase(i); persistSession(); };
+
+// Progressive autosave so an unexpected disconnect loses (almost) nothing:
+//  • every 5s while a test is open  • when the tab is hidden  • before unload
+setInterval(() => {
+  if (typeof curSess !== 'undefined' && curSess !== null
+      && sessions[curSess] && sessions[curSess].status === 'in_progress') {
+    persistSession();
+  }
+}, 5000);
+document.addEventListener('visibilitychange', () => { if (document.hidden) persistSession(); });
+window.addEventListener('beforeunload', persistSession);
+
+// On load, surface a resumable session anywhere (not only the dashboard),
+// so a candidate who dropped mid-test is offered "ทำต่อ" immediately.
+function initResumeCheck() {
+  const data = checkResumable();
+  if (!data || !data.applicant) return;
+  if (document.getElementById('global-resume-bar')) return;
+  const inProg = (data.sessions || []).some(s => s.status === 'in_progress');
+  const bar = document.createElement('div');
+  bar.id = 'global-resume-bar';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;background:var(--teal,#0a8f73);color:#fff;'
+    + 'padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;'
+    + 'font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.18)';
+  const label = inProg
+    ? `🔄 คุณมีแบบทดสอบที่ทำค้างไว้ (${data.applicant.name}) — ทำต่อได้เลย`
+    : `🔄 มีแบบทดสอบค้างอยู่ของ ${data.applicant.name}`;
+  bar.innerHTML = `<span>${label}</span>
+    <span style="display:flex;gap:8px;flex-shrink:0">
+      <button onclick="resumeFromBar()" style="background:#fff;color:var(--teal,#0a8f73);border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer">ทำต่อ →</button>
+      <button onclick="dismissResumeBar()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer">ปิด</button>
+    </span>`;
+  document.body.appendChild(bar);
+}
+function resumeFromBar() { dismissResumeBar(); resumeSession(); }
+function dismissResumeBar() { const b = document.getElementById('global-resume-bar'); if (b) b.remove(); }
 
 // Check on load — show resume banner on dashboard
 function checkAndShowResume() {
@@ -3205,7 +3256,9 @@ function resumeSession() {
 
 function discardResume() {
   clearPersistedSession();
-  document.getElementById('resume-banner').style.display = 'none';
+  const b = document.getElementById('resume-banner');
+  if (b) b.style.display = 'none';
+  if (typeof dismissResumeBar === 'function') dismissResumeBar();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3614,6 +3667,70 @@ function downloadIndivCSV() {
   }
 }
 
+// ── Real PDF export of an individual candidate's result ──────────────
+async function exportIndivPDF(btn) {
+  if (!indivExportData) { showToast('❌ ไม่พบข้อมูลผู้สมัคร'); return; }
+  const { rows } = indivExportData;
+  const person = (rows[0].fn + ' ' + rows[0].ln).trim();
+  const fname  = person.replace(/\s+/g,'_');
+  const date   = new Date().toISOString().slice(0,10);
+  const el      = document.getElementById('ipdf-content');
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span> กำลังสร้าง PDF...'; btn.disabled = true;
+  try {
+    if (jsPDFCtor && typeof window.html2canvas === 'function' && el) {
+      const canvas = await window.html2canvas(el, {
+        scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: el.scrollWidth
+      });
+      const img = canvas.toDataURL('image/png');
+      const pdf = new jsPDFCtor('p', 'mm', 'a4');
+      const pw  = pdf.internal.pageSize.getWidth();
+      const ph  = pdf.internal.pageSize.getHeight();
+      const iw  = pw;
+      const ih  = canvas.height * iw / canvas.width;
+      let heightLeft = ih, position = 0;
+      pdf.addImage(img, 'PNG', 0, position, iw, ih);
+      heightLeft -= ph;
+      while (heightLeft > 0) {
+        position -= ph;
+        pdf.addPage();
+        pdf.addImage(img, 'PNG', 0, position, iw, ih);
+        heightLeft -= ph;
+      }
+      pdf.save('HMA_' + fname + '_' + date + '.pdf');
+      showToast('✅ ดาวน์โหลด PDF ' + person + ' สำเร็จ');
+    } else {
+      printIndivPDF(person);   // libraries unavailable → browser print fallback
+    }
+  } catch (e) {
+    console.error(e);
+    printIndivPDF(person);     // any failure → reliable print fallback
+  } finally {
+    btn.innerHTML = orig; btn.disabled = false;
+  }
+}
+
+// Fallback: open a clean print window (user picks "Save as PDF").
+// Clones the app's own <style> tags so colors/layout render correctly + Thai text stays selectable.
+function printIndivPDF(person) {
+  const el = document.getElementById('ipdf-content');
+  if (!el) { showToast('❌ ไม่พบเนื้อหา'); return; }
+  const w = window.open('', '_blank');
+  if (!w) { showToast('❌ เบราว์เซอร์บล็อก popup — อนุญาตแล้วลองใหม่'); return; }
+  const styles = Array.from(document.querySelectorAll('style')).map(s => s.outerHTML).join('');
+  w.document.write(
+    '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">' +
+    '<title>HMA ผลการทดสอบ — ' + person + '</title>' + styles +
+    '<style>body{background:#fff;margin:0;padding:24px;font-family:"Segoe UI",Tahoma,sans-serif}' +
+    'h2{font-size:16px;margin:0 0 14px}@media print{@page{margin:14mm}}</style></head>' +
+    '<body><h2>HMA Testing System — ผลการทดสอบผู้สมัคร</h2>' + el.innerHTML + '</body></html>'
+  );
+  w.document.close(); w.focus();
+  setTimeout(() => { try { w.print(); } catch(e){} }, 350);
+  showToast('🖨️ เปิดหน้าต่างพิมพ์ — เลือก “บันทึกเป็น PDF / Save as PDF”');
+}
+
 // ═══════════════════════════════════════════════════════════
 // UNIFIED nav() override — single wrapper for all side-effects
 // ═══════════════════════════════════════════════════════════
@@ -3659,6 +3776,8 @@ function toggleDark() {
 updateFABs('p-landing');
 // Apply saved language preference on load
 applyLang();
+// Offer to resume any unfinished candidate session (after a refresh/disconnect)
+initResumeCheck();
 </script>
 
 
