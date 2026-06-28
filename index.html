@@ -8,6 +8,31 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- Firebase (compat) — cloud storage so admins see candidates across devices -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+  // Public Firebase config (safe to expose — security is enforced by Firestore Rules + Auth)
+  const firebaseConfig = {
+    apiKey: "AIzaSyBkcnCg_NSBxawmLRdyx4GykDCDcZcu_pw",
+    authDomain: "hma-testing-a38f0.firebaseapp.com",
+    projectId: "hma-testing-a38f0",
+    storageBucket: "hma-testing-a38f0.firebasestorage.app",
+    messagingSenderId: "749923980046",
+    appId: "1:749923980046:web:d62cb893d1a653e690bd5f",
+    measurementId: "G-GB4EWWGTPP"
+  };
+  var db = null, fbAuth = null;
+  try {
+    if (window.firebase) {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      fbAuth = firebase.auth();
+      window.db = db; window.fbAuth = fbAuth;
+    }
+  } catch (e) { console.warn('Firebase init failed — running in local-only mode:', e); }
+</script>
 <style>
 :root {
   /* ── Hino Red/White/Gray theme ── */
@@ -839,7 +864,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
       <div id="login-expired" class="alert alert-warn">⏰ Session หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่</div>
       <div class="card">
         <div id="login-err" class="alert alert-err"></div>
-        <div class="field"><label>Username</label><input id="l-user" type="text" placeholder="admin" autofocus></div>
+        <div class="field"><label>Email / Username</label><input id="l-user" type="text" placeholder="you@email.com" autofocus></div>
         <div class="field">
           <label>Password</label>
           <div style="position:relative">
@@ -883,6 +908,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
       <div><div class="brand">HMA Admin Portal</div><div class="topbar-title">Candidate Tracking</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
+      <span id="cloud-status" style="display:none;align-items:center;font-size:11px;font-weight:600;gap:4px;padding:3px 9px;border-radius:20px;background:var(--gray-100);white-space:nowrap"></span>
       <span style="font-size:12px;color:var(--gray-400)" id="a-greet">สวัสดี <strong>Admin</strong></span>
       <button class="btn btn-secondary btn-sm" onclick="adminLogout()">ออกจากระบบ</button>
     </div>
@@ -2060,6 +2086,8 @@ function adminLogout() {
   document.getElementById('expiry-banner').classList.remove('show');
   document.getElementById('l-user').value=''; document.getElementById('l-pass').value='';
   document.getElementById('login-expired').style.display='block';
+  currentAdmin = null;
+  if (window.fbAuth && fbAuth.currentUser) { try { fbAuth.signOut(); } catch(e){} }
   nav('p-login');
 }
 
@@ -2150,6 +2178,7 @@ function getAllRows() {
 function renderAdmin() {
   adminViewingResults = false;   // leaving any read-only score view
   updateAdminUI();
+  if (typeof updateCloudStatus === 'function') updateCloudStatus();
   renderCandidates();   // ← render candidate profiles first
   const all    = getAllRows();
   const ids    = new Set(all.map(r => r.id));
@@ -3283,6 +3312,7 @@ window.doSubmit = function() {
   _doSubmitOrig();
   setTimeout(saveExamData, 200);
   setTimeout(saveResultSnapshot, 220);   // full result snapshot for the admin score dashboard
+  setTimeout(cloudPushOnComplete, 450);  // upload finished attempt to Firestore (cross-device)
   persistSession();
   if (sessions.every(s => s.status === 'completed')) clearPersistedSession();
 };
@@ -3406,19 +3436,42 @@ function submitLogin() {
   if (!u||!p) { err.textContent='กรุณากรอก username และ password'; err.style.display='block'; return; }
   const btn = document.getElementById('login-btn');
   btn.innerHTML = '<span class="spin"></span> กำลังเข้าสู่ระบบ...'; btn.disabled = true;
-  setTimeout(() => {
+
+  const enterAdmin = () => {
+    document.getElementById('login-expired').style.display = 'none';
+    updateAdminUI();
+    nav('p-admin');
+    setTimeout(() => document.getElementById('expiry-banner').classList.add('show'), 3000);
+  };
+  const fail = (msg) => {
     btn.innerHTML = 'เข้าสู่ระบบ'; btn.disabled = false;
+    err.textContent = msg || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'; err.style.display = 'block';
+  };
+
+  // Email + Firebase Auth → cloud admin (can see candidates across devices)
+  if (u.includes('@') && cloudEnabled()) {
+    fbAuth.signInWithEmailAndPassword(u, p)
+      .then(cred => {
+        currentAdmin = { name: cred.user.email, username: cred.user.email, role: 'superadmin', cloud: true };
+        btn.innerHTML = 'เข้าสู่ระบบ'; btn.disabled = false;
+        enterAdmin();
+        cloudFetchAll();   // pull all candidate data
+      })
+      .catch(e => {
+        const m = (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found')
+          ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
+          : ('เข้าสู่ระบบ cloud ไม่สำเร็จ: ' + (e.code || e.message));
+        fail(m);
+      });
+    return;
+  }
+
+  // Fallback: local multi-user accounts (offline, this device only)
+  setTimeout(() => {
     const users = getAdminUsers();
     const user  = users.find(x => x.username === u && x.password === p);
-    if (user) {
-      currentAdmin = user;
-      document.getElementById('login-expired').style.display = 'none';
-      updateAdminUI();
-      nav('p-admin');
-      setTimeout(() => document.getElementById('expiry-banner').classList.add('show'), 3000);
-    } else {
-      err.textContent = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'; err.style.display = 'block';
-    }
+    if (user) { btn.innerHTML='เข้าสู่ระบบ'; btn.disabled=false; currentAdmin = user; enterAdmin(); }
+    else fail();
   }, 700);
 }
 
@@ -3428,13 +3481,8 @@ function updateAdminUI() {
   // Update greeting
   const greet = document.getElementById('a-greet');
   if (greet) greet.innerHTML = `สวัสดี <strong>${currentAdmin.name}</strong> <span class="role-badge ${role.cls}" style="margin-left:4px">${role.label}</span>`;
-  // Show/hide buttons by permission
-  const exportBtn = document.getElementById('a-export-btn');
-  const editQBtn  = document.getElementById('a-editq-btn');
-  const collabBtn = document.getElementById('a-collab-btn');
-  if (exportBtn) exportBtn.style.display = role.canExport ? '' : 'none';
-  if (editQBtn)  editQBtn.style.display  = role.canEditQ ? '' : 'none';
-  if (collabBtn) collabBtn.style.display = role.canManageUsers ? '' : 'none';
+  // Re-render the sidebar so menu items respect this role's permissions
+  if (typeof renderAdminNav === 'function') renderAdminNav();
 }
 
 // ── Admin sidebar (collapsible drawer) ──
@@ -3922,12 +3970,18 @@ const NAV_ICONS = {
 };
 
 const ADMIN_MENU = [
-  { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')" },
-  { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')" },
+  { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')",    perm:'canEditQ' },
+  { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')", perm:'canEditQ' },
   { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')" },
-  { key:'collab',  label:'จัดการทีม',      action:"admGo('p-collab')" },
-  { key:'export',  label:'Export Excel',   action:"admExport(this)" },
+  { key:'collab',  label:'จัดการทีม',      action:"admGo('p-collab')",             perm:'canManageUsers' },
+  { key:'export',  label:'Export Excel',   action:"admExport(this)",               perm:'canExport' },
 ];
+function menuAllowed(m){
+  if (!m.perm) return true;
+  if (typeof currentAdmin === 'undefined' || !currentAdmin) return true;
+  const role = (typeof ROLE_INFO !== 'undefined' && ROLE_INFO[currentAdmin.role]) || null;
+  return role ? !!role[m.perm] : true;
+}
 
 // ── Sidebar pin persistence ──
 function getPinnedMenus(){ try { return JSON.parse(localStorage.getItem('hma_pinned_menus') || '[]'); } catch(e){ return []; } }
@@ -3955,8 +4009,9 @@ function renderAdminNav(){
   const listEl   = document.getElementById('adm-nav-list');
   const pinnedEl = document.getElementById('adm-pinned');
   if (!listEl || !pinnedEl) return;
-  listEl.innerHTML = ADMIN_MENU.map(m => navItemHTML(m, pinned)).join('');
-  const pinnedItems = ADMIN_MENU.filter(m => pinned.includes(m.key));
+  const visible = ADMIN_MENU.filter(menuAllowed);
+  listEl.innerHTML = visible.map(m => navItemHTML(m, pinned)).join('');
+  const pinnedItems = visible.filter(m => pinned.includes(m.key));
   pinnedEl.innerHTML = pinnedItems.length
     ? '<div class="adm-pinned-head">' + NAV_ICONS.pin + ' ปักหมุดไว้</div>' +
       pinnedItems.map(m => navItemHTML(m, pinned)).join('')
@@ -4020,6 +4075,76 @@ function adminOpenScoreDash(nid){
 function backFromResults(){
   if (adminViewingResults){ adminViewingResults = false; nav('p-admin'); }
   else nav('p-dash');
+}
+
+// ════════════════════════════════════════════════════════════
+// CLOUD SYNC (Firebase Firestore + Auth) — admins see candidates
+// across devices.  Candidates write; only signed-in admins read.
+// ════════════════════════════════════════════════════════════
+function cloudEnabled(){ return !!window.db; }
+function cloudSignedIn(){ return !!(window.fbAuth && fbAuth.currentUser); }
+
+// Dedup keys (cloud records originate from local, so keys line up)
+function _recKey(r){ return (r.national_id||'') + '|' + (r.attempt||1) + '|' + (r.datetime||''); }
+function _snapKey(s){ return (s.nid||'') + '|' + (s.datetime||''); }
+function _mergeIntoLocal(key, incoming, keyFn){
+  try {
+    const cur  = JSON.parse(localStorage.getItem(key) || '[]');
+    const seen = new Set(cur.map(keyFn));
+    let added = 0;
+    incoming.forEach(it => { const k = keyFn(it); if (!seen.has(k)){ cur.push(it); seen.add(k); added++; } });
+    localStorage.setItem(key, JSON.stringify(cur));
+    return added;
+  } catch(e){ return 0; }
+}
+
+// Candidate side: push the finished attempt to Firestore (create-only).
+async function cloudPushOnComplete(){
+  if (!cloudEnabled()) return;
+  if (!sessions.length || !sessions.every(s => s.status === 'completed')) return;
+  const nid = applicant && applicant.nid;
+  if (!nid) return;
+  try {
+    const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => r.national_id === nid);
+    const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => s.nid === nid);
+    const rec   = recs[recs.length - 1];
+    const snap  = snaps[snaps.length - 1];
+    const stamp = firebase.firestore.FieldValue.serverTimestamp();
+    if (rec)  await db.collection('exam_records').add({ ...rec,  createdAt: stamp });
+    if (snap) await db.collection('result_snapshots').add({ ...snap, createdAt: stamp });
+    console.info('cloud: result uploaded for', nid);
+  } catch(e){ console.warn('cloud push failed:', e); }
+}
+
+// Admin side: pull all candidate data and merge into local cache so every
+// existing view (table, profile cards, export, score dashboard) includes it.
+async function cloudFetchAll(){
+  if (!cloudEnabled() || !cloudSignedIn()) return;
+  updateCloudStatus('loading');
+  try {
+    const strip = d => { const { createdAt, ...rest } = d.data(); return rest; };
+    const recSnap  = await db.collection('exam_records').limit(5000).get();
+    const snapSnap = await db.collection('result_snapshots').limit(5000).get();
+    _mergeIntoLocal('hma_exam_records',    recSnap.docs.map(strip),  _recKey);
+    _mergeIntoLocal('hma_result_snapshots', snapSnap.docs.map(strip), _snapKey);
+    if (document.getElementById('p-admin') && document.getElementById('p-admin').classList.contains('active')) renderAdmin();
+    updateCloudStatus('ok', recSnap.size);
+  } catch(e){
+    console.warn('cloud fetch failed:', e);
+    updateCloudStatus('error', e.code || e.message);
+  }
+}
+
+// Small status pill in the admin topbar.
+function updateCloudStatus(state, info){
+  const el = document.getElementById('cloud-status');
+  if (!el) return;
+  if (!cloudEnabled()){ el.style.display = 'none'; return; }
+  el.style.display = 'inline-flex';
+  if (state === 'loading'){ el.textContent = '☁️ กำลังซิงค์…'; el.style.color = 'var(--gray-400)'; }
+  else if (state === 'ok'){ el.textContent = '☁️ เชื่อมต่อ cloud' + (info!=null?` · ${info} รายการ`:''); el.style.color = 'var(--pass)'; }
+  else if (state === 'error'){ el.textContent = '⚠️ cloud: ' + info; el.style.color = 'var(--amber)'; }
+  else { el.textContent = cloudSignedIn() ? '☁️ เชื่อมต่อ cloud' : '☁️ ออฟไลน์'; el.style.color = 'var(--gray-400)'; }
 }
 
 // Initial FAB state
