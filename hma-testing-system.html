@@ -409,6 +409,72 @@ textarea.q-inp:focus{border-color:var(--teal)}
 .adm-nav-divider{height:1px;background:var(--gray-200);margin:8px 14px}
 [data-theme="dark"] .adm-sidebar{background:var(--gray-700);border-right-color:var(--gray-500)}
 [data-theme="dark"] .adm-hamb{background:var(--gray-700);border-color:var(--gray-500)}
+
+/* ════════════════════════════════════════════════════════════
+   MODERN UI · Hino branding · gradients · sidebar pins · pro icons
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --grad-hino:    linear-gradient(135deg,#e2001a 0%,#c8102e 55%,#9c0c22 100%);
+  --grad-hino-soft:linear-gradient(135deg,#fff6f7 0%,#ffeef0 100%);
+  --grad-surface: linear-gradient(180deg,#ffffff 0%,#fbfcfd 100%);
+  --grad-sheen:   linear-gradient(135deg,rgba(255,255,255,.25),rgba(255,255,255,0) 60%);
+}
+[data-theme="dark"]{
+  --grad-hino:    linear-gradient(135deg,#ff2e4d 0%,#e2001a 60%,#a00c24 100%);
+  --grad-hino-soft:linear-gradient(135deg,#1f0a0e 0%,#160709 100%);
+  --grad-surface: linear-gradient(180deg,#15171d 0%,#101218 100%);
+}
+
+/* ── Hino logo / brand lockup ── */
+.hino-brand{display:flex;align-items:center;gap:11px;min-width:0}
+.hino-mark{height:34px;width:auto;flex-shrink:0;display:block;object-fit:contain}
+.hino-mark.sm{height:26px}
+.hino-mark.lg{height:64px}
+.hino-mark-fallback{display:flex;align-items:center;justify-content:center;height:34px;min-width:46px;padding:0 9px;border-radius:7px;background:var(--grad-hino);color:#fff;font-weight:800;font-size:13px;letter-spacing:1px;flex-shrink:0;box-shadow:0 2px 6px rgba(200,16,46,.3)}
+.hino-co{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.hino-co .co-name{font-size:13px;font-weight:700;color:var(--gray-900);letter-spacing:.01em;white-space:nowrap}
+.hino-co .co-sub{font-size:9.5px;font-weight:600;letter-spacing:.13em;color:var(--teal);text-transform:uppercase}
+[data-theme="dark"] .hino-co .co-name{color:var(--gray-900)}
+
+/* ── Gradient accents on existing components ── */
+.btn-primary{background:var(--grad-hino);position:relative;border:none;box-shadow:0 2px 8px rgba(200,16,46,.22)}
+.btn-primary:hover{background:var(--grad-hino);filter:brightness(1.06);box-shadow:0 4px 14px rgba(200,16,46,.32)}
+.btn-primary:active{filter:brightness(.96)}
+.topbar{background:var(--grad-surface);border-bottom:1px solid var(--gray-200);box-shadow:0 1px 0 rgba(0,0,0,.02)}
+.topbar::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--grad-hino);opacity:.9}
+.topbar{position:sticky}
+[data-theme="dark"] .topbar{background:var(--grad-surface)}
+.card{background:var(--grad-surface)}
+[data-theme="dark"] .card{background:var(--grad-surface)}
+.metric{background:var(--grad-hino-soft)!important;border:1px solid var(--gray-100)}
+.adm-sidebar-head{background:var(--grad-hino);border-bottom:none}
+.adm-sidebar-head .brand{color:#fff;font-size:13px}
+.adm-sidebar-head .adm-close{color:#fff;opacity:.85}
+.adm-sidebar-head .adm-close:hover{opacity:1}
+
+/* ── Professional sidebar nav (SVG icons + pin) ── */
+.adm-navitem{position:relative;border-radius:0;gap:11px}
+.adm-navitem .ico{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:var(--gray-100);color:var(--gray-500);flex-shrink:0;transition:background .14s,color .14s;font-size:16px}
+.adm-navitem .ico svg{width:17px;height:17px;display:block}
+.adm-navitem:hover .ico{background:var(--grad-hino);color:#fff}
+.adm-navitem.danger:hover .ico{background:var(--red);color:#fff}
+.adm-navitem .nav-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-pin{opacity:0;flex-shrink:0;width:26px;height:26px;border:none;background:none;cursor:pointer;border-radius:6px;color:var(--gray-400);font-size:13px;display:inline-flex;align-items:center;justify-content:center;transition:opacity .14s,background .14s,color .14s}
+.adm-navitem:hover .adm-pin{opacity:.65}
+.adm-pin:hover{background:var(--gray-100);color:var(--teal);opacity:1!important}
+.adm-pin.pinned{opacity:1;color:var(--teal)}
+.adm-pin.pinned svg{fill:var(--teal)}
+.adm-pinned-wrap:empty{display:none}
+.adm-pinned-head{display:flex;align-items:center;gap:6px;padding:14px 18px 4px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
+[data-theme="dark"] .adm-navitem .ico{background:var(--gray-200)}
+
+/* ── Admin score-dashboard read-only banner ── */
+.adm-view-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 16px;background:var(--grad-hino-soft);border:1px solid var(--teal-b);border-radius:var(--radius);margin-bottom:14px}
+.adm-view-bar .vb-tag{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--teal)}
+
+/* ── Candidate completion (thank-you) screen ── */
+.thankyou-wrap{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 22px}
+.thankyou-badge{width:96px;height:96px;border-radius:50%;background:var(--grad-hino);display:flex;align-items:center;justify-content:center;font-size:46px;color:#fff;box-shadow:0 10px 30px rgba(200,16,46,.32);margin-bottom:22px}
 </style>
 </head>
 <body>
@@ -448,15 +514,15 @@ textarea.q-inp:focus{border-color:var(--teal)}
 <div id="p-landing" class="page active">
   <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--white)">
 
-    <!-- HMA Logo mark -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-        <rect width="36" height="36" rx="8" fill="var(--teal)"/>
-        <text x="18" y="24" text-anchor="middle" font-size="12" font-weight="800" font-family="Arial,Helvetica,sans-serif" fill="#fff" letter-spacing="1">HMA</text>
-      </svg>
-      <span style="font-size:10px;font-weight:700;letter-spacing:.15em;color:var(--gray-400);text-transform:uppercase">Testing System</span>
+    <!-- Hino Motors Asia logo -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:14px">
+      <img src="hino-logo.png" class="hino-mark lg" alt="Hino Motors Asia" onerror="logoFallback(this)">
+      <div style="text-align:center">
+        <div style="font-size:17px;font-weight:800;color:var(--gray-900);letter-spacing:.01em">Hino Motors Asia Ltd.</div>
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.18em;color:var(--teal);text-transform:uppercase;margin-top:2px">HMA Testing System</div>
+      </div>
     </div>
-    <div style="width:36px;height:2px;background:var(--teal);border-radius:1px;margin-bottom:36px"></div>
+    <div style="width:48px;height:3px;background:var(--grad-hino);border-radius:2px;margin-bottom:34px"></div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:380px;width:100%">
 
@@ -593,8 +659,35 @@ textarea.q-inp:focus{border-color:var(--teal)}
     </div>
     <div class="prog-track" style="height:6px;margin-bottom:16px"><div id="d-prog-bar" class="prog-fill" style="width:0%;background:var(--teal)"></div></div>
     <div class="card" style="padding:0 20px" id="d-sessions"></div>
+    <!-- Candidate completion note (no scores shown to applicants) -->
     <div id="d-result-btn" style="text-align:center;margin-top:16px;display:none">
-      <button class="btn btn-primary" data-i18n="view_results" onclick="nav('p-results')">ดูผลการทดสอบทั้งหมด →</button>
+      <div class="card" style="background:var(--grad-hino-soft);border:1px solid var(--teal-b)">
+        <div style="font-size:30px;margin-bottom:6px">✅</div>
+        <p style="font-size:14px;font-weight:700;color:var(--gray-900);margin-bottom:4px">ทำแบบทดสอบครบทุกชุดแล้ว</p>
+        <p style="font-size:12px;color:var(--gray-500)">ผลการทดสอบถูกส่งให้ทีม HR เพื่อพิจารณาในขั้นตอนถัดไป</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     CANDIDATE — THANK YOU (no scores; results go to HR)
+══════════════════════════════════════════════ -->
+<div id="p-thankyou" class="page">
+  <div class="topbar">
+    <div class="hino-brand">
+      <img src="hino-logo.png" class="hino-mark" alt="Hino" onerror="logoFallback(this)">
+      <div class="hino-co"><span class="co-name">Hino Motors Asia Ltd.</span><span class="co-sub">HMA Testing System</span></div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="goHome()">ออก</button>
+  </div>
+  <div class="main">
+    <div class="thankyou-wrap">
+      <div class="thankyou-badge">✓</div>
+      <h2 style="font-size:21px;font-weight:800;color:var(--gray-900);margin-bottom:10px">ขอบคุณที่ทำแบบทดสอบ</h2>
+      <p style="font-size:14px;color:var(--gray-700);max-width:420px;line-height:1.6">คุณทำแบบทดสอบครบทุกชุดเรียบร้อยแล้ว ผลการทดสอบได้ถูกส่งให้ทีม HR ของ Hino Motors Asia เพื่อพิจารณาในขั้นตอนถัดไป</p>
+      <p style="font-size:12px;color:var(--gray-400);margin-top:14px;max-width:420px">ระบบจะไม่แสดงคะแนนแก่ผู้สมัครโดยตรง — ทีมงานจะติดต่อกลับหากผ่านการพิจารณา</p>
+      <button class="btn btn-primary" style="margin-top:26px;min-width:160px" onclick="goHome()">เสร็จสิ้น</button>
     </div>
   </div>
 </div>
@@ -649,10 +742,17 @@ textarea.q-inp:focus{border-color:var(--teal)}
 ══════════════════════════════════════════════ -->
 <div id="p-results" class="page">
   <div class="topbar">
-    <div><div class="brand">HMA Testing System</div><div class="topbar-title">ผลการทดสอบ</div></div>
-    <button class="btn btn-secondary btn-sm" onclick="nav('p-dash')">← กลับ</button>
+    <div class="hino-brand">
+      <img src="hino-logo.png" class="hino-mark" alt="Hino" onerror="logoFallback(this)">
+      <div class="hino-co"><span class="co-name">Hino Motors Asia Ltd.</span><span class="co-sub">แดชบอร์ดคะแนนผู้สมัคร</span></div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="backFromResults()">← กลับ</button>
   </div>
   <div class="main">
+    <div class="adm-view-bar" id="r-admin-bar" style="display:none">
+      <span class="vb-tag">📊 มุมมองผู้ดูแล (Read-only)</span>
+      <span style="font-size:12px;color:var(--gray-500)">ข้อมูลนี้แสดงเฉพาะผู้ดูแลระบบ — ไม่แสดงแก่ผู้สมัคร</span>
+    </div>
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div class="ring-wrap">
@@ -763,19 +863,19 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="adm-backdrop" id="adm-backdrop" onclick="toggleAdminSidebar(false)"></div>
   <aside class="adm-sidebar" id="adm-sidebar">
     <div class="adm-sidebar-head">
-      <div class="brand">⚙️ เครื่องมือผู้ดูแล</div>
+      <div class="hino-brand">
+        <img src="hino-logo.png" class="hino-mark sm" alt="Hino" style="filter:brightness(0) invert(1)" onerror="logoFallback(this)">
+        <div class="hino-co"><span class="co-name" style="color:#fff">Hino Motors Asia</span><span class="co-sub" style="color:rgba(255,255,255,.85)">เครื่องมือผู้ดูแล</span></div>
+      </div>
       <button class="adm-close" onclick="toggleAdminSidebar(false)" aria-label="ปิดเมนู">✕</button>
     </div>
-    <div class="adm-sidebar-sub">การจัดการ</div>
-    <button class="adm-navitem" id="a-editq-btn"   onclick="admGo('p-question-editor')"><span class="ico">📝</span> จัดการข้อสอบ</button>
-    <button class="adm-navitem" id="a-instr-btn"   onclick="admGo('p-instruction-editor')"><span class="ico">📄</span> จัดการคำแนะนำ</button>
-    <button class="adm-navitem" id="a-postype-btn" onclick="admGo('p-position-editor')"><span class="ico">🎯</span> ชุดสอบ/ตำแหน่ง</button>
-    <button class="adm-navitem" id="a-collab-btn"  onclick="admGo('p-collab')"><span class="ico">👥</span> จัดการทีม</button>
+    <!-- Pinned shortcuts (rendered by renderAdminNav) -->
+    <div class="adm-pinned-wrap" id="adm-pinned"></div>
+    <!-- Main tools list (rendered by renderAdminNav) -->
+    <div class="adm-sidebar-sub" id="adm-nav-subhead">การจัดการ</div>
+    <div id="adm-nav-list"></div>
     <div class="adm-nav-divider"></div>
-    <div class="adm-sidebar-sub">ข้อมูล</div>
-    <button class="adm-navitem" id="a-export-btn"  onclick="admExport(this)"><span class="ico">⬇</span> Export Excel</button>
-    <div class="adm-nav-divider"></div>
-    <button class="adm-navitem danger" onclick="toggleAdminSidebar(false);adminLogout()"><span class="ico">🚪</span> ออกจากระบบ</button>
+    <button class="adm-navitem danger" onclick="toggleAdminSidebar(false);adminLogout()"><span class="ico" id="logout-ico">🚪</span><span class="nav-label">ออกจากระบบ</span></button>
   </aside>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
@@ -1368,6 +1468,8 @@ function resetPositionPresets(){
 // NAV
 // ══════════════════════════════════════════
 function nav(id) {
+  // The score dashboard (p-results) is HR/admin-only. Candidates can never reach it.
+  if (id === 'p-results' && !adminViewingResults) id = 'p-dash';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
@@ -1471,8 +1573,8 @@ function renderDash() {
     const badge    = isDone ? `<span class="badge b-done">${t18n('badge_done')}</span>`
                    : isInProg ? `<span class="badge b-progress">${t18n('badge_prog')}</span>`
                    : `<span class="badge b-todo">${t18n('badge_todo')}</span>`;
-    const scoreText= isDone && s.score!=null
-      ? `<span style="font-size:12px;color:${s.score>=70?'var(--teal)':'var(--red)'};margin-left:6px">· ${s.score}/100 (${s.outcome})</span>` : '';
+    // Scores are intentionally hidden from candidates — only HR/admin can see results.
+    const scoreText = '';
     const prog = isDone?100:isInProg?50:0;
     const progColor = isDone?'var(--teal)':isInProg?'var(--amber)':'var(--gray-100)';
     const btn = !isDone ? (isInProg
@@ -1696,9 +1798,10 @@ function doSubmit() {
   s.sections = sectionData;
   // Percentile vs all stored records (same test)
   s.percentile = calcPercentile(s.test.code, s.score);
-  // go review
-  renderReview(curSess);
-  nav('p-review');
+  // Candidates do NOT see their scores or the answer key — those are HR-only now.
+  // Route back to the dashboard to take the next test, or to the thank-you when finished.
+  if (sessions.every(x => x.status === 'completed')) nav('p-thankyou');
+  else nav('p-dash');
 }
 
 // ══════════════════════════════════════════
@@ -1782,6 +1885,8 @@ function renderResults() {
   if (!applicant) return;
   const done = sessions.filter(s=>s.status==='completed');
   if (!done.length) return;
+  const _adminBar = document.getElementById('r-admin-bar');
+  if (_adminBar) _adminBar.style.display = adminViewingResults ? 'flex' : 'none';
 
   const avg  = Math.round(done.reduce((a,s)=>a+s.score,0)/done.length);
   const pass = done.filter(s=>s.outcome==='P').length;
@@ -2043,6 +2148,7 @@ function getAllRows() {
 }
 
 function renderAdmin() {
+  adminViewingResults = false;   // leaving any read-only score view
   updateAdminUI();
   renderCandidates();   // ← render candidate profiles first
   const all    = getAllRows();
@@ -2510,6 +2616,7 @@ document.querySelector('#p-register .alert-info').style.display='flex';
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal('mod-indiv-pdf')">ปิด</button>
       <button class="btn btn-secondary" onclick="downloadIndivCSV()" id="ipdf-dl-btn">⬇ Excel</button>
+      <button class="btn btn-secondary" onclick="adminOpenScoreDash(indivExportData.rows[0].nid)" id="ipdf-dash-btn">📊 แดชบอร์ดคะแนน</button>
       <button class="btn btn-primary" onclick="exportIndivPDF(this)" id="ipdf-pdf-btn">📄 ดาวน์โหลด PDF</button>
     </div>
   </div>
@@ -3175,6 +3282,7 @@ const _doSubmitOrig = doSubmit;
 window.doSubmit = function() {
   _doSubmitOrig();
   setTimeout(saveExamData, 200);
+  setTimeout(saveResultSnapshot, 220);   // full result snapshot for the admin score dashboard
   persistSession();
   if (sessions.every(s => s.status === 'completed')) clearPersistedSession();
 };
@@ -3772,10 +3880,155 @@ function toggleDark() {
   applyTheme(saved === 'dark' || (!saved && prefersDark));
 })();
 
+// ════════════════════════════════════════════════════════════
+// BRANDING · PRO ICONS · SIDEBAR PINS · ADMIN SCORE DASHBOARD
+// ════════════════════════════════════════════════════════════
+
+// Logo fallback: if hino-logo.png is missing, show a red "HINO" chip.
+function logoFallback(img){
+  const span = document.createElement('span');
+  span.className = 'hino-mark-fallback' + (img.classList.contains('lg') ? ' lg' : '');
+  if (img.style.filter) span.style.cssText = 'background:#fff;color:#c8102e';
+  span.textContent = 'HINO';
+  img.replaceWith(span);
+}
+
+// Replace plain "HMA …" brand text in topbars with the Hino logo lockup.
+function initBranding(){
+  document.querySelectorAll('.brand').forEach(el => {
+    const t = (el.textContent || '').trim();
+    if (!/^HMA (Testing System|Admin Portal|Admin)\b/.test(t)) return;
+    if (el.dataset.brandified) return;
+    el.dataset.brandified = '1';
+    el.style.cssText = 'text-transform:none;letter-spacing:normal;margin-bottom:0;color:inherit';
+    el.innerHTML =
+      '<div class="hino-brand">' +
+        '<img src="hino-logo.png" class="hino-mark sm" alt="Hino" onerror="logoFallback(this)">' +
+        '<div class="hino-co"><span class="co-name">Hino Motors Asia Ltd.</span>' +
+        '<span class="co-sub">HMA Testing System</span></div>' +
+      '</div>';
+  });
+}
+
+// ── Professional line icons (Feather/Lucide style) ──
+const NAV_ICONS = {
+  editq:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  instr:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>',
+  postype: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg>',
+  collab:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  export:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  pin:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.6-2.4a2 2 0 0 1-.4-1.2V7a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v6.4a2 2 0 0 1-.4 1.2L5 17Z"/></svg>',
+  logout:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+};
+
+const ADMIN_MENU = [
+  { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')" },
+  { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')" },
+  { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')" },
+  { key:'collab',  label:'จัดการทีม',      action:"admGo('p-collab')" },
+  { key:'export',  label:'Export Excel',   action:"admExport(this)" },
+];
+
+// ── Sidebar pin persistence ──
+function getPinnedMenus(){ try { return JSON.parse(localStorage.getItem('hma_pinned_menus') || '[]'); } catch(e){ return []; } }
+function setPinnedMenus(arr){ try { localStorage.setItem('hma_pinned_menus', JSON.stringify(arr)); } catch(e){} }
+function togglePin(key){
+  const p = getPinnedMenus();
+  const i = p.indexOf(key);
+  if (i >= 0) p.splice(i,1); else p.push(key);
+  setPinnedMenus(p);
+  renderAdminNav();
+}
+
+function navItemHTML(m, pinned){
+  const isPinned = pinned.includes(m.key);
+  return '<div class="adm-navitem" onclick="' + m.action + '">' +
+    '<span class="ico">' + (NAV_ICONS[m.key] || '') + '</span>' +
+    '<span class="nav-label">' + m.label + '</span>' +
+    '<button class="adm-pin' + (isPinned ? ' pinned' : '') + '" title="' + (isPinned ? 'เลิกปักหมุด' : 'ปักหมุดไว้ด้านบน') +
+      '" onclick="event.stopPropagation();togglePin(\'' + m.key + '\')">' + NAV_ICONS.pin + '</button>' +
+  '</div>';
+}
+
+function renderAdminNav(){
+  const pinned   = getPinnedMenus();
+  const listEl   = document.getElementById('adm-nav-list');
+  const pinnedEl = document.getElementById('adm-pinned');
+  if (!listEl || !pinnedEl) return;
+  listEl.innerHTML = ADMIN_MENU.map(m => navItemHTML(m, pinned)).join('');
+  const pinnedItems = ADMIN_MENU.filter(m => pinned.includes(m.key));
+  pinnedEl.innerHTML = pinnedItems.length
+    ? '<div class="adm-pinned-head">' + NAV_ICONS.pin + ' ปักหมุดไว้</div>' +
+      pinnedItems.map(m => navItemHTML(m, pinned)).join('')
+    : '';
+  const logoutIco = document.getElementById('logout-ico');
+  if (logoutIco){ logoutIco.textContent = ''; logoutIco.innerHTML = NAV_ICONS.logout; }
+}
+
+// ── Full result snapshots (for the admin score dashboard) ──
+function getResultSnapshots(){ try { return JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]'); } catch(e){ return []; } }
+function saveResultSnapshot(){
+  if (!applicant || !sessions.length) return;
+  const done = sessions.filter(s => s.status === 'completed');
+  if (!done.length) return;
+  const snap = {
+    nid:  applicant.nid,
+    name: applicant.name,
+    pos:  applicant.pos,
+    datetime: new Date().toLocaleString('th-TH'),
+    sessions: done.map(s => ({
+      code: s.test.code, name: s.test.name, nameTH: s.test.nameTH,
+      passing: s.test.passing, mins: s.test.mins,
+      score: s.score, outcome: s.outcome, raw: s.raw, maxP: s.maxP,
+      sections: s.sections || {}, percentile: s.percentile ?? null,
+      remainSecs: s.remainSecs ?? null,
+    })),
+  };
+  try {
+    const all = getResultSnapshots();
+    const i = all.findIndex(x => x.nid === snap.nid && !x._sealed);
+    if (i >= 0) all[i] = { ...all[i], ...snap };
+    else all.push(snap);
+    if (sessions.every(s => s.status === 'completed') && i >= 0) all[i]._sealed = true;
+    localStorage.setItem('hma_result_snapshots', JSON.stringify(all));
+  } catch(e){ console.warn('saveResultSnapshot:', e); }
+}
+
+// ── Admin: open the rich score dashboard (read-only) for a candidate ──
+var adminViewingResults = false;
+function adminHasScoreDash(nid){ return getResultSnapshots().some(x => x.nid === nid); }
+function adminOpenScoreDash(nid){
+  const snaps = getResultSnapshots().filter(x => x.nid === nid);
+  if (!snaps.length){
+    showToast('❌ ยังไม่มีข้อมูลแดชบอร์ดคะแนนของผู้สมัครนี้');
+    return;
+  }
+  const snap = snaps[snaps.length - 1];
+  applicant = { name: snap.name, pos: snap.pos, nid: snap.nid };
+  sessions = snap.sessions.map(s => ({
+    test: (typeof TESTS !== 'undefined' && TESTS.find(t => t.code === s.code)) ||
+          { code:s.code, name:s.name, nameTH:s.nameTH, passing:s.passing, mins:s.mins },
+    status:'completed', score:s.score, outcome:s.outcome, raw:s.raw, maxP:s.maxP,
+    sections:s.sections, percentile:s.percentile, remainSecs:s.remainSecs,
+  }));
+  adminViewingResults = true;
+  if (typeof closeModal === 'function') closeModal('mod-indiv-pdf');
+  nav('p-results');
+  const bar = document.getElementById('r-admin-bar');
+  if (bar) bar.style.display = 'flex';
+}
+function backFromResults(){
+  if (adminViewingResults){ adminViewingResults = false; nav('p-admin'); }
+  else nav('p-dash');
+}
+
 // Initial FAB state
 updateFABs('p-landing');
 // Apply saved language preference on load
 applyLang();
+// Branding + admin sidebar (icons & pins)
+initBranding();
+renderAdminNav();
 // Offer to resume any unfinished candidate session (after a refresh/disconnect)
 initResumeCheck();
 </script>
