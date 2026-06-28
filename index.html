@@ -2864,12 +2864,18 @@ function deleteApplicantData(encodedKey) {
   const name = `${key.fn} ${key.ln}`;
   if (!confirm(`⚠️ ลบข้อมูลทั้งหมดของ "${name}" (${key.nid})?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
 
-  // ลบจาก hma_exam_records
+  // ลบจาก localStorage (exam records + result snapshots)
   try {
     const stored = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
-    const filtered = stored.filter(r => r.national_id !== key.nid);
-    localStorage.setItem('hma_exam_records', JSON.stringify(filtered));
+    localStorage.setItem('hma_exam_records', JSON.stringify(stored.filter(r => r.national_id !== key.nid)));
   } catch(e) {}
+  try {
+    const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]');
+    localStorage.setItem('hma_result_snapshots', JSON.stringify(snaps.filter(s => s.nid !== key.nid)));
+  } catch(e) {}
+
+  // ลบจาก cloud ด้วย (ไม่งั้นรอบ sync ถัดไปจะดึงกลับมา) — ต้องเป็น admin ที่ล็อกอิน
+  cloudDeleteCandidate(key.nid);
 
   // ถ้าเป็น applicant ปัจจุบัน ให้ reset session ด้วย
   if (applicant && applicant.nid === key.nid) {
@@ -2881,6 +2887,18 @@ function deleteApplicantData(encodedKey) {
 
   showToast(`✅ ลบข้อมูล ${name} แล้ว`);
   filterAdmin(); // refresh table
+}
+
+// Remove a candidate's records from Firestore (exam_records + result_snapshots).
+async function cloudDeleteCandidate(nid){
+  if (!cloudEnabled() || !cloudSignedIn()) return;
+  try {
+    for (const [coll, field] of [['exam_records','national_id'], ['result_snapshots','nid']]) {
+      const qs = await db.collection(coll).where(field, '==', nid).get();
+      await Promise.all(qs.docs.map(d => d.ref.delete()));
+    }
+    console.info('cloud: deleted candidate', nid);
+  } catch(e){ console.warn('cloud delete failed:', e); }
 }
 
 // doSubmit patches merged below
