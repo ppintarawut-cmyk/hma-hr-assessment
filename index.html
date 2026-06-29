@@ -669,9 +669,9 @@ textarea.q-inp:focus{border-color:var(--teal)}
     <span style="font-size:12px;color:var(--gray-400)" id="d-prog-lbl"></span>
   </div>
   <div class="main">
-    <!-- Resume banner — แสดงเมื่อมีเซสชันค้างอยู่ -->
-    <div class="resume-banner" id="resume-banner" style="display:none">
-      <div>
+    <!-- Resume banner — shown only when a test is started but not yet finished -->
+    <div class="resume-banner" id="resume-banner" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--teal-l);border:1px solid var(--teal-b);border-radius:var(--radius-lg);padding:12px 16px;margin-bottom:18px">
+      <div style="min-width:0">
         <p style="font-weight:600;font-size:13px;color:#085041">🔄 มีแบบทดสอบที่ค้างอยู่</p>
         <p style="font-size:12px;color:#0f6e56;margin-top:2px"><strong id="resume-name"></strong> — <span id="resume-detail"></span></p>
       </div>
@@ -3427,9 +3427,10 @@ window.addEventListener('beforeunload', persistSession);
 // so a candidate who dropped mid-test is offered "ทำต่อ" immediately.
 function initResumeCheck() {
   const data = checkResumable();
-  if (!data || !data.applicant) return;
+  const st   = resumableStatus(data);
+  if (!st || !st.show) return;   // only when started-but-not-finished
   if (document.getElementById('global-resume-bar')) return;
-  const inProg = (data.sessions || []).some(s => s.status === 'in_progress');
+  const inProg = st.inProg > 0;
   const bar = document.createElement('div');
   bar.id = 'global-resume-bar';
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;background:var(--teal,#0a8f73);color:#fff;'
@@ -3448,20 +3449,33 @@ function initResumeCheck() {
 function resumeFromBar() { dismissResumeBar(); resumeSession(); }
 function dismissResumeBar() { const b = document.getElementById('global-resume-bar'); if (b) b.remove(); }
 
+// Should we offer to resume? Only when the candidate has STARTED but has
+// NOT finished every set. (Hide if nothing started yet, or if all completed.)
+function resumableStatus(data) {
+  if (!data || !data.applicant || !Array.isArray(data.sessions) || !data.sessions.length) return null;
+  const total     = data.sessions.length;
+  const completed = data.sessions.filter(s => s.status === 'completed').length;
+  const inProg    = data.sessions.filter(s => s.status === 'in_progress').length;
+  const started   = inProg > 0 || completed > 0;
+  const allDone   = completed === total;
+  return { total, completed, inProg, pending: total - completed, show: started && !allDone };
+}
+
 // Check on load — show resume banner on dashboard
 function checkAndShowResume() {
-  const data = checkResumable();
   const banner = document.getElementById('resume-banner');
   if (!banner) return;
-  if (data && data.applicant) {
-    const inProg = data.sessions.filter(s => s.status === 'in_progress');
-    const pending = data.sessions.filter(s => s.status !== 'completed');
+  const data = checkResumable();
+  const st   = resumableStatus(data);
+  if (st && st.show) {
     banner.style.display = 'flex';
     document.getElementById('resume-name').textContent = data.applicant.name;
     document.getElementById('resume-detail').textContent =
-      `${inProg.length > 0 ? `กำลังทำ: ${data.sessions[data.curSess]?.test?.name} ข้อ ${(data.curQ||0)+1}` : `ค้างอยู่ ${pending.length} ชุด`}`;
+      st.inProg > 0 ? `กำลังทำ: ${data.sessions[data.curSess]?.test?.name} ข้อ ${(data.curQ||0)+1}` : `ค้างอยู่ ${st.pending} ชุด`;
   } else {
     banner.style.display = 'none';
+    // Tidy up a stale all-completed session so it never lingers.
+    if (st && st.completed === st.total) clearPersistedSession();
   }
 }
 
