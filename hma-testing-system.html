@@ -773,15 +773,13 @@ textarea.q-inp:focus{border-color:var(--teal)}
       <img src="hino-logo.png" class="hino-mark" alt="Hino" onerror="logoFallback(this)">
       <div class="hino-co"><span class="co-name">Hino Motors Asia Ltd.</span><span class="co-sub">แดชบอร์ดคะแนนผู้สมัคร</span></div>
     </div>
-    <button class="btn btn-secondary btn-sm" onclick="backFromResults()">← กลับ</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn btn-primary btn-sm" id="r-pdf-btn" style="display:none" onclick="exportResultsPDF(this)">📄 Export to PDF (A4)</button>
+      <button class="btn btn-secondary btn-sm" onclick="backFromResults()">← กลับ</button>
+    </div>
   </div>
   <div class="main">
-    <div class="adm-view-bar" id="r-admin-bar" style="display:none">
-      <span class="vb-tag">📊 มุมมองผู้ดูแล (Read-only)</span>
-      <span style="font-size:12px;color:var(--gray-500);flex:1">ข้อมูลนี้แสดงเฉพาะผู้ดูแลระบบ — ไม่แสดงแก่ผู้สมัคร</span>
-      <button class="btn btn-primary btn-sm" id="r-pdf-btn" onclick="exportResultsPDF(this)">📄 Export to PDF (A4)</button>
-    </div>
-    <div class="card" style="margin-bottom:12px">
+    <div class="card" id="r-header-card" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div class="ring-wrap">
           <svg viewBox="0 0 110 110" style="width:110px;height:110px;transform:rotate(-90deg)">
@@ -808,17 +806,17 @@ textarea.q-inp:focus{border-color:var(--teal)}
         </div>
       </div>
     </div>
-    <div class="card" style="margin-bottom:12px">
+    <div class="card" id="r-bars-card" style="margin-bottom:12px">
       <p style="font-size:13px;font-weight:600;margin-bottom:4px">คะแนนรายชุดสอบ</p>
       <p style="font-size:11px;color:var(--gray-400);margin-bottom:14px">เกณฑ์ผ่าน 70 คะแนน</p>
       <div id="r-bars"></div>
     </div>
-    <div class="card" style="margin-bottom:12px">
+    <div class="card" id="r-radar-card" style="margin-bottom:12px">
       <p style="font-size:13px;font-weight:600;margin-bottom:4px">แผนภาพทักษะโดยรวม</p>
       <p style="font-size:11px;color:var(--gray-400);margin-bottom:10px">คะแนนเต็ม 100 แต่ละด้าน</p>
       <canvas id="r-radar" height="200"></canvas>
     </div>
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+    <div class="card" id="r-breakdown-card" style="padding:0;overflow:hidden;margin-bottom:12px">
       <div style="padding:14px 20px;border-bottom:1px solid var(--gray-100)">
         <p style="font-size:13px;font-weight:600">รายละเอียดผลแต่ละชุดสอบ</p>
       </div>
@@ -857,10 +855,16 @@ textarea.q-inp:focus{border-color:var(--teal)}
      ADMIN LOGIN
 ══════════════════════════════════════════════ -->
 <div id="p-login" class="page">
-  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="topbar">
+    <div class="hino-brand">
+      <img src="hino-logo.png" class="hino-mark" alt="Hino" onerror="logoFallback(this)">
+      <div class="hino-co"><span class="co-name">Hino Motors Asia Ltd.</span><span class="co-sub">HMA Testing System</span></div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="nav('p-landing')">← กลับหน้าแรก</button>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:center;padding:48px 20px">
     <div style="width:100%;max-width:360px">
       <div style="text-align:center;margin-bottom:20px">
-        <div class="brand" style="justify-content:center;display:flex;margin-bottom:6px">HMA Testing System</div>
         <h1 style="font-size:22px;font-weight:700;margin-bottom:4px">HR Admin Portal</h1>
         <p style="font-size:13px;color:var(--gray-400)">เข้าสู่ระบบเพื่อดูผลการทดสอบ</p>
       </div>
@@ -878,7 +882,6 @@ textarea.q-inp:focus{border-color:var(--teal)}
         <button class="btn btn-primary btn-full" id="login-btn" onclick="submitLogin()">เข้าสู่ระบบ</button>
       </div>
       <p style="text-align:center;font-size:11px;color:var(--gray-400);margin-top:10px">เฉพาะเจ้าหน้าที่ HR / Admin</p>
-      <p style="text-align:center;margin-top:10px"><button class="btn btn-secondary btn-sm" onclick="nav('p-landing')">← กลับหน้าแรก</button></p>
     </div>
   </div>
 </div>
@@ -1909,8 +1912,8 @@ function renderResults() {
   if (!applicant) return;
   const done = sessions.filter(s=>s.status==='completed');
   if (!done.length) return;
-  const _adminBar = document.getElementById('r-admin-bar');
-  if (_adminBar) _adminBar.style.display = adminViewingResults ? 'flex' : 'none';
+  const _pdfBtn = document.getElementById('r-pdf-btn');
+  if (_pdfBtn) _pdfBtn.style.display = adminViewingResults ? 'inline-flex' : 'none';
 
   const avg  = Math.round(done.reduce((a,s)=>a+s.score,0)/done.length);
   const pass = done.filter(s=>s.outcome==='P').length;
@@ -1920,7 +1923,8 @@ function renderResults() {
   document.getElementById('r-ring').style.stroke = avg>=70?'var(--teal)':avg>=50?'#f59e0b':'var(--red)';
   document.getElementById('r-pct').textContent = `${avg}%`;
   document.getElementById('r-name').textContent = applicant.name;
-  document.getElementById('r-pos').textContent  = applicant.pos;
+  document.getElementById('r-pos').textContent  =
+    applicant.pos + ((applicant.exp != null && applicant.exp !== '') ? `  ·  ประสบการณ์ ${applicant.exp} ปี` : '');
 
   document.getElementById('r-metrics').innerHTML = [
     {l:'ชุดสอบ',v:done.length,c:'var(--gray-900)'},
@@ -3095,10 +3099,15 @@ function getEditQ() {
 
 function renderQuestionEditor() {
   const EQ = getEditQ();
-  // Tabs
-  document.getElementById('qe-tabs').innerHTML = Object.keys(EQ).map(k =>
-    `<button class="btn btn-sm ${k===qeActiveSet?'btn-primary':'btn-secondary'}" onclick="qeSwitch('${k}')">${k}</button>`
-  ).join('');
+  // Tabs (test categories) + "add category" button
+  const isCustom = !!(TESTS.find(t => t.code === qeActiveSet) || {}).custom;
+  document.getElementById('qe-tabs').innerHTML = Object.keys(EQ).map(k => {
+      const tdef = TESTS.find(t => t.code === k);
+      const star = tdef && tdef.custom ? ' ★' : '';
+      return `<button class="btn btn-sm ${k===qeActiveSet?'btn-primary':'btn-secondary'}" onclick="qeSwitch('${k}')">${k}${star}</button>`;
+    }).join('')
+    + `<button class="btn btn-sm btn-secondary" style="border-style:dashed" onclick="addTestCategory()" title="เพิ่มหมวดหมู่ข้อสอบใหม่">＋ หมวดหมู่</button>`
+    + (isCustom ? `<button class="btn btn-sm" style="background:var(--red-l);color:var(--red)" onclick="deleteTestCategory('${qeActiveSet}')" title="ลบหมวดหมู่นี้">🗑 ลบหมวด ${qeActiveSet}</button>` : '');
   // List
   const qs = EQ[qeActiveSet];
   document.getElementById('qe-list').innerHTML = qs.map((q, i) => {
@@ -3226,6 +3235,53 @@ function addQuestion() {
   renderQuestionEditor();
   setTimeout(()=>{ const bodies=document.querySelectorAll('.q-editor-body'); bodies[bodies.length-1]?.classList.add('open'); },50);
 }
+
+// ── Custom test categories (admin-created test sets) ──
+function saveCustomTests(){
+  const customs = TESTS.filter(t => t.custom).map(t => ({
+    code:t.code, name:t.name, nameTH:t.nameTH, mins:t.mins, passing:t.passing,
+    graded:!!t.graded, desc:t.desc||'', standard:t.standard||'', rules:t.rules||[], bands:t.bands||[], custom:true
+  }));
+  try { localStorage.setItem('hma_custom_tests', JSON.stringify(customs)); } catch(e){}
+}
+function addTestCategory(){
+  const nameTH = (prompt('ชื่อหมวดหมู่/ชุดสอบ (ภาษาไทย):','') || '').trim();
+  if (!nameTH) return;
+  const name = ((prompt('ชื่อภาษาอังกฤษ (สำหรับรายงาน/PDF):', nameTH) || nameTH)).trim();
+  let code = (prompt('รหัสชุดสอบ (อังกฤษ/ตัวเลข ไม่เว้นวรรค เช่น SALES):','') || '').toUpperCase().replace(/[^A-Z0-9_]/g,'');
+  if (!code) { showToast('❌ ต้องระบุรหัสชุดสอบ'); return; }
+  if (TESTS.some(t => t.code === code) || ALL_QUESTIONS[code]) { showToast('❌ รหัส "'+code+'" มีอยู่แล้ว'); return; }
+  const mins = Math.max(1, parseInt(prompt('เวลาทำ (นาที):','15'),10) || 15);
+  const passing = Math.min(100, Math.max(0, parseInt(prompt('เกณฑ์ผ่าน (0–100 คะแนน):','70'),10) || 70));
+  const graded = confirm('ให้คะแนนแบบไล่ระดับ 0–2 ต่อข้อหรือไม่?\n\nOK = ใช่ (เช่น EQ/ภาวะผู้นำ)\nCancel = ไม่ (ถูก/ผิด 0–1)');
+  const test = { code, name, nameTH, mins, passing, graded, custom:true,
+    desc:'', standard:'', rules:['เลือกคำตอบที่ดีที่สุดในแต่ละข้อ','ทำให้เสร็จภายในเวลาที่กำหนด'],
+    bands:[[0,passing,'ต่ำกว่าเกณฑ์'],[passing,101,'ผ่านเกณฑ์']] };
+  TESTS.push(test);
+  ALL_QUESTIONS[code] = [];
+  getEditQ()[code] = [];
+  saveCustomTests();
+  qeActiveSet = code;
+  renderQuestionEditor();
+  showToast('✅ เพิ่มหมวดหมู่ "'+nameTH+'" (รหัส '+code+') — เพิ่มข้อสอบแล้วกด 💾 บันทึก');
+}
+function deleteTestCategory(code){
+  const tdef = TESTS.find(t => t.code === code);
+  if (!tdef || !tdef.custom) { showToast('❌ ลบได้เฉพาะหมวดหมู่ที่สร้างเอง'); return; }
+  if (!confirm('ลบหมวดหมู่ "'+(tdef.nameTH||code)+'" และข้อสอบทั้งหมดในหมวดนี้?\nการกระทำนี้ย้อนกลับไม่ได้')) return;
+  const idx = TESTS.indexOf(tdef);
+  if (idx >= 0) TESTS.splice(idx, 1);
+  delete ALL_QUESTIONS[code];
+  if (EDIT_QUESTIONS) delete EDIT_QUESTIONS[code];
+  saveCustomTests();
+  try {  // drop its saved questions too
+    const cq = JSON.parse(localStorage.getItem('hma_custom_questions')||'{}');
+    delete cq[code]; localStorage.setItem('hma_custom_questions', JSON.stringify(cq));
+  } catch(e){}
+  qeActiveSet = 'IQ';
+  renderQuestionEditor();
+  showToast('🗑 ลบหมวดหมู่ '+code+' แล้ว');
+}
 function saveQuestions() {
   const EQ=getEditQ();
   // Apply edits back to ALL_QUESTIONS (keep opts schema for doSubmit compatibility)
@@ -3239,6 +3295,18 @@ function saveQuestions() {
   try { localStorage.setItem('hma_custom_questions', JSON.stringify(EQ)); } catch(e){}
   showToast('✅ บันทึกข้อสอบแล้ว ' + Object.keys(EQ).map(k=>`${k}(${EQ[k].length})`).join(', '));
 }
+
+// Restore admin-created custom test categories first, so their questions
+// (saved below) and TESTS metadata are available app-wide.
+try {
+  const ct = JSON.parse(localStorage.getItem('hma_custom_tests') || '[]');
+  ct.forEach(t => {
+    if (!TESTS.some(x => x.code === t.code)) {
+      TESTS.push({ ...t, custom:true });
+      if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
+    }
+  });
+} catch(e){}
 
 // Load saved questions on startup (normalise to opts schema)
 try {
@@ -3905,37 +3973,65 @@ function printIndivPDF(person) {
 
 // Export the FULL admin score dashboard (everything on p-results, not just the
 // visible viewport) as a multi-page A4 PDF.
+// Each logical page is a group of card elements. Every group is laid out on its
+// own A4 page and scaled to fit, so no card is ever sliced across a page break.
+//   Page 1: header (name / position / experience / overall) + score bars + radar
+//   Page 2: per-test detail + overall verdict
+//   Page 3: strengths / weaknesses analysis
 async function exportResultsPDF(btn){
-  const el = document.querySelector('#p-results .main');
-  if (!el) { showToast('❌ ไม่พบเนื้อหาแดชบอร์ด'); return; }
   const person = (typeof applicant !== 'undefined' && applicant && applicant.name) ? applicant.name : 'candidate';
   const fname  = ('HMA_Dashboard_' + person).replace(/\s+/g,'_');
   const date   = new Date().toISOString().slice(0,10);
   const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
   const orig = btn ? btn.innerHTML : '';
   if (btn){ btn.innerHTML = '<span class="spin"></span> กำลังสร้าง PDF...'; btn.disabled = true; }
+
+  const groups = [
+    ['#r-header-card', '#r-bars-card', '#r-radar-card'],
+    ['#r-breakdown-card', '#r-verdict'],
+    ['#r-skill-card'],
+  ];
+
   try {
     if (!(jsPDFCtor && typeof window.html2canvas === 'function')) throw new Error('libs unavailable');
-    // Capture the entire scrollable element (full content, not just on-screen).
-    const canvas = await window.html2canvas(el, {
-      scale: 2, backgroundColor: '#ffffff', useCORS: true,
-      windowWidth: el.scrollWidth, height: el.scrollHeight, scrollY: -window.scrollY
-    });
     const pdf = new jsPDFCtor('p', 'mm', 'a4');
     const pw = pdf.internal.pageSize.getWidth();
     const ph = pdf.internal.pageSize.getHeight();
-    const iw = pw;
-    const ih = canvas.height * iw / canvas.width;
-    const img = canvas.toDataURL('image/jpeg', 0.92);   // JPEG keeps multi-page A4 file size small
-    let heightLeft = ih, position = 0;
-    pdf.addImage(img, 'JPEG', 0, position, iw, ih);
-    heightLeft -= ph;
-    while (heightLeft > 0){
-      position -= ph;
-      pdf.addPage();
-      pdf.addImage(img, 'JPEG', 0, position, iw, ih);
-      heightLeft -= ph;
+    const margin = 10, gap = 5;
+    const usableW = pw - margin * 2;
+    const usableH = ph - margin * 2;
+
+    let pageAdded = false;
+    for (const sels of groups){
+      // capture each visible, non-empty card in this group
+      const imgs = [];
+      for (const sel of sels){
+        const node = document.querySelector(sel);
+        if (!node || node.offsetHeight === 0) continue;
+        const c = await window.html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        imgs.push({ data: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height });
+      }
+      if (!imgs.length) continue;
+
+      if (pageAdded) pdf.addPage();
+      pageAdded = true;
+
+      // natural heights at full usable width
+      const natH = imgs.map(im => usableW * im.h / im.w);
+      const totalH = natH.reduce((a, b) => a + b, 0) + gap * (imgs.length - 1);
+      const scale = totalH > usableH ? usableH / totalH : 1;   // shrink the whole page to fit
+
+      let y = margin;
+      imgs.forEach((im, i) => {
+        const w = usableW * scale;
+        const h = natH[i] * scale;
+        const x = margin + (usableW - w) / 2;
+        pdf.addImage(im.data, 'JPEG', x, y, w, h);
+        y += h + gap * scale;
+      });
     }
+
+    if (!pageAdded) throw new Error('no content');
     pdf.save(fname + '_' + date + '.pdf');
     showToast('✅ ดาวน์โหลดแดชบอร์ดคะแนน (PDF A4) สำเร็จ');
   } catch(e){
@@ -4076,6 +4172,7 @@ function saveResultSnapshot(){
     nid:  applicant.nid,
     name: applicant.name,
     pos:  applicant.pos,
+    exp:  applicant.exp ?? '',
     datetime: new Date().toLocaleString('th-TH'),
     sessions: done.map(s => ({
       code: s.test.code, name: s.test.name, nameTH: s.test.nameTH,
@@ -4105,7 +4202,7 @@ function adminOpenScoreDash(nid){
     return;
   }
   const snap = snaps[snaps.length - 1];
-  applicant = { name: snap.name, pos: snap.pos, nid: snap.nid };
+  applicant = { name: snap.name, pos: snap.pos, nid: snap.nid, exp: snap.exp ?? '' };
   sessions = snap.sessions.map(s => ({
     test: (typeof TESTS !== 'undefined' && TESTS.find(t => t.code === s.code)) ||
           { code:s.code, name:s.name, nameTH:s.nameTH, passing:s.passing, mins:s.mins },
