@@ -2181,6 +2181,8 @@ function renderAdmin() {
   adminViewingResults = false;   // leaving any read-only score view
   updateAdminUI();
   if (typeof updateCloudStatus === 'function') updateCloudStatus();
+  // Pull the latest cross-device data whenever HR opens the dashboard.
+  if (typeof cloudFetchAll === 'function' && typeof cloudSignedIn === 'function' && cloudSignedIn() && !_cloudSyncing) cloudFetchAll();
   renderCandidates();   // ← render candidate profiles first
   const all    = getAllRows();
   const ids    = new Set(all.map(r => r.id));
@@ -4275,33 +4277,50 @@ async function cloudPushOnComplete(){
 
 // Admin side: pull all candidate data and merge into local cache so every
 // existing view (table, profile cards, export, score dashboard) includes it.
+let _cloudSyncing = false;
 async function cloudFetchAll(){
-  if (!cloudEnabled() || !cloudSignedIn()) return;
+  if (!cloudEnabled() || !cloudSignedIn() || _cloudSyncing) return;
+  _cloudSyncing = true;
   updateCloudStatus('loading');
   try {
     const strip = d => { const { createdAt, ...rest } = d.data(); return rest; };
     const recSnap  = await db.collection('exam_records').limit(5000).get();
     const snapSnap = await db.collection('result_snapshots').limit(5000).get();
-    _mergeIntoLocal('hma_exam_records',    recSnap.docs.map(strip),  _recKey);
+    const addedRecs = _mergeIntoLocal('hma_exam_records',     recSnap.docs.map(strip),  _recKey);
     _mergeIntoLocal('hma_result_snapshots', snapSnap.docs.map(strip), _snapKey);
-    if (document.getElementById('p-admin') && document.getElementById('p-admin').classList.contains('active')) renderAdmin();
     updateCloudStatus('ok', recSnap.size);
+    // Refresh the dashboard with the newly merged cloud data (guard prevents a loop).
+    if (document.getElementById('p-admin') && document.getElementById('p-admin').classList.contains('active')) renderAdmin();
   } catch(e){
     console.warn('cloud fetch failed:', e);
     updateCloudStatus('error', e.code || e.message);
+  } finally {
+    _cloudSyncing = false;
   }
 }
 
-// Small status pill in the admin topbar.
+// Small status pill in the admin topbar (click to re-sync).
 function updateCloudStatus(state, info){
   const el = document.getElementById('cloud-status');
   if (!el) return;
   if (!cloudEnabled()){ el.style.display = 'none'; return; }
   el.style.display = 'inline-flex';
+  el.style.cursor = 'pointer';
+  el.title = 'คลิกเพื่อซิงค์ข้อมูลจาก cloud ใหม่';
+  el.onclick = () => { if (cloudSignedIn()) cloudFetchAll(); else showToast('⚠️ ออกจากระบบแล้วล็อกอินด้วย “อีเมล” เพื่อดูข้อมูลข้ามเครื่อง'); };
   if (state === 'loading'){ el.textContent = '☁️ กำลังซิงค์…'; el.style.color = 'var(--gray-400)'; }
-  else if (state === 'ok'){ el.textContent = '☁️ เชื่อมต่อ cloud' + (info!=null?` · ${info} รายการ`:''); el.style.color = 'var(--pass)'; }
+  else if (state === 'ok'){ el.textContent = '☁️ เชื่อมต่อ cloud · ' + (info||0) + ' รายการ'; el.style.color = 'var(--pass)'; }
   else if (state === 'error'){ el.textContent = '⚠️ cloud: ' + info; el.style.color = 'var(--amber)'; }
-  else { el.textContent = cloudSignedIn() ? '☁️ เชื่อมต่อ cloud' : '☁️ ออฟไลน์'; el.style.color = 'var(--gray-400)'; }
+  else if (cloudSignedIn()){ el.textContent = '☁️ เชื่อมต่อ cloud'; el.style.color = 'var(--pass)'; }
+  else { el.textContent = '⚠️ ไม่ได้เชื่อม cloud — ล็อกอินด้วยอีเมล'; el.style.color = 'var(--amber)'; }
+}
+
+// Auto-sync when a Firebase session is present (e.g. restored after reload)
+if (window.fbAuth) {
+  fbAuth.onAuthStateChanged(user => {
+    updateCloudStatus();
+    if (user && document.getElementById('p-admin') && document.getElementById('p-admin').classList.contains('active')) cloudFetchAll();
+  });
 }
 
 // Initial FAB state
