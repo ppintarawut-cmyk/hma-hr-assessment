@@ -484,14 +484,16 @@ textarea.q-inp:focus{border-color:var(--teal)}
 .adm-navitem:hover .ico{background:var(--grad-hino);color:#fff}
 .adm-navitem.danger:hover .ico{background:var(--red);color:#fff}
 .adm-navitem .nav-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.adm-pin{opacity:0;flex-shrink:0;width:26px;height:26px;border:none;background:none;cursor:pointer;border-radius:6px;color:var(--gray-400);font-size:13px;display:inline-flex;align-items:center;justify-content:center;transition:opacity .14s,background .14s,color .14s}
-.adm-navitem:hover .adm-pin{opacity:.65}
-.adm-pin:hover{background:var(--gray-100);color:var(--teal);opacity:1!important}
-.adm-pin.pinned{opacity:1;color:var(--teal)}
-.adm-pin.pinned svg{fill:var(--teal)}
-.adm-pinned-wrap:empty{display:none}
-.adm-pinned-head{display:flex;align-items:center;gap:6px;padding:14px 18px 4px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
 [data-theme="dark"] .adm-navitem .ico{background:var(--gray-200)}
+
+/* ── Docked (frozen) admin toolbar on the dashboard (desktop) ── */
+@media (min-width:900px){
+  #p-admin.docked{padding-left:264px}
+  #p-admin.docked .adm-sidebar{transform:none;box-shadow:none;border-right:1px solid var(--gray-200)}
+  #p-admin.docked .adm-backdrop{display:none!important}
+  #p-admin.docked .adm-hamb{display:none}
+  #p-admin.docked .adm-close{display:none}
+}
 
 /* ── Admin score-dashboard read-only banner ── */
 .adm-view-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 16px;background:var(--grad-hino-soft);border:1px solid var(--teal-b);border-radius:var(--radius);margin-bottom:14px}
@@ -776,7 +778,8 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="main">
     <div class="adm-view-bar" id="r-admin-bar" style="display:none">
       <span class="vb-tag">📊 มุมมองผู้ดูแล (Read-only)</span>
-      <span style="font-size:12px;color:var(--gray-500)">ข้อมูลนี้แสดงเฉพาะผู้ดูแลระบบ — ไม่แสดงแก่ผู้สมัคร</span>
+      <span style="font-size:12px;color:var(--gray-500);flex:1">ข้อมูลนี้แสดงเฉพาะผู้ดูแลระบบ — ไม่แสดงแก่ผู้สมัคร</span>
+      <button class="btn btn-primary btn-sm" id="r-pdf-btn" onclick="exportResultsPDF(this)">📄 Export to PDF (A4)</button>
     </div>
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
@@ -883,7 +886,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
 <!-- ═══════════════════════════════════════════
      ADMIN DASHBOARD
 ══════════════════════════════════════════════ -->
-<div id="p-admin" class="page">
+<div id="p-admin" class="page docked">
   <!-- ── Admin tools sidebar (collapsible drawer) ── -->
   <div class="adm-backdrop" id="adm-backdrop" onclick="toggleAdminSidebar(false)"></div>
   <aside class="adm-sidebar" id="adm-sidebar">
@@ -894,8 +897,6 @@ textarea.q-inp:focus{border-color:var(--teal)}
       </div>
       <button class="adm-close" onclick="toggleAdminSidebar(false)" aria-label="ปิดเมนู">✕</button>
     </div>
-    <!-- Pinned shortcuts (rendered by renderAdminNav) -->
-    <div class="adm-pinned-wrap" id="adm-pinned"></div>
     <!-- Main tools list (rendered by renderAdminNav) -->
     <div class="adm-sidebar-sub" id="adm-nav-subhead">การจัดการ</div>
     <div id="adm-nav-list"></div>
@@ -1701,14 +1702,11 @@ function renderQ() {
   const pct = Math.round((answeredCount/qs.length)*100);
   document.getElementById('t-prog-bar').style.width = `${pct}%`;
 
-  // sec + diff badges + graded notice
-  const diffColor = {E:'var(--pass)',M:'var(--amber)',H:'var(--teal)'};
-  const diffLabel = {E:t18n('diff_E'),M:t18n('diff_M'),H:t18n('diff_H')};
+  // Question header — section badge only.
+  // (Difficulty level and per-item score are intentionally hidden from candidates.)
   let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
     <span style="font-size:11px;font-weight:600;color:var(--gray-400);font-variant-numeric:tabular-nums">Q${curQ+1}&nbsp;/&nbsp;${qs.length}</span>`;
   if (q.sec)  html += `<span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:var(--blue-l);color:var(--blue);padding:3px 9px;border-radius:20px">${secLabel(q.sec)}</span>`;
-  if (q.diff) html += `<span style="font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:20px;background:color-mix(in srgb,${diffColor[q.diff]} 15%,transparent);color:${diffColor[q.diff]}">${diffLabel[q.diff]||q.diff}</span>`;
-  if (s.test.graded) html += `<span style="font-size:11px;color:var(--gray-400);margin-left:auto">${t18n('t_graded')}</span>`;
   html += `</div>`;
 
   // passage
@@ -2661,9 +2659,9 @@ document.querySelector('#p-register .alert-info').style.display='flex';
 function updateFABs(pageId) {
   const homeFab = document.getElementById('home-fab');
   const fsFab   = document.getElementById('fs-fab');
-  const isLanding = pageId === 'p-landing';
   const isTest    = pageId === 'p-test';
-  homeFab.style.display = isLanding ? 'none' : 'block';
+  // Home action now lives on the company logo (see makeLogosHome) — hide the FAB.
+  if (homeFab) homeFab.style.display = 'none';
   fsFab.style.display   = isTest ? 'block' : 'none';
 }
 
@@ -3905,6 +3903,49 @@ function printIndivPDF(person) {
   showToast('🖨️ เปิดหน้าต่างพิมพ์ — เลือก “บันทึกเป็น PDF / Save as PDF”');
 }
 
+// Export the FULL admin score dashboard (everything on p-results, not just the
+// visible viewport) as a multi-page A4 PDF.
+async function exportResultsPDF(btn){
+  const el = document.querySelector('#p-results .main');
+  if (!el) { showToast('❌ ไม่พบเนื้อหาแดชบอร์ด'); return; }
+  const person = (typeof applicant !== 'undefined' && applicant && applicant.name) ? applicant.name : 'candidate';
+  const fname  = ('HMA_Dashboard_' + person).replace(/\s+/g,'_');
+  const date   = new Date().toISOString().slice(0,10);
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn){ btn.innerHTML = '<span class="spin"></span> กำลังสร้าง PDF...'; btn.disabled = true; }
+  try {
+    if (!(jsPDFCtor && typeof window.html2canvas === 'function')) throw new Error('libs unavailable');
+    // Capture the entire scrollable element (full content, not just on-screen).
+    const canvas = await window.html2canvas(el, {
+      scale: 2, backgroundColor: '#ffffff', useCORS: true,
+      windowWidth: el.scrollWidth, height: el.scrollHeight, scrollY: -window.scrollY
+    });
+    const pdf = new jsPDFCtor('p', 'mm', 'a4');
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const iw = pw;
+    const ih = canvas.height * iw / canvas.width;
+    const img = canvas.toDataURL('image/jpeg', 0.92);   // JPEG keeps multi-page A4 file size small
+    let heightLeft = ih, position = 0;
+    pdf.addImage(img, 'JPEG', 0, position, iw, ih);
+    heightLeft -= ph;
+    while (heightLeft > 0){
+      position -= ph;
+      pdf.addPage();
+      pdf.addImage(img, 'JPEG', 0, position, iw, ih);
+      heightLeft -= ph;
+    }
+    pdf.save(fname + '_' + date + '.pdf');
+    showToast('✅ ดาวน์โหลดแดชบอร์ดคะแนน (PDF A4) สำเร็จ');
+  } catch(e){
+    console.error(e);
+    showToast('❌ สร้าง PDF ไม่สำเร็จ: ' + (e.message || e));
+  } finally {
+    if (btn){ btn.innerHTML = orig; btn.disabled = false; }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // UNIFIED nav() override — single wrapper for all side-effects
 // ═══════════════════════════════════════════════════════════
@@ -3976,6 +4017,15 @@ function initBranding(){
   });
 }
 
+// The company logo doubles as the Home button.
+function makeLogosHome(){
+  document.querySelectorAll('.hino-brand').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.title = 'กลับหน้าแรก';
+    el.onclick = () => goHome();
+  });
+}
+
 // ── Professional line icons (Feather/Lucide style) ──
 const NAV_ICONS = {
   editq:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
@@ -4001,39 +4051,17 @@ function menuAllowed(m){
   return role ? !!role[m.perm] : true;
 }
 
-// ── Sidebar pin persistence ──
-function getPinnedMenus(){ try { return JSON.parse(localStorage.getItem('hma_pinned_menus') || '[]'); } catch(e){ return []; } }
-function setPinnedMenus(arr){ try { localStorage.setItem('hma_pinned_menus', JSON.stringify(arr)); } catch(e){} }
-function togglePin(key){
-  const p = getPinnedMenus();
-  const i = p.indexOf(key);
-  if (i >= 0) p.splice(i,1); else p.push(key);
-  setPinnedMenus(p);
-  renderAdminNav();
-}
-
-function navItemHTML(m, pinned){
-  const isPinned = pinned.includes(m.key);
+function navItemHTML(m){
   return '<div class="adm-navitem" onclick="' + m.action + '">' +
     '<span class="ico">' + (NAV_ICONS[m.key] || '') + '</span>' +
     '<span class="nav-label">' + m.label + '</span>' +
-    '<button class="adm-pin' + (isPinned ? ' pinned' : '') + '" title="' + (isPinned ? 'เลิกปักหมุด' : 'ปักหมุดไว้ด้านบน') +
-      '" onclick="event.stopPropagation();togglePin(\'' + m.key + '\')">' + NAV_ICONS.pin + '</button>' +
   '</div>';
 }
 
 function renderAdminNav(){
-  const pinned   = getPinnedMenus();
-  const listEl   = document.getElementById('adm-nav-list');
-  const pinnedEl = document.getElementById('adm-pinned');
-  if (!listEl || !pinnedEl) return;
-  const visible = ADMIN_MENU.filter(menuAllowed);
-  listEl.innerHTML = visible.map(m => navItemHTML(m, pinned)).join('');
-  const pinnedItems = visible.filter(m => pinned.includes(m.key));
-  pinnedEl.innerHTML = pinnedItems.length
-    ? '<div class="adm-pinned-head">' + NAV_ICONS.pin + ' ปักหมุดไว้</div>' +
-      pinnedItems.map(m => navItemHTML(m, pinned)).join('')
-    : '';
+  const listEl = document.getElementById('adm-nav-list');
+  if (!listEl) return;
+  listEl.innerHTML = ADMIN_MENU.filter(menuAllowed).map(navItemHTML).join('');
   const logoutIco = document.getElementById('logout-ico');
   if (logoutIco){ logoutIco.textContent = ''; logoutIco.innerHTML = NAV_ICONS.logout; }
 }
@@ -4169,8 +4197,9 @@ function updateCloudStatus(state, info){
 updateFABs('p-landing');
 // Apply saved language preference on load
 applyLang();
-// Branding + admin sidebar (icons & pins)
+// Branding + admin sidebar (icons)
 initBranding();
+makeLogosHome();
 renderAdminNav();
 // Offer to resume any unfinished candidate session (after a refresh/disconnect)
 initResumeCheck();
