@@ -1484,7 +1484,9 @@ function savePositionEditor(btn){
   }
   savePresets(peDraft);
   if (typeof cloudSaveQuestionBank === 'function' && typeof cloudEnabled === 'function' && cloudEnabled() && cloudSignedIn()) {
-    cloudSaveQuestionBank().then(()=>showToast('☁️ ซิงค์ตำแหน่ง/ชุดสอบขึ้น cloud แล้ว'));
+    cloudSaveQuestionBank().then(ok => { if (ok) showToast('☁️ ซิงค์ตำแหน่ง/ชุดสอบขึ้น cloud แล้ว'); });
+  } else if (typeof cloudEnabled === 'function' && cloudEnabled() && !cloudSignedIn()) {
+    showToast('⚠️ บันทึกในเครื่องนี้แล้ว — ล็อกอินด้วยอีเมลเพื่อซิงค์ข้ามเครื่อง', 5000);
   }
   if (btn){ const o=btn.textContent; btn.textContent='✓ บันทึกแล้ว'; setTimeout(()=>btn.textContent=o,1500); }
   showToast('บันทึกชุดข้อสอบตามตำแหน่งแล้ว');
@@ -3343,7 +3345,7 @@ function saveQuestions() {
   try { localStorage.setItem('hma_custom_questions', JSON.stringify(EQ)); } catch(e){}
   // Sync the bank to the cloud so other devices/candidates get the changes
   if (typeof cloudSaveQuestionBank === 'function' && cloudEnabled() && cloudSignedIn()) {
-    cloudSaveQuestionBank().then(()=>showToast('☁️ ซิงค์ข้อสอบขึ้น cloud แล้ว'));
+    cloudSaveQuestionBank().then(ok => { if (ok) showToast('☁️ ซิงค์ข้อสอบขึ้น cloud แล้ว'); });
   }
   showToast('✅ บันทึกข้อสอบแล้ว ' + Object.keys(EQ).map(k=>`${k}(${EQ[k].length})`).join(', '));
 }
@@ -4427,7 +4429,15 @@ async function cloudSaveQuestionBank(){
       ...(positionPresets ? { positionPresets } : {}),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-  } catch(e){ console.warn('cloud question-bank save failed (doc may exceed 1MB if it has images):', e); }
+    return true;
+  } catch(e){
+    console.warn('cloud question-bank save failed:', e);
+    if (e && e.code === 'permission-denied')
+      showToast('⚠️ ซิงค์ขึ้น cloud ไม่ได้ — ยังไม่ได้เพิ่ม Firestore rule ของ config', 5000);
+    else
+      showToast('⚠️ ซิงค์ขึ้น cloud ไม่สำเร็จ: ' + (e.code || e.message), 5000);
+    return false;
+  }
 }
 async function cloudLoadQuestionBank(){
   if (!cloudEnabled()) return false;
