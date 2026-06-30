@@ -898,10 +898,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="adm-backdrop" id="adm-backdrop" onclick="toggleAdminSidebar(false)"></div>
   <aside class="adm-sidebar" id="adm-sidebar">
     <div class="adm-sidebar-head">
-      <div class="hino-brand">
-        <img src="hino-logo.png" class="hino-mark sm" alt="Hino" style="background:#fff;border-radius:7px;padding:2px;height:30px" onerror="logoFallback(this)">
-        <div class="hino-co"><span class="co-name" style="color:#fff">Hino Motors Asia</span><span class="co-sub" style="color:rgba(255,255,255,.85)">เครื่องมือผู้ดูแล</span></div>
-      </div>
+      <div class="hino-co"><span class="co-name" style="color:#fff;font-size:14px">เครื่องมือผู้ดูแล</span><span class="co-sub" style="color:rgba(255,255,255,.85)">Admin Tools</span></div>
       <button class="adm-close" onclick="toggleAdminSidebar(false)" aria-label="ปิดเมนู">✕</button>
     </div>
     <!-- Main tools list (rendered by renderAdminNav) -->
@@ -913,7 +910,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <button class="adm-hamb" onclick="toggleAdminSidebar()" aria-label="เปิดเมนูเครื่องมือ" title="เครื่องมือผู้ดูแล">☰</button>
-      <div><div class="brand">HMA Admin Portal</div><div class="topbar-title">Candidate Tracking</div></div>
+      <div><div class="brand">HMA Admin Portal</div><div class="topbar-title">Admin Portal</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="cloud-status" style="display:none;align-items:center;font-size:11px;font-weight:600;gap:4px;padding:3px 9px;border-radius:20px;background:var(--gray-100);white-space:nowrap"></span>
@@ -3797,14 +3794,29 @@ function startFromIntro() {
 
 // Instruction editor
 let instrActiveSet = 'IQ';
+// A helpful starting instruction for tests that have none saved yet (incl. custom)
+function defaultInstrBody(t) {
+  if (!t) return '';
+  const rules = (t.rules || []).map(r => '• ' + r).join('\n');
+  const n = (ALL_QUESTIONS[t.code] || []).length;
+  return '📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี ' + n + ' ข้อ เวลา ' + (t.mins || '-') + ' นาที\n'
+       + (rules ? rules + '\n' : '')
+       + '• เกณฑ์ผ่าน: ' + (t.passing != null ? t.passing : 70) + ' คะแนนขึ้นไป';
+}
 function renderInstructionEditor() {
   const instr = getInstructions();
-  document.getElementById('instr-tabs').innerHTML = Object.keys(instr).map(k =>
-    `<button class="btn btn-sm ${k===instrActiveSet?'btn-primary':'btn-secondary'}" onclick="instrSwitch('${k}')">${k}</button>`
-  ).join('');
-  const cur = instr[instrActiveSet] || {};
-  document.getElementById('instr-title').value = cur.title || '';
-  document.getElementById('instr-body').value  = cur.body || '';
+  // Tabs from ALL test sets (built-in + admin-created) so every test can have instructions
+  const codes = TESTS.map(t => t.code);
+  if (!codes.includes(instrActiveSet)) instrActiveSet = codes[0] || 'IQ';
+  document.getElementById('instr-tabs').innerHTML = codes.map(k => {
+    const tdef = TESTS.find(t => t.code === k);
+    const star = tdef && tdef.custom ? ' ★' : '';
+    return `<button class="btn btn-sm ${k===instrActiveSet?'btn-primary':'btn-secondary'}" onclick="instrSwitch('${k}')">${k}${star}</button>`;
+  }).join('');
+  const cur  = instr[instrActiveSet] || {};
+  const tdef = TESTS.find(t => t.code === instrActiveSet) || {};
+  document.getElementById('instr-title').value = cur.title || ('คำชี้แจงการสอบ — ' + (tdef.nameTH || tdef.name || instrActiveSet));
+  document.getElementById('instr-body').value  = cur.body || defaultInstrBody(tdef);
   document.getElementById('instr-img-preview').innerHTML = cur.image
     ? `<img src="${cur.image}" class="instruction-img" style="max-height:120px">` : '';
   updateInstrPreview();
@@ -3844,6 +3856,7 @@ function saveInstruction() {
   instr[instrActiveSet].title = document.getElementById('instr-title').value;
   instr[instrActiveSet].body  = document.getElementById('instr-body').value;
   saveInstructions(instr);
+  if (typeof cloudSaveQuestionBank === 'function' && cloudEnabled() && cloudSignedIn()) cloudSaveQuestionBank();
   showToast(`✅ บันทึกคำแนะนำ ${instrActiveSet} แล้ว`);
 }
 
@@ -4364,8 +4377,9 @@ async function cloudSaveQuestionBank(){
       graded:!!t.graded, desc:t.desc||'', standard:t.standard||'', rules:t.rules||[], bands:t.bands||[]
     }));
     const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
+    const instructions    = JSON.parse(localStorage.getItem('hma_instructions') || '{}');
     await db.collection('config').doc('question_bank').set({
-      customTests, customQuestions, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      customTests, customQuestions, instructions, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch(e){ console.warn('cloud question-bank save failed (doc may exceed 1MB if it has images):', e); }
 }
@@ -4388,6 +4402,7 @@ async function cloudLoadQuestionBank(){
     // refresh local caches so this device matches the cloud bank
     try { localStorage.setItem('hma_custom_tests', JSON.stringify(data.customTests || [])); } catch(e){}
     try { localStorage.setItem('hma_custom_questions', JSON.stringify(cq)); } catch(e){}
+    if (data.instructions) { try { localStorage.setItem('hma_instructions', JSON.stringify(data.instructions)); } catch(e){} }
     EDIT_QUESTIONS = null;   // force the editor to rebuild from the updated bank
     if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
     return true;
