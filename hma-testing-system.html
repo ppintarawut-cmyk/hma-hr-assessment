@@ -1483,6 +1483,9 @@ function savePositionEditor(btn){
     if (!g.labelTH) g.labelTH=g.labelEN; if (!g.labelEN) g.labelEN=g.labelTH;
   }
   savePresets(peDraft);
+  if (typeof cloudSaveQuestionBank === 'function' && typeof cloudEnabled === 'function' && cloudEnabled() && cloudSignedIn()) {
+    cloudSaveQuestionBank().then(()=>showToast('☁️ ซิงค์ตำแหน่ง/ชุดสอบขึ้น cloud แล้ว'));
+  }
   if (btn){ const o=btn.textContent; btn.textContent='✓ บันทึกแล้ว'; setTimeout(()=>btn.textContent=o,1500); }
   showToast('บันทึกชุดข้อสอบตามตำแหน่งแล้ว');
 }
@@ -4418,8 +4421,11 @@ async function cloudSaveQuestionBank(){
     }));
     const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
     const instructions    = JSON.parse(localStorage.getItem('hma_instructions') || '{}');
+    const positionPresets = JSON.parse(localStorage.getItem('hma_position_presets') || 'null');
     await db.collection('config').doc('question_bank').set({
-      customTests, customQuestions, instructions, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      customTests, customQuestions, instructions,
+      ...(positionPresets ? { positionPresets } : {}),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch(e){ console.warn('cloud question-bank save failed (doc may exceed 1MB if it has images):', e); }
 }
@@ -4443,6 +4449,11 @@ async function cloudLoadQuestionBank(){
     try { localStorage.setItem('hma_custom_tests', JSON.stringify(data.customTests || [])); } catch(e){}
     try { localStorage.setItem('hma_custom_questions', JSON.stringify(cq)); } catch(e){}
     if (data.instructions) { try { localStorage.setItem('hma_instructions', JSON.stringify(data.instructions)); } catch(e){} }
+    if (data.positionPresets) {
+      try { localStorage.setItem('hma_position_presets', JSON.stringify(data.positionPresets)); } catch(e){}
+      // refresh the candidate's position dropdown if they're on the registration page
+      if (typeof populatePositionTypes === 'function' && document.getElementById('p-register') && document.getElementById('p-register').classList.contains('active')) populatePositionTypes();
+    }
     EDIT_QUESTIONS = null;   // force the editor to rebuild from the updated bank
     if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
     return true;
