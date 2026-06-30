@@ -225,7 +225,7 @@ a{color:var(--teal);text-decoration:none}
 .card+.card{margin-top:12px}
 
 /* ── Buttons ── */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;transition:all .15s;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 18px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;transition:all .15s;white-space:nowrap}
 .btn-primary{background:var(--teal);color:#fff}.btn-primary:hover{background:var(--teal-d)}
 .btn-secondary{background:var(--white);color:var(--gray-700);border:1px solid var(--gray-200)}.btn-secondary:hover{background:var(--gray-50)}
 .btn-amber{background:#f59e0b;color:#fff}.btn-amber:hover{background:#d97706}
@@ -432,8 +432,12 @@ textarea.q-inp:focus{border-color:var(--teal)}
 .adm-navitem.danger{color:var(--red)}
 .adm-navitem.danger:hover{background:var(--red-l);border-left-color:var(--red)}
 .adm-nav-divider{height:1px;background:var(--gray-200);margin:8px 14px}
-[data-theme="dark"] .adm-sidebar{background:var(--gray-700);border-right-color:var(--gray-500)}
-[data-theme="dark"] .adm-hamb{background:var(--gray-700);border-color:var(--gray-500)}
+[data-theme="dark"] .adm-sidebar{background:var(--white);border-right-color:var(--gray-200)}
+[data-theme="dark"] .adm-sidebar .adm-navitem{color:var(--gray-900)}
+[data-theme="dark"] .adm-sidebar .nav-label{color:var(--gray-900)}
+[data-theme="dark"] .adm-sidebar-sub{color:var(--gray-400)}
+[data-theme="dark"] .adm-navitem.danger{color:var(--red)}
+[data-theme="dark"] .adm-hamb{background:var(--white);border-color:var(--gray-200);color:var(--gray-900)}
 
 /* ════════════════════════════════════════════════════════════
    MODERN UI · Hino branding · gradients · sidebar pins · pro icons
@@ -3263,6 +3267,7 @@ function addTestCategory(){
   ALL_QUESTIONS[code] = [];
   getEditQ()[code] = [];
   saveCustomTests();
+  if (typeof cloudSaveQuestionBank === 'function') cloudSaveQuestionBank();
   qeActiveSet = code;
   renderQuestionEditor();
   showToast('✅ เพิ่มหมวดหมู่ "'+nameTH+'" (รหัส '+code+') — เพิ่มข้อสอบแล้วกด 💾 บันทึก');
@@ -3280,6 +3285,7 @@ function deleteTestCategory(code){
     const cq = JSON.parse(localStorage.getItem('hma_custom_questions')||'{}');
     delete cq[code]; localStorage.setItem('hma_custom_questions', JSON.stringify(cq));
   } catch(e){}
+  if (typeof cloudSaveQuestionBank === 'function') cloudSaveQuestionBank();
   qeActiveSet = 'IQ';
   renderQuestionEditor();
   showToast('🗑 ลบหมวดหมู่ '+code+' แล้ว');
@@ -3295,6 +3301,10 @@ function saveQuestions() {
     });
   });
   try { localStorage.setItem('hma_custom_questions', JSON.stringify(EQ)); } catch(e){}
+  // Sync the bank to the cloud so other devices/candidates get the changes
+  if (typeof cloudSaveQuestionBank === 'function' && cloudEnabled() && cloudSignedIn()) {
+    cloudSaveQuestionBank().then(()=>showToast('☁️ ซิงค์ข้อสอบขึ้น cloud แล้ว'));
+  }
   showToast('✅ บันทึกข้อสอบแล้ว ' + Object.keys(EQ).map(k=>`${k}(${EQ[k].length})`).join(', '));
 }
 
@@ -3987,75 +3997,95 @@ function printIndivPDF(person) {
   showToast('🖨️ เปิดหน้าต่างพิมพ์ — เลือก “บันทึกเป็น PDF / Save as PDF”');
 }
 
-// Export the FULL admin score dashboard (everything on p-results, not just the
-// visible viewport) as a multi-page A4 PDF.
-// Each logical page is a group of card elements. Every group is laid out on its
-// own A4 page and scaled to fit, so no card is ever sliced across a page break.
+// Export the FULL admin score dashboard as a multi-page A4 PDF.
+// Each logical page is a group of cards laid out on its own A4 page and scaled
+// to fit, so no card is ever sliced across a page break.
 //   Page 1: header (name / position / experience / overall) + score bars + radar
 //   Page 2: per-test detail + overall verdict
 //   Page 3: strengths / weaknesses analysis
-async function exportResultsPDF(btn){
-  const person = (typeof applicant !== 'undefined' && applicant && applicant.name) ? applicant.name : 'candidate';
-  const fname  = ('HMA_Dashboard_' + person).replace(/\s+/g,'_');
-  const date   = new Date().toISOString().slice(0,10);
-  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
-  const orig = btn ? btn.innerHTML : '';
-  if (btn){ btn.innerHTML = '<span class="spin"></span> กำลังสร้าง PDF...'; btn.disabled = true; }
+const PDF_PAGE_GROUPS = [
+  ['#r-header-card', '#r-bars-card', '#r-radar-card'],
+  ['#r-breakdown-card', '#r-verdict'],
+  ['#r-skill-card'],
+];
+let _resultsPagesCache = null;
 
-  const groups = [
-    ['#r-header-card', '#r-bars-card', '#r-radar-card'],
-    ['#r-breakdown-card', '#r-verdict'],
-    ['#r-skill-card'],
-  ];
-
-  try {
-    if (!(jsPDFCtor && typeof window.html2canvas === 'function')) throw new Error('libs unavailable');
-    const pdf = new jsPDFCtor('p', 'mm', 'a4');
-    const pw = pdf.internal.pageSize.getWidth();
-    const ph = pdf.internal.pageSize.getHeight();
-    const margin = 10, gap = 5;
-    const usableW = pw - margin * 2;
-    const usableH = ph - margin * 2;
-
-    let pageAdded = false;
-    for (const sels of groups){
-      // capture each visible, non-empty card in this group
-      const imgs = [];
-      for (const sel of sels){
-        const node = document.querySelector(sel);
-        if (!node || node.offsetHeight === 0) continue;
-        const c = await window.html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-        imgs.push({ data: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height });
-      }
-      if (!imgs.length) continue;
-
-      if (pageAdded) pdf.addPage();
-      pageAdded = true;
-
-      // natural heights at full usable width
-      const natH = imgs.map(im => usableW * im.h / im.w);
-      const totalH = natH.reduce((a, b) => a + b, 0) + gap * (imgs.length - 1);
-      const scale = totalH > usableH ? usableH / totalH : 1;   // shrink the whole page to fit
-
-      let y = margin;
-      imgs.forEach((im, i) => {
-        const w = usableW * scale;
-        const h = natH[i] * scale;
-        const x = margin + (usableW - w) / 2;
-        pdf.addImage(im.data, 'JPEG', x, y, w, h);
-        y += h + gap * scale;
-      });
+async function captureResultsPages(){
+  const pages = [];
+  for (const sels of PDF_PAGE_GROUPS){
+    const imgs = [];
+    for (const sel of sels){
+      const node = document.querySelector(sel);
+      if (!node || node.offsetHeight === 0) continue;
+      const c = await window.html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      if (c.width > 1 && c.height > 1) imgs.push({ data: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height });
     }
+    if (imgs.length) pages.push(imgs);
+  }
+  return pages;
+}
 
-    if (!pageAdded) throw new Error('no content');
-    pdf.save(fname + '_' + date + '.pdf');
-    showToast('✅ ดาวน์โหลดแดชบอร์ดคะแนน (PDF A4) สำเร็จ');
+// Capture, then show a preview modal BEFORE downloading.
+async function exportResultsPDF(btn){
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  if (!(jsPDFCtor && typeof window.html2canvas === 'function')) { showToast('❌ ไลบรารี PDF ไม่พร้อม'); return; }
+  const orig = btn ? btn.innerHTML : '';
+  if (btn){ btn.innerHTML = '<span class="spin"></span> กำลังสร้างพรีวิว...'; btn.disabled = true; }
+  try {
+    const pages = await captureResultsPages();
+    if (!pages.length) throw new Error('no content');
+    _resultsPagesCache = pages;
+    showPdfPreviewModal(pages);
   } catch(e){
     console.error(e);
-    showToast('❌ สร้าง PDF ไม่สำเร็จ: ' + (e.message || e));
+    showToast('❌ สร้างพรีวิวไม่สำเร็จ: ' + (e.message || e));
   } finally {
     if (btn){ btn.innerHTML = orig; btn.disabled = false; }
   }
+}
+
+function showPdfPreviewModal(pages){
+  let modal = document.getElementById('mod-pdf-preview');
+  if (!modal){ modal = document.createElement('div'); modal.id = 'mod-pdf-preview'; modal.className = 'overlay'; document.body.appendChild(modal); }
+  const sheets = pages.map((imgs, idx) => {
+    const inner = imgs.map(im => `<img src="${im.data}" style="width:100%;display:block;margin-bottom:6px">`).join('');
+    return `<div style="background:#fff;width:100%;max-width:400px;margin:0 auto 16px;box-shadow:0 2px 14px rgba(0,0,0,.2);border-radius:4px;padding:16px;box-sizing:border-box">
+        <div style="font-size:10px;color:#999;text-align:right;margin-bottom:8px">A4 · หน้า ${idx+1}/${pages.length}</div>${inner}
+      </div>`;
+  }).join('');
+  modal.innerHTML = `<div class="modal" style="max-width:520px;max-height:92vh;display:flex;flex-direction:column">
+      <div class="modal-head"><span style="font-weight:600">🔍 พรีวิว PDF (A4) — ${pages.length} หน้า</span>
+        <button onclick="closeModal('mod-pdf-preview')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-400)">✕</button></div>
+      <div class="modal-body" style="background:var(--gray-100);overflow:auto;padding:16px">${sheets}</div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" onclick="closeModal('mod-pdf-preview')">ปิด</button>
+        <button class="btn btn-primary" onclick="downloadResultsPDF(this)">⬇ ดาวน์โหลด PDF</button>
+      </div>
+    </div>`;
+  openModal('mod-pdf-preview');
+}
+
+function downloadResultsPDF(btn){
+  const pages = _resultsPagesCache;
+  if (!pages || !pages.length) { showToast('❌ ไม่มีข้อมูลพรีวิว'); return; }
+  const jsPDFCtor = window.jspdf.jsPDF;
+  const person = (typeof applicant !== 'undefined' && applicant && applicant.name) ? applicant.name : 'candidate';
+  const fname  = ('HMA_Dashboard_' + person).replace(/\s+/g,'_');
+  const date   = new Date().toISOString().slice(0,10);
+  const pdf = new jsPDFCtor('p', 'mm', 'a4');
+  const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+  const margin = 10, gap = 5, usableW = pw - margin*2, usableH = ph - margin*2;
+  pages.forEach((imgs, pi) => {
+    if (pi > 0) pdf.addPage();
+    const natH = imgs.map(im => usableW * im.h / im.w);
+    const totalH = natH.reduce((a,b)=>a+b,0) + gap*(imgs.length-1);
+    const scale = totalH > usableH ? usableH/totalH : 1;
+    let y = margin;
+    imgs.forEach((im,i)=>{ const w=usableW*scale, h=natH[i]*scale, x=margin+(usableW-w)/2; pdf.addImage(im.data,'JPEG',x,y,w,h); y+=h+gap*scale; });
+  });
+  pdf.save(fname + '_' + date + '.pdf');
+  closeModal('mod-pdf-preview');
+  showToast('✅ ดาวน์โหลดแดชบอร์ดคะแนน (PDF A4) สำเร็จ');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4322,6 +4352,49 @@ if (window.fbAuth) {
     if (user && document.getElementById('p-admin') && document.getElementById('p-admin').classList.contains('active')) cloudFetchAll();
   });
 }
+
+// ── Shared question bank in the cloud (custom categories + edited questions) ──
+// Stored at config/question_bank so every device (and candidates) use the same
+// bank. Readable by all; writable only by signed-in admins (Firestore rules).
+async function cloudSaveQuestionBank(){
+  if (!cloudEnabled() || !cloudSignedIn()) return;
+  try {
+    const customTests = TESTS.filter(t => t.custom).map(t => ({
+      code:t.code, name:t.name, nameTH:t.nameTH, mins:t.mins, passing:t.passing,
+      graded:!!t.graded, desc:t.desc||'', standard:t.standard||'', rules:t.rules||[], bands:t.bands||[]
+    }));
+    const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
+    await db.collection('config').doc('question_bank').set({
+      customTests, customQuestions, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e){ console.warn('cloud question-bank save failed (doc may exceed 1MB if it has images):', e); }
+}
+async function cloudLoadQuestionBank(){
+  if (!cloudEnabled()) return false;
+  try {
+    const doc = await db.collection('config').doc('question_bank').get();
+    if (!doc.exists) return false;
+    const data = doc.data() || {};
+    (data.customTests || []).forEach(t => {
+      const i = TESTS.findIndex(x => x.code === t.code);
+      if (i < 0) TESTS.push({ ...t, custom:true });
+      else if (TESTS[i].custom) TESTS[i] = { ...t, custom:true };
+      if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
+    });
+    const cq = data.customQuestions || {};
+    Object.keys(cq).forEach(k => {
+      ALL_QUESTIONS[k] = cq[k].map(q => ({ ...q, opts: q.opts || (q.choices||[]).map((t,i)=>({t,p:i===(q.ans||0)?1:0})) }));
+    });
+    // refresh local caches so this device matches the cloud bank
+    try { localStorage.setItem('hma_custom_tests', JSON.stringify(data.customTests || [])); } catch(e){}
+    try { localStorage.setItem('hma_custom_questions', JSON.stringify(cq)); } catch(e){}
+    EDIT_QUESTIONS = null;   // force the editor to rebuild from the updated bank
+    if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
+    return true;
+  } catch(e){ console.warn('cloud question-bank load failed:', e); return false; }
+}
+// Pull the shared bank on startup (for admins AND candidates).
+cloudLoadQuestionBank();
 
 // Initial FAB state
 updateFABs('p-landing');
