@@ -2656,6 +2656,33 @@ document.querySelector('#p-register .alert-info').style.display='flex';
   </div>
 </div>
 
+<!-- Add test category modal -->
+<div class="overlay" id="mod-add-category">
+  <div class="modal">
+    <div class="modal-head"><span style="font-weight:600">➕ เพิ่มหมวดหมู่ข้อสอบ</span><button onclick="closeModal('mod-add-category')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-400)">✕</button></div>
+    <div class="modal-body">
+      <div id="nc-err" class="alert alert-err" style="display:none"></div>
+      <div class="field"><label>ชื่อหมวดหมู่ (ภาษาไทย)</label><input id="nc-nameTH" type="text" placeholder="เช่น บุคลิกภาพ"></div>
+      <div class="field"><label>ชื่อ (English) — สำหรับรายงาน/PDF</label><input id="nc-name" type="text" placeholder="e.g. Personality"></div>
+      <div class="field"><label>รหัสชุดสอบ <small style="color:var(--gray-400)">(อังกฤษ/ตัวเลข ไม่เว้นวรรค)</small></label><input id="nc-code" type="text" placeholder="เช่น PERSONALITY" style="text-transform:uppercase"></div>
+      <div style="display:flex;gap:10px">
+        <div class="field" style="flex:1"><label>เวลา (นาที)</label><input id="nc-mins" type="number" min="1" value="15"></div>
+        <div class="field" style="flex:1"><label>เกณฑ์ผ่าน (0–100)</label><input id="nc-passing" type="number" min="0" max="100" value="70"></div>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input id="nc-graded" type="checkbox" style="width:16px;height:16px;accent-color:var(--teal)">
+          <span>ให้คะแนนแบบไล่ระดับ 0–2 ต่อข้อ <small style="color:var(--gray-400)">(เช่น EQ / ภาวะผู้นำ) — ไม่ติ๊ก = ถูก/ผิด</small></span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('mod-add-category')">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="submitNewCategory()">สร้างหมวดหมู่</button>
+    </div>
+  </div>
+</div>
+
 
 <div id="toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gray-900);color:#fff;padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2)"></div>
 
@@ -3247,16 +3274,28 @@ function saveCustomTests(){
   }));
   try { localStorage.setItem('hma_custom_tests', JSON.stringify(customs)); } catch(e){}
 }
+// Open the "add category" form (all fields on one screen)
 function addTestCategory(){
-  const nameTH = (prompt('ชื่อหมวดหมู่/ชุดสอบ (ภาษาไทย):','') || '').trim();
-  if (!nameTH) return;
-  const name = ((prompt('ชื่อภาษาอังกฤษ (สำหรับรายงาน/PDF):', nameTH) || nameTH)).trim();
-  let code = (prompt('รหัสชุดสอบ (อังกฤษ/ตัวเลข ไม่เว้นวรรค เช่น SALES):','') || '').toUpperCase().replace(/[^A-Z0-9_]/g,'');
-  if (!code) { showToast('❌ ต้องระบุรหัสชุดสอบ'); return; }
-  if (TESTS.some(t => t.code === code) || ALL_QUESTIONS[code]) { showToast('❌ รหัส "'+code+'" มีอยู่แล้ว'); return; }
-  const mins = Math.max(1, parseInt(prompt('เวลาทำ (นาที):','15'),10) || 15);
-  const passing = Math.min(100, Math.max(0, parseInt(prompt('เกณฑ์ผ่าน (0–100 คะแนน):','70'),10) || 70));
-  const graded = confirm('ให้คะแนนแบบไล่ระดับ 0–2 ต่อข้อหรือไม่?\n\nOK = ใช่ (เช่น EQ/ภาวะผู้นำ)\nCancel = ไม่ (ถูก/ผิด 0–1)');
+  ['nc-nameTH','nc-name','nc-code'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  const mins=document.getElementById('nc-mins'); if(mins) mins.value='15';
+  const pass=document.getElementById('nc-passing'); if(pass) pass.value='70';
+  const grd=document.getElementById('nc-graded'); if(grd) grd.checked=false;
+  const err=document.getElementById('nc-err'); if(err) err.style.display='none';
+  openModal('mod-add-category');
+  setTimeout(()=>document.getElementById('nc-nameTH')?.focus(), 50);
+}
+function submitNewCategory(){
+  const err = document.getElementById('nc-err');
+  const show = (m)=>{ if(err){ err.textContent=m; err.style.display='block'; } };
+  const nameTH = document.getElementById('nc-nameTH').value.trim();
+  const name   = (document.getElementById('nc-name').value.trim()) || nameTH;
+  const code   = document.getElementById('nc-code').value.toUpperCase().replace(/[^A-Z0-9_]/g,'');
+  const mins    = Math.max(1, parseInt(document.getElementById('nc-mins').value,10) || 15);
+  const passing = Math.min(100, Math.max(0, parseInt(document.getElementById('nc-passing').value,10) || 70));
+  const graded  = document.getElementById('nc-graded').checked;
+  if (!nameTH) return show('กรุณากรอกชื่อหมวดหมู่ (ภาษาไทย)');
+  if (!code)   return show('กรุณากรอกรหัสชุดสอบ (อังกฤษ/ตัวเลข)');
+  if (TESTS.some(t => t.code === code) || ALL_QUESTIONS[code]) return show('รหัส "'+code+'" มีอยู่แล้ว — กรุณาใช้รหัสอื่น');
   const test = { code, name, nameTH, mins, passing, graded, custom:true,
     desc:'', standard:'', rules:['เลือกคำตอบที่ดีที่สุดในแต่ละข้อ','ทำให้เสร็จภายในเวลาที่กำหนด'],
     bands:[[0,passing,'ต่ำกว่าเกณฑ์'],[passing,101,'ผ่านเกณฑ์']] };
@@ -3265,6 +3304,7 @@ function addTestCategory(){
   getEditQ()[code] = [];
   saveCustomTests();
   if (typeof cloudSaveQuestionBank === 'function') cloudSaveQuestionBank();
+  closeModal('mod-add-category');
   qeActiveSet = code;
   renderQuestionEditor();
   showToast('✅ เพิ่มหมวดหมู่ "'+nameTH+'" (รหัส '+code+') — เพิ่มข้อสอบแล้วกด 💾 บันทึก');
