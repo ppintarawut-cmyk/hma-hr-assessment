@@ -4418,7 +4418,7 @@ async function cloudDiagnose(){
   }, 10000);
   try {
     const email = fbAuth.currentUser.email;
-    await db.collection('config').doc('question_bank').set({ diagBy: email, diagAt: Date.now() }, { merge: true });
+    await db.collection('config').doc('settings').set({ diagBy: email, diagAt: Date.now() }, { merge: true });
     const ok = await cloudSaveQuestionBank();
     if (settled) return;
     settled = true; clearTimeout(timer);
@@ -4440,63 +4440,94 @@ if (window.fbAuth) {
   });
 }
 
-// ── Shared question bank in the cloud (custom categories + edited questions) ──
-// Stored at config/question_bank so every device (and candidates) use the same
-// bank. Readable by all; writable only by signed-in admins (Firestore rules).
+// ── Shared config in the cloud ──
+// Everything is stored as JSON STRINGS to sidestep Firestore's data rules
+// (it rejects nested arrays like a test's `bands`, and `undefined`).
+// Split into two docs so the tiny, critical stuff (custom tests + position
+// presets) always syncs even if the big question bank hits the 1 MB limit:
+//   config/settings : { customTests, positionPresets }   ← small, always syncs
+//   config/bank     : { customQuestions, instructions }  ← large, best-effort
 async function cloudSaveQuestionBank(){
-  if (!cloudEnabled() || !cloudSignedIn()) return;
+  if (!cloudEnabled() || !cloudSignedIn()) return false;
+  const stamp = firebase.firestore.FieldValue.serverTimestamp();
+  const customTests = TESTS.filter(t => t.custom).map(t => ({
+    code:t.code, name:t.name, nameTH:t.nameTH, mins:t.mins, passing:t.passing,
+    graded:!!t.graded, desc:t.desc||'', standard:t.standard||'', rules:t.rules||[], bands:t.bands||[]
+  }));
+  const positionPresets = JSON.parse(localStorage.getItem('hma_position_presets') || 'null');
+  const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
+  const instructions    = JSON.parse(localStorage.getItem('hma_instructions') || '{}');
+
+  let settingsOk = false;
   try {
-    const customTests = TESTS.filter(t => t.custom).map(t => ({
-      code:t.code, name:t.name, nameTH:t.nameTH, mins:t.mins, passing:t.passing,
-      graded:!!t.graded, desc:t.desc||'', standard:t.standard||'', rules:t.rules||[], bands:t.bands||[]
-    }));
-    const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
-    const instructions    = JSON.parse(localStorage.getItem('hma_instructions') || '{}');
-    const positionPresets = JSON.parse(localStorage.getItem('hma_position_presets') || 'null');
-    await db.collection('config').doc('question_bank').set({
-      customTests, customQuestions, instructions,
-      ...(positionPresets ? { positionPresets } : {}),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    await db.collection('config').doc('settings').set({
+      customTests: JSON.stringify(customTests),
+      positionPresets: JSON.stringify(positionPresets),
+      updatedAt: stamp
     });
-    return true;
+    settingsOk = true;
   } catch(e){
-    console.warn('cloud question-bank save failed:', e);
-    if (e && e.code === 'permission-denied')
-      showToast('⚠️ ซิงค์ขึ้น cloud ไม่ได้ — ยังไม่ได้เพิ่ม Firestore rule ของ config', 5000);
-    else
-      showToast('⚠️ ซิงค์ขึ้น cloud ไม่สำเร็จ: ' + (e.code || e.message), 5000);
-    return false;
+    console.warn('cloud settings save failed:', e);
+    if (e && e.code === 'permission-denied') showToast('⚠️ ซิงค์ไม่ได้ — ยังไม่ได้เพิ่ม Firestore rule ของ config', 5000);
+    else showToast('⚠️ ซิงค์ตำแหน่ง/หมวดไม่สำเร็จ: ' + (e.code || e.message), 5000);
   }
+  // Large bank (questions + instructions) — best effort; may exceed 1 MB with images
+  try {
+    await db.collection('config').doc('bank').set({
+      customQuestions: JSON.stringify(customQuestions),
+      instructions: JSON.stringify(instructions),
+      updatedAt: stamp
+    });
+  } catch(e){
+    console.warn('cloud bank save failed:', e);
+    if (e && e.code !== 'permission-denied')
+      showToast('⚠️ คลังข้อสอบใหญ่เกินไป (รูปเยอะ?) — ตำแหน่ง/หมวดซิงค์แล้ว แต่ข้อสอบยังไม่ขึ้น', 7000);
+  }
+  return settingsOk;
 }
+function _parseMaybe(v, fallback){ try { return typeof v === 'string' ? JSON.parse(v) : (v ?? fallback); } catch(e){ return fallback; } }
 async function cloudLoadQuestionBank(){
   if (!cloudEnabled()) return false;
+  let loaded = false;
+  // 1) settings — custom test metadata + position presets (small, critical)
   try {
-    const doc = await db.collection('config').doc('question_bank').get();
-    if (!doc.exists) return false;
-    const data = doc.data() || {};
-    (data.customTests || []).forEach(t => {
-      const i = TESTS.findIndex(x => x.code === t.code);
-      if (i < 0) TESTS.push({ ...t, custom:true });
-      else if (TESTS[i].custom) TESTS[i] = { ...t, custom:true };
-      if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
-    });
-    const cq = data.customQuestions || {};
-    Object.keys(cq).forEach(k => {
-      ALL_QUESTIONS[k] = cq[k].map(q => ({ ...q, opts: q.opts || (q.choices||[]).map((t,i)=>({t,p:i===(q.ans||0)?1:0})) }));
-    });
-    // refresh local caches so this device matches the cloud bank
-    try { localStorage.setItem('hma_custom_tests', JSON.stringify(data.customTests || [])); } catch(e){}
-    try { localStorage.setItem('hma_custom_questions', JSON.stringify(cq)); } catch(e){}
-    if (data.instructions) { try { localStorage.setItem('hma_instructions', JSON.stringify(data.instructions)); } catch(e){} }
-    if (data.positionPresets) {
-      try { localStorage.setItem('hma_position_presets', JSON.stringify(data.positionPresets)); } catch(e){}
-      // refresh the candidate's position dropdown if they're on the registration page
-      if (typeof populatePositionTypes === 'function' && document.getElementById('p-register') && document.getElementById('p-register').classList.contains('active')) populatePositionTypes();
+    const s = await db.collection('config').doc('settings').get();
+    if (s.exists) {
+      const d = s.data() || {};
+      const customTests = _parseMaybe(d.customTests, []) || [];
+      customTests.forEach(t => {
+        const i = TESTS.findIndex(x => x.code === t.code);
+        if (i < 0) TESTS.push({ ...t, custom:true });
+        else if (TESTS[i].custom) TESTS[i] = { ...t, custom:true };
+        if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
+      });
+      try { localStorage.setItem('hma_custom_tests', JSON.stringify(customTests)); } catch(e){}
+      const presets = _parseMaybe(d.positionPresets, null);
+      if (presets) {
+        try { localStorage.setItem('hma_position_presets', JSON.stringify(presets)); } catch(e){}
+        if (typeof populatePositionTypes === 'function' && document.getElementById('p-register') && document.getElementById('p-register').classList.contains('active')) populatePositionTypes();
+      }
+      loaded = true;
     }
-    EDIT_QUESTIONS = null;   // force the editor to rebuild from the updated bank
-    if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
-    return true;
-  } catch(e){ console.warn('cloud question-bank load failed:', e); return false; }
+  } catch(e){ console.warn('cloud settings load failed:', e); }
+  // 2) bank — questions + instructions (large, best-effort)
+  try {
+    const b = await db.collection('config').doc('bank').get();
+    if (b.exists) {
+      const d = b.data() || {};
+      const cq = _parseMaybe(d.customQuestions, {}) || {};
+      Object.keys(cq).forEach(k => {
+        ALL_QUESTIONS[k] = cq[k].map(q => ({ ...q, opts: q.opts || (q.choices||[]).map((t,i)=>({t,p:i===(q.ans||0)?1:0})) }));
+      });
+      try { localStorage.setItem('hma_custom_questions', JSON.stringify(cq)); } catch(e){}
+      const instr = _parseMaybe(d.instructions, null);
+      if (instr) { try { localStorage.setItem('hma_instructions', JSON.stringify(instr)); } catch(e){} }
+      EDIT_QUESTIONS = null;
+      if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
+      loaded = true;
+    }
+  } catch(e){ console.warn('cloud bank load failed:', e); }
+  return loaded;
 }
 // Pull the shared bank on startup (for admins AND candidates).
 cloudLoadQuestionBank();
