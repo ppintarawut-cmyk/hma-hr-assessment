@@ -4395,12 +4395,41 @@ function updateCloudStatus(state, info){
   el.style.display = 'inline-flex';
   el.style.cursor = 'pointer';
   el.title = 'คลิกเพื่อซิงค์ข้อมูลจาก cloud ใหม่';
-  el.onclick = () => { if (cloudSignedIn()) cloudFetchAll(); else showToast('⚠️ ออกจากระบบแล้วล็อกอินด้วย “อีเมล” เพื่อดูข้อมูลข้ามเครื่อง'); };
+  el.onclick = () => cloudDiagnose();
+  el.title = 'คลิกเพื่อทดสอบ/ซิงค์การเชื่อมต่อ cloud';
   if (state === 'loading'){ el.textContent = '☁️ กำลังซิงค์…'; el.style.color = 'var(--gray-400)'; }
   else if (state === 'ok'){ el.textContent = '☁️ เชื่อมต่อ cloud · ' + (info||0) + ' รายการ'; el.style.color = 'var(--pass)'; }
   else if (state === 'error'){ el.textContent = '⚠️ cloud: ' + info; el.style.color = 'var(--amber)'; }
   else if (cloudSignedIn()){ el.textContent = '☁️ เชื่อมต่อ cloud'; el.style.color = 'var(--pass)'; }
   else { el.textContent = '⚠️ ไม่ได้เชื่อม cloud — ล็อกอินด้วยอีเมล'; el.style.color = 'var(--amber)'; }
+}
+
+// One-click on-screen cloud test (no dev console needed): reports whether the
+// browser can actually WRITE to Firestore, or is blocked / hanging / denied.
+async function cloudDiagnose(){
+  if (!cloudEnabled()) { alert('❌ Firebase ยังไม่โหลด\n\nอาจเป็นเพราะไม่มีอินเทอร์เน็ต หรือมีตัวบล็อกสคริปต์ (ad-blocker/extension)'); return; }
+  if (!cloudSignedIn()) { alert('⚠️ ยังไม่ได้ล็อกอินด้วยอีเมล\n\nกรุณาออกจากระบบ แล้วล็อกอินด้วยอีเมล (Firebase) เพื่อซิงค์ข้ามเครื่อง'); return; }
+  showToast('🔧 กำลังทดสอบการเชื่อมต่อ cloud…', 12000);
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    alert('⏱️ การเชื่อมต่อ Firestore ค้าง (เกิน 10 วินาที)\n\nเครือข่าย/เบราว์เซอร์นี้น่าจะบล็อก Firestore\n\nลองวิธีใดวิธีหนึ่ง:\n• ใช้เน็ตอื่น (มือถือ 4G/5G)\n• ปิด ad-blocker / privacy extension แล้วลองใหม่\n• ลองเครื่อง/เบราว์เซอร์อื่น');
+  }, 10000);
+  try {
+    const email = fbAuth.currentUser.email;
+    await db.collection('config').doc('question_bank').set({ diagBy: email, diagAt: Date.now() }, { merge: true });
+    const ok = await cloudSaveQuestionBank();
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    updateCloudStatus('ok');
+    alert('✅ เชื่อมต่อ cloud สำเร็จ! เขียนข้อมูลขึ้น cloud ได้\n\n' + (ok ? 'ซิงค์คลังข้อสอบ + ตำแหน่งขึ้น cloud เรียบร้อยแล้ว\nตอนนี้เครื่องอื่น/ผู้สมัครจะเห็นข้อมูลตรงกัน' : 'แต่ซิงค์คลังข้อมูลไม่สำเร็จ — ลองอีกครั้ง'));
+  } catch(e){
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    if (e && e.code === 'permission-denied') alert('🔒 ถูกปฏิเสธสิทธิ์ (permission-denied)\n\nตรวจ Firestore Rules ของ config ว่า Publish แล้วจริง');
+    else alert('❌ ผิดพลาด: ' + (e.code || e.message || e));
+  }
 }
 
 // Auto-sync when a Firebase session is present (e.g. restored after reload)
