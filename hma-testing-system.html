@@ -898,7 +898,10 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="adm-backdrop" id="adm-backdrop" onclick="toggleAdminSidebar(false)"></div>
   <aside class="adm-sidebar" id="adm-sidebar">
     <div class="adm-sidebar-head">
-      <div class="hino-co"><span class="co-name" style="color:#fff;font-size:14px">เครื่องมือผู้ดูแล</span><span class="co-sub" style="color:rgba(255,255,255,.85)">Admin Tools</span></div>
+      <div class="hino-brand">
+        <img src="hino-logo.png" class="hino-mark sm" alt="Hino" style="background:#fff;border-radius:7px;padding:2px;height:32px" onerror="logoFallback(this)">
+        <div class="hino-co"><span class="co-name" style="color:#fff">Hino Motors Asia Ltd.</span><span class="co-sub" style="color:rgba(255,255,255,.85)">HMA Testing System</span></div>
+      </div>
       <button class="adm-close" onclick="toggleAdminSidebar(false)" aria-label="ปิดเมนู">✕</button>
     </div>
     <!-- Main tools list (rendered by renderAdminNav) -->
@@ -910,7 +913,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <button class="adm-hamb" onclick="toggleAdminSidebar()" aria-label="เปิดเมนูเครื่องมือ" title="เครื่องมือผู้ดูแล">☰</button>
-      <div><div class="brand">HMA Admin Portal</div><div class="topbar-title">Admin Portal</div></div>
+      <div><div class="topbar-title" style="font-size:17px;font-weight:700;color:var(--gray-900)">Admin Portal</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="cloud-status" style="display:none;align-items:center;font-size:11px;font-weight:600;gap:4px;padding:3px 9px;border-radius:20px;background:var(--gray-100);white-space:nowrap"></span>
