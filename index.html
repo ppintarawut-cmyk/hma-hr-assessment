@@ -1266,6 +1266,8 @@ const SECMAP = {
   'Verbal':'ด้านภาษา','Numerical':'ด้านตัวเลข','Logical':'ด้านตรรกะ','Abstract':'ด้านมิติสัมพันธ์',
   'Self-management':'การจัดการตนเอง','Self-awareness':'การรู้จักตนเอง','Social awareness':'การรับรู้ผู้อื่น','Relationship management':'การจัดการความสัมพันธ์',
   'Control':'การควบคุม','Ownership':'ความรับผิดชอบ','Reach':'การจำกัดขอบเขต','Endurance':'ความอดทน',
+  'Extraversion':'การแสดงออกทางสังคม','Agreeableness':'ความเป็นมิตร','Conscientiousness':'ความรับผิดชอบ',
+  'Emotional Stability':'ความมั่นคงทางอารมณ์','Openness':'การเปิดรับสิ่งใหม่','Honesty-Humility':'ความซื่อสัตย์-ถ่อมตน',
 };
 function secLabel(sec){ return (LANG==='th' && SECMAP[sec]) ? SECMAP[sec] : sec; }
 
@@ -3150,7 +3152,7 @@ function renderQuestionEditor() {
   const qs = EQ[qeActiveSet];
   document.getElementById('qe-list').innerHTML = qs.map((q, i) => {
     const type = q.type || 'mcq';
-    const typeBadge = { mcq:`<span class="q-type-badge qt-mcq">MCQ</span>`, graded:`<span class="q-type-badge qt-multi">Graded 0–2</span>`, multi:`<span class="q-type-badge qt-multi">หลายข้อ</span>`, text:`<span class="q-type-badge qt-text">อัตนัย</span>` }[type] || '';
+    const typeBadge = { mcq:`<span class="q-type-badge qt-mcq">MCQ</span>`, graded:`<span class="q-type-badge qt-multi">Graded</span>`, multi:`<span class="q-type-badge qt-multi">หลายข้อ</span>`, text:`<span class="q-type-badge qt-text">อัตนัย</span>` }[type] || '';
     const imgThumb = q.image ? `<img src="${q.image}" class="img-preview">` : '';
     const audioEl  = q.audio ? `<audio controls src="${q.audio}" style="width:100%;margin-top:6px;height:32px"></audio>` : '';
     // opts is [{t,p}]
@@ -3161,9 +3163,7 @@ function renderQuestionEditor() {
       // For graded, show points input; for MCQ/multi show radio/checkbox
       const scoreInput = type==='graded'
         ? `<select onchange="qeSetOptP(${i},${j},+this.value)" style="width:52px;border:1px solid var(--gray-200);border-radius:4px;padding:3px 4px;font-size:12px">
-            <option value="0" ${o.p===0?'selected':''}>0</option>
-            <option value="1" ${o.p===1?'selected':''}>1</option>
-            <option value="2" ${o.p===2?'selected':''}>2</option>
+            ${[0,1,2,3,4].map(n=>`<option value="${n}" ${o.p===n?'selected':''}>${n}</option>`).join('')}
            </select>`
         : `<input type="${type==='multi'?'checkbox':'radio'}" name="ans_${qeActiveSet}_${i}" ${isBest?'checked':''} onchange="qeSetOptBest(${i},${j})" title="ทำเครื่องหมายเฉลย" style="width:16px;height:16px;accent-color:var(--teal)">`;
       return `<div class="choice-edit-row">
@@ -3378,6 +3378,125 @@ try {
     });
   }
 } catch(e){}
+
+// ══════════════════════════════════════════════════════════
+// PERSONALITY (PERS) — 60-item IPIP Big Five + Honesty-Humility bank
+// Ported from hma-personality.html. Each item is a 5-point Likert scale
+// (Strongly Disagree..Strongly Agree) scored 0–4; reverse-keyed items ('-')
+// have their points flipped so higher always means "more of the trait".
+// ══════════════════════════════════════════════════════════
+const PERS_LIKERT_EN = ['Strongly Disagree','Disagree','Neutral','Agree','Strongly Agree'];
+const PERS_LIKERT_TH = ['ไม่เห็นด้วยอย่างยิ่ง','ไม่เห็นด้วย','เฉย ๆ','เห็นด้วย','เห็นด้วยอย่างยิ่ง'];
+function persItem(sec, key, en, th) {
+  const p = key === '+' ? [0,1,2,3,4] : [4,3,2,1,0];
+  return {
+    sec, diff:'M', type:'graded',
+    q: en, qTH: th,
+    opts: PERS_LIKERT_EN.map((t,i)=>({ t, p: p[i] })),
+    optsTH: PERS_LIKERT_TH.slice(),
+  };
+}
+const DEFAULT_PERS_QUESTIONS = [
+  // Extraversion
+  persItem('Extraversion','+',"I am the life of the party.","ฉันเป็นคนที่สร้างความสนุกสนานในวงสังสรรค์"),
+  persItem('Extraversion','-',"I don't talk a lot.","ฉันไม่ค่อยพูด"),
+  persItem('Extraversion','+',"I feel comfortable around people.","ฉันรู้สึกสบายใจเมื่ออยู่ท่ามกลางผู้คน"),
+  persItem('Extraversion','-',"I keep in the background.","ฉันมักอยู่เงียบ ๆ ไม่เป็นจุดสนใจ"),
+  persItem('Extraversion','+',"I start conversations.","ฉันมักเป็นฝ่ายเริ่มบทสนทนาก่อน"),
+  persItem('Extraversion','-',"I have little to say.","ฉันมีเรื่องพูดคุยไม่มากนัก"),
+  persItem('Extraversion','+',"I talk to many different people at social events.","ฉันพูดคุยกับผู้คนหลากหลายในงานสังสรรค์"),
+  persItem('Extraversion','-',"I don't like to draw attention to myself.","ฉันไม่ชอบเป็นจุดสนใจ"),
+  persItem('Extraversion','+',"I don't mind being the center of attention.","ฉันไม่รังเกียจที่จะเป็นจุดสนใจ"),
+  persItem('Extraversion','-',"I am quiet around strangers.","ฉันเงียบเมื่ออยู่กับคนแปลกหน้า"),
+  // Agreeableness
+  persItem('Agreeableness','-',"I feel little concern for others.","ฉันไม่ค่อยใส่ใจความรู้สึกของผู้อื่น"),
+  persItem('Agreeableness','+',"I am interested in people.","ฉันสนใจในตัวผู้คน"),
+  persItem('Agreeableness','-',"I insult people.","ฉันพูดจาดูถูกผู้อื่น"),
+  persItem('Agreeableness','+',"I sympathize with others' feelings.","ฉันเห็นอกเห็นใจความรู้สึกของผู้อื่น"),
+  persItem('Agreeableness','-',"I am not interested in other people's problems.","ฉันไม่สนใจปัญหาของคนอื่น"),
+  persItem('Agreeableness','+',"I have a soft heart.","ฉันเป็นคนใจอ่อน"),
+  persItem('Agreeableness','-',"I am not really interested in others.","ฉันไม่ได้สนใจผู้อื่นอย่างแท้จริง"),
+  persItem('Agreeableness','+',"I take time out for others.","ฉันสละเวลาเพื่อช่วยเหลือผู้อื่น"),
+  persItem('Agreeableness','+',"I feel others' emotions.","ฉันรับรู้ถึงอารมณ์ความรู้สึกของผู้อื่นได้"),
+  persItem('Agreeableness','+',"I make people feel at ease.","ฉันทำให้ผู้อื่นรู้สึกผ่อนคลาย"),
+  // Conscientiousness
+  persItem('Conscientiousness','+',"I am always prepared.","ฉันเตรียมพร้อมอยู่เสมอ"),
+  persItem('Conscientiousness','-',"I leave my belongings around.","ฉันมักวางข้าวของไม่เป็นที่"),
+  persItem('Conscientiousness','+',"I pay attention to details.","ฉันใส่ใจในรายละเอียด"),
+  persItem('Conscientiousness','-',"I make a mess of things.","ฉันมักทำอะไรยุ่งเหยิงไม่เป็นระเบียบ"),
+  persItem('Conscientiousness','+',"I get chores done right away.","ฉันจัดการงานที่ต้องทำให้เสร็จทันที"),
+  persItem('Conscientiousness','-',"I often forget to put things back in their proper place.","ฉันมักลืมเก็บของเข้าที่"),
+  persItem('Conscientiousness','+',"I like order.","ฉันชอบความเป็นระเบียบเรียบร้อย"),
+  persItem('Conscientiousness','-',"I shirk my duties.","ฉันหลีกเลี่ยงหน้าที่ความรับผิดชอบ"),
+  persItem('Conscientiousness','+',"I follow a schedule.","ฉันทำงานตามกำหนดการที่วางไว้"),
+  persItem('Conscientiousness','+',"I am exacting in my work.","ฉันพิถีพิถันในการทำงาน"),
+  // Emotional Stability
+  persItem('Emotional Stability','-',"I get stressed out easily.","ฉันเครียดได้ง่าย"),
+  persItem('Emotional Stability','+',"I am relaxed most of the time.","ฉันรู้สึกผ่อนคลายเป็นส่วนใหญ่"),
+  persItem('Emotional Stability','-',"I worry about things.","ฉันกังวลกับเรื่องต่าง ๆ"),
+  persItem('Emotional Stability','+',"I seldom feel blue.","ฉันไม่ค่อยรู้สึกหดหู่"),
+  persItem('Emotional Stability','-',"I am easily disturbed.","ฉันถูกรบกวนจิตใจได้ง่าย"),
+  persItem('Emotional Stability','-',"I get upset easily.","ฉันอารมณ์เสียได้ง่าย"),
+  persItem('Emotional Stability','-',"I change my mood a lot.","อารมณ์ของฉันแปรปรวนบ่อย"),
+  persItem('Emotional Stability','-',"I have frequent mood swings.","ฉันมีอารมณ์ขึ้นลงบ่อยครั้ง"),
+  persItem('Emotional Stability','-',"I get irritated easily.","ฉันหงุดหงิดง่าย"),
+  persItem('Emotional Stability','-',"I often feel blue.","ฉันรู้สึกหดหู่อยู่บ่อย ๆ"),
+  // Openness
+  persItem('Openness','+',"I have a rich vocabulary.","ฉันมีคลังคำศัพท์ที่หลากหลาย"),
+  persItem('Openness','-',"I have difficulty understanding abstract ideas.","ฉันมีปัญหาในการทำความเข้าใจแนวคิดเชิงนามธรรม"),
+  persItem('Openness','+',"I have a vivid imagination.","ฉันมีจินตนาการที่ชัดเจน"),
+  persItem('Openness','-',"I am not interested in abstract ideas.","ฉันไม่สนใจแนวคิดเชิงนามธรรม"),
+  persItem('Openness','+',"I have excellent ideas.","ฉันมีความคิดที่ยอดเยี่ยม"),
+  persItem('Openness','-',"I do not have a good imagination.","ฉันไม่ค่อยมีจินตนาการ"),
+  persItem('Openness','+',"I am quick to understand things.","ฉันเข้าใจสิ่งต่าง ๆ ได้รวดเร็ว"),
+  persItem('Openness','+',"I use difficult words.","ฉันใช้คำศัพท์ที่ซับซ้อน"),
+  persItem('Openness','+',"I spend time reflecting on things.","ฉันใช้เวลาในการไตร่ตรองสิ่งต่าง ๆ"),
+  persItem('Openness','+',"I am full of ideas.","ฉันเต็มไปด้วยความคิดใหม่ ๆ"),
+  // Honesty-Humility
+  persItem('Honesty-Humility','+',"I would never take things that aren't mine.","ฉันจะไม่หยิบสิ่งที่ไม่ใช่ของตนไปเป็นอันขาด"),
+  persItem('Honesty-Humility','-',"I would use dishonest means if it benefited me.","ฉันยอมใช้วิธีที่ไม่ซื่อสัตย์หากเป็นประโยชน์ต่อตนเอง"),
+  persItem('Honesty-Humility','-',"I use flattery to get ahead.","ฉันใช้คำประจบเพื่อให้ตนเองก้าวหน้า"),
+  persItem('Honesty-Humility','+',"I am honest even when it is not to my advantage.","ฉันซื่อสัตย์แม้ว่าจะไม่เป็นผลดีต่อตนเอง"),
+  persItem('Honesty-Humility','-',"I would like to be seen driving a very expensive car.","ฉันอยากให้คนอื่นเห็นว่าฉันขับรถราคาแพง"),
+  persItem('Honesty-Humility','+',"I am not interested in showing off my status.","ฉันไม่สนใจที่จะอวดฐานะของตนเอง"),
+  persItem('Honesty-Humility','-',"I feel entitled to more than other people.","ฉันรู้สึกว่าตนควรได้รับมากกว่าคนอื่น"),
+  persItem('Honesty-Humility','-',"I deserve more recognition than I receive.","ฉันสมควรได้รับการยอมรับมากกว่าที่ได้รับอยู่"),
+  persItem('Honesty-Humility','+',"I think of myself as an ordinary person, no better than others.","ฉันมองว่าตนเป็นคนธรรมดา ไม่ได้ดีเด่นไปกว่าใคร"),
+  persItem('Honesty-Humility','+',"I would not take advantage of others even if no one would find out.","ฉันจะไม่เอาเปรียบผู้อื่นแม้จะไม่มีใครรู้เห็น"),
+];
+
+// Seed the Personality test's question bank the first time it's empty —
+// never overwrites questions an admin has already entered/edited.
+function seedPersonalityQuestionsIfEmpty(){
+  if (!TESTS.some(t => t.code === 'PERS')) return;             // category not created yet
+  if (ALL_QUESTIONS['PERS'] && ALL_QUESTIONS['PERS'].length) return; // already has content
+  const seeded = DEFAULT_PERS_QUESTIONS.map(q => ({ ...q, opts: q.opts.map(o=>({...o})), optsTH: q.optsTH.slice() }));
+  ALL_QUESTIONS['PERS'] = seeded;
+  try {
+    const cq = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
+    cq.PERS = seeded;
+    localStorage.setItem('hma_custom_questions', JSON.stringify(cq));
+  } catch(e){}
+  EDIT_QUESTIONS = null;  // force the editor to rebuild from the new bank
+  if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
+  // Best-effort, silent push to cloud so other devices get it too (no toast either way —
+  // this is an automatic bootstrap, not a user-initiated save).
+  if (typeof cloudEnabled === 'function' && cloudEnabled() && typeof cloudSignedIn === 'function' && cloudSignedIn()) {
+    (async () => {
+      try {
+        const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
+        const instructions    = JSON.parse(localStorage.getItem('hma_instructions') || '{}');
+        await db.collection('config').doc('bank').set({
+          customQuestions: JSON.stringify(customQuestions),
+          instructions: JSON.stringify(instructions),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge:true });
+        console.info('Personality question bank auto-synced to cloud.');
+      } catch(e){ console.warn('Personality auto-sync to cloud failed (still works locally):', e); }
+    })();
+  }
+}
+seedPersonalityQuestionsIfEmpty();
 
 // ─── Toast helper ─────────────────────────────────────────
 function showToast(msg, duration=2500) {
@@ -4533,7 +4652,7 @@ async function cloudLoadQuestionBank(){
   return loaded;
 }
 // Pull the shared bank on startup (for admins AND candidates).
-cloudLoadQuestionBank();
+cloudLoadQuestionBank().then(() => seedPersonalityQuestionsIfEmpty());
 
 // Initial FAB state
 updateFABs('p-landing');

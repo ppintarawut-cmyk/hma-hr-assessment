@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HMA Personality Assessment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F4F6F8; --surface:#FFFFFF; --ink:#1B2432; --muted:#5B6472;
+    --line:#E3E6EB; --line-strong:#CBD1DA;
+    --accent:#C8102E; --accent-ink:#9A0C22; --steel:#2B5170; --steel-soft:#EAF0F5;
+    --ok:#1F8A5B; --warn:#B8860B; --flag:#C8102E;
+    --e:#2B5170; --a:#1F8A5B; --c:#C8102E; --es:#7A5AA6; --o:#0E7C86; --h:#B8860B;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"IBM Plex Sans Thai","IBM Plex Sans",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55;
+    -webkit-font-smoothing:antialiased; font-size:15px;
+  }
+  .mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:820px;margin:0 auto;padding:0 20px}
+  .screen{display:none}
+  .screen.active{display:block;animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* Header */
+  header{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50}
+  .head-in{max-width:820px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{display:flex;align-items:center;gap:11px}
+  .mark{width:34px;height:34px;border-radius:8px;background:var(--accent);position:relative;flex-shrink:0}
+  .mark::before{content:"";position:absolute;inset:8px;border:2px solid #fff;border-radius:50%}
+  .mark::after{content:"";position:absolute;left:50%;top:50%;width:2px;height:9px;background:#fff;transform:translate(-50%,-100%);transform-origin:bottom}
+  .brand h1{font-size:14px;font-weight:600;letter-spacing:.2px;line-height:1.2}
+  .brand .sub{font-size:11px;color:var(--muted);font-weight:400}
+  .lang{display:flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden}
+  .lang button{border:none;background:var(--surface);padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted)}
+  .lang button.on{background:var(--ink);color:#fff}
+
+  /* Cards & type */
+  main{padding:34px 0 80px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:28px}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--accent)}
+  h2{font-size:23px;font-weight:700;letter-spacing:-.2px;margin:6px 0 4px}
+  .lead{color:var(--muted);font-size:14.5px}
+  .divider{height:1px;background:var(--line);margin:22px 0}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+  label.field{display:block}
+  label.field span{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  input,select{width:100%;font:inherit;font-size:14.5px;padding:10px 12px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--ink)}
+  input:focus,select:focus{outline:2px solid var(--steel);outline-offset:-1px;border-color:var(--steel)}
+
+  .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+  @media(max-width:560px){.facts{grid-template-columns:1fr}}
+  .fact{border:1px solid var(--line);border-radius:10px;padding:13px 14px;background:#FBFCFD}
+  .fact .n{font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:600;color:var(--steel)}
+  .fact .l{font-size:12px;color:var(--muted);margin-top:2px}
+
+  .note{background:var(--steel-soft);border:1px solid #D3E0EA;border-radius:10px;padding:13px 15px;font-size:13px;color:#2C4256;margin-top:18px}
+  .note b{color:var(--steel)}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-weight:600;font-size:14.5px;padding:12px 22px;border-radius:9px;border:1px solid transparent;cursor:pointer;transition:.15s}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:var(--accent-ink)}
+  .btn-ghost{background:#fff;color:var(--ink);border-color:var(--line-strong)}
+  .btn-ghost:hover{border-color:var(--muted)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .actions{display:flex;justify-content:space-between;gap:12px;margin-top:26px}
+
+  /* Progress */
+  .prog-bar{position:sticky;top:63px;z-index:40;background:var(--bg);padding:14px 0 10px}
+  .prog-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:7px;font-weight:500}
+  .track{height:6px;background:var(--line);border-radius:99px;overflow:hidden}
+  .fill{height:100%;background:var(--accent);width:0;transition:width .3s ease}
+
+  /* Items */
+  .qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:14px}
+  .qcard.answered{border-color:#D6E3DA;background:#FCFEFD}
+  .qnum{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);font-weight:500}
+  .qtext{font-size:16px;font-weight:500;margin:5px 0 16px;line-height:1.5}
+  .likert{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  .lk{border:1px solid var(--line-strong);border-radius:9px;padding:10px 6px;text-align:center;cursor:pointer;background:#fff;transition:.12s;user-select:none}
+  .lk:hover{border-color:var(--steel);background:var(--steel-soft)}
+  .lk .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-strong);margin:0 auto 7px}
+  .lk .lbl{font-size:11px;color:var(--muted);line-height:1.3;font-weight:500}
+  .lk.sel{border-color:var(--accent);background:#FCEEF0}
+  .lk.sel .dot{border-color:var(--accent);background:var(--accent)}
+  .lk.sel .lbl{color:var(--accent-ink);font-weight:600}
+  @media(max-width:520px){
+    .likert{grid-template-columns:1fr;gap:6px}
+    .lk{display:flex;align-items:center;gap:11px;padding:10px 14px;text-align:left}
+    .lk .dot{margin:0}
+  }
+
+  /* Results */
+  .res-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .badge{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:99px}
+  .badge.ok{background:#E7F4EE;color:var(--ok)}
+  .badge.warn{background:#FBF3E0;color:var(--warn)}
+  .badge.flag{background:#FCEBEE;color:var(--flag)}
+
+  .dim{border:1px solid var(--line);border-radius:11px;padding:17px 18px;margin-bottom:12px}
+  .dim-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px}
+  .dim-name{font-weight:600;font-size:15.5px;display:flex;align-items:center;gap:9px}
+  .swatch{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+  .dim-score{font-family:"IBM Plex Mono",monospace;font-size:14px;font-weight:600}
+  .gauge{height:9px;background:var(--line);border-radius:99px;position:relative;overflow:hidden}
+  .gauge .g{height:100%;border-radius:99px;transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .band{font-size:11px;font-weight:600;padding:2px 9px;border-radius:6px;background:#F0F2F5;color:var(--muted)}
+  .dim-desc{font-size:13px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .dim-desc b{color:var(--ink);font-weight:600}
+
+  .kv{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .chip{font-size:12px;padding:5px 11px;border-radius:7px;background:#F0F2F5;color:var(--muted);font-weight:500}
+
+  details{border:1px solid var(--line);border-radius:10px;margin-top:12px;overflow:hidden}
+  summary{padding:13px 16px;font-weight:600;font-size:13.5px;cursor:pointer;background:#FBFCFD;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"+ ";color:var(--accent);font-weight:700}
+  details[open] summary::before{content:"− "}
+  .det-body{padding:4px 16px 16px;font-size:13px;color:var(--muted)}
+  .det-body table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .det-body td{padding:6px 8px;border-bottom:1px solid var(--line)}
+  .det-body td:last-child{text-align:right;font-family:"IBM Plex Mono",monospace;color:var(--ink)}
+
+  footer{text-align:center;font-size:11.5px;color:var(--muted);padding:26px 0 40px}
+  .hide{display:none!important}
+  .val-err{color:var(--accent);font-size:12.5px;margin-top:8px;font-weight:500}
+
+  @media print{
+    header,.actions,.prog-bar,.lang,.note.screening{display:none!important}
+    body{background:#fff}
+    .card,.dim,.qcard{border-color:#ccc;break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-in">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <h1 data-t="brand">แบบประเมินบุคลิกภาพเพื่อการคัดเลือก</h1>
+        <div class="sub">Hino Motors Asia · Personality Assessment</div>
+      </div>
+    </div>
+    <div class="lang">
+      <button id="btn-th" class="on" onclick="setLang('th')">ไทย</button>
+      <button id="btn-en" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ===== INTRO / REGISTRATION ===== -->
+  <section id="s-intro" class="screen active">
+    <div class="card">
+      <div class="eyebrow" data-t="intro_eyebrow">แบบประเมินมาตรฐาน · 60 ข้อ</div>
+      <h2 data-t="intro_title">แบบประเมินบุคลิกภาพในการทำงาน</h2>
+      <p class="lead" data-t="intro_lead">แบบประเมินนี้วัดคุณลักษณะบุคลิกภาพ 6 ด้านตามกรอบทฤษฎีที่ได้รับการยอมรับในระดับสากล เพื่อประกอบการพิจารณาความเหมาะสมกับตำแหน่งงาน กรุณาตอบตามความเป็นจริงที่สุด — ไม่มีคำตอบที่ถูกหรือผิด</p>
+
+      <div class="facts">
+        <div class="fact"><div class="n">60</div><div class="l" data-t="fact_items">ข้อคำถาม</div></div>
+        <div class="fact"><div class="n">~12</div><div class="l" data-t="fact_time">นาที</div></div>
+        <div class="fact"><div class="n">6</div><div class="l" data-t="fact_dims">มิติที่วัด</div></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="grid2">
+        <label class="field"><span data-t="f_name">ชื่อ-นามสกุล *</span><input id="in-name" type="text" autocomplete="off"></label>
+        <label class="field"><span data-t="f_pos">ตำแหน่งที่สมัคร *</span>
+          <select id="in-pos">
+            <option value="" data-t="opt_select">— เลือก —</option>
+            <option data-t="opt_eng">วิศวกร / Engineer</option>
+            <option data-t="opt_prod">ฝ่ายผลิต / Production</option>
+            <option data-t="opt_log">โลจิสติกส์ / Logistics</option>
+            <option data-t="opt_hr">ทรัพยากรบุคคล / HR</option>
+            <option data-t="opt_office">พนักงานสำนักงาน / Office</option>
+            <option data-t="opt_sales">ขาย / Sales</option>
+            <option data-t="opt_mgmt">ระดับหัวหน้างาน / Supervisor</option>
+            <option data-t="opt_other">อื่น ๆ / Other</option>
+          </select>
+        </label>
+        <label class="field"><span data-t="f_dept">แผนก / หน่วยงาน</span><input id="in-dept" type="text" autocomplete="off"></label>
+        <label class="field"><span data-t="f_email">อีเมล / รหัสผู้สมัคร</span><input id="in-email" type="text" autocomplete="off"></label>
+      </div>
+
+      <div class="note">
+        <b data-t="note_title">คำแนะนำในการทำแบบประเมิน</b><br>
+        <span data-t="note_body">อ่านแต่ละข้อความแล้วเลือกระดับที่ตรงกับตัวคุณมากที่สุด ตอบตามที่คุณเป็นจริง ๆ ไม่ใช่ที่คุณคิดว่าควรจะเป็น ระบบมีการตรวจสอบความสอดคล้องของคำตอบ การตอบตามจริงจะให้ผลลัพธ์ที่แม่นยำและเป็นประโยชน์ต่อตัวคุณมากที่สุด</span>
+      </div>
+
+      <div id="intro-err" class="val-err hide" data-t="err_fields">กรุณากรอกชื่อและตำแหน่งที่สมัคร</div>
+
+      <div class="actions">
+        <span></span>
+        <button class="btn btn-primary" onclick="startTest()"><span data-t="btn_start">เริ่มทำแบบประเมิน</span> →</button>
+      </div>
+    </div>
+    <footer><span data-t="foot_src">กรอบทฤษฎี: Five-Factor Model + Honesty-Humility · ข้อคำถามจาก International Personality Item Pool (IPIP, public domain)</span></footer>
+  </section>
+
+  <!-- ===== TEST ===== -->
+  <section id="s-test" class="screen">
+    <div class="prog-bar">
+      <div class="prog-meta">
+        <span><span data-t="prog_page">หน้า</span> <span id="pg-cur" class="mono">1</span>/<span id="pg-tot" class="mono">5</span></span>
+        <span><span id="pg-done" class="mono">0</span>/60 <span data-t="prog_ans">ตอบแล้ว</span></span>
+      </div>
+      <div class="track"><div id="fill" class="fill"></div></div>
+    </div>
+    <div id="q-container"></div>
+    <div id="page-err" class="val-err hide" data-t="err_incomplete">กรุณาตอบให้ครบทุกข้อในหน้านี้ก่อนดำเนินการต่อ</div>
+    <div class="actions">
+      <button class="btn btn-ghost" id="btn-back" onclick="prevPage()">← <span data-t="btn_back">ย้อนกลับ</span></button>
+      <button class="btn btn-primary" id="btn-next" onclick="nextPage()"><span data-t="btn_next">ถัดไป</span> →</button>
+    </div>
+  </section>
+
+  <!-- ===== RESULTS ===== -->
+  <section id="s-result" class="screen">
+    <div class="card">
+      <div class="res-head">
+        <div>
+          <div class="eyebrow" data-t="res_eyebrow">รายงานผลการประเมิน</div>
+          <h2 id="r-name">—</h2>
+          <div class="kv">
+            <span class="chip" id="r-pos"></span>
+            <span class="chip" id="r-date"></span>
+          </div>
+        </div>
+        <div id="r-fit"></div>
+      </div>
+
+      <div class="note screening" style="margin-top:20px">
+        <b data-t="res_composite_t">ดัชนีความเหมาะสมในการคัดเลือก (Selection Composite)</b><br>
+        <span data-t="res_composite_d">ให้น้ำหนักกับความรับผิดชอบ (Conscientiousness) และความซื่อสัตย์-ถ่อมตน (Honesty-Humility) ซึ่งเป็นตัวพยากรณ์ผลการปฏิบัติงานและความน่าเชื่อถือที่แข็งแรงที่สุดตามงานวิจัยเชิงอภิวิเคราะห์</span>
+        <div id="r-composite" style="margin-top:12px"></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="eyebrow" data-t="res_profile">โปรไฟล์บุคลิกภาพ 6 มิติ</div>
+      <div id="r-dims" style="margin-top:16px"></div>
+
+      <div id="r-validity"></div>
+
+      <div class="divider"></div>
+      <details>
+        <summary data-t="res_raw">ข้อมูลคะแนนดิบ (สำหรับ HR / การนำเข้าระบบ)</summary>
+        <div class="det-body">
+          <table id="r-raw-table"></table>
+          <p style="margin-top:12px;font-size:12px" data-t="res_raw_note">คะแนนดิบแต่ละมิติมีช่วง 10–50 (10 ข้อต่อมิติ) แถบระดับเป็นค่าเริ่มต้นชั่วคราว ควรแทนที่ด้วย norm ภายในองค์กรเมื่อมีข้อมูลผู้สมัคร ≥ 100 ราย</p>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button class="btn btn-ghost" onclick="exportCSV()">⬇ <span data-t="btn_csv">ดาวน์โหลด CSV</span></button>
+        <button class="btn btn-ghost" onclick="exportJSON()">⬇ <span data-t="btn_json">JSON (สำหรับระบบ)</span></button>
+        <button class="btn btn-primary" onclick="window.print()">🖨 <span data-t="btn_print">พิมพ์รายงาน</span></button>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="restart()">↺ <span data-t="btn_restart">เริ่มผู้สมัครใหม่</span></button>
+      <span></span>
+    </div>
+    <footer><span data-t="res_disclaimer">รายงานนี้เป็นเครื่องมือสนับสนุนการตัดสินใจ ไม่ควรใช้เป็นเกณฑ์เดียวในการคัดเลือก ควรพิจารณาร่วมกับการสัมภาษณ์และข้อมูลอื่น</span></footer>
+  </section>
+
+</main>
+
+<script>
+/* ============================================================
+   HMA PERSONALITY ASSESSMENT
+   Framework: IPIP Big Five (50) + Honesty-Humility (10)
+   Public-domain items (International Personality Item Pool)
+   ============================================================ */
+
+/* ---- ITEM BANK ---------------------------------------------
+   dim: E A C ES O H  | key: '+' normal, '-' reverse-scored
+   Big Five items = IPIP 50-item Big-Five Factor Markers (Goldberg)
+   H items = IPIP-based Honesty-Humility (Sincerity/Fairness/
+             Greed-Avoidance/Modesty facets)
+------------------------------------------------------------- */
+const ITEMS = [
+  // EXTRAVERSION
+  {d:'E',k:'+',en:"I am the life of the party.",th:"ฉันเป็นคนที่สร้างความสนุกสนานในวงสังสรรค์"},
+  {d:'E',k:'-',en:"I don't talk a lot.",th:"ฉันไม่ค่อยพูด"},
+  {d:'E',k:'+',en:"I feel comfortable around people.",th:"ฉันรู้สึกสบายใจเมื่ออยู่ท่ามกลางผู้คน"},
+  {d:'E',k:'-',en:"I keep in the background.",th:"ฉันมักอยู่เงียบ ๆ ไม่เป็นจุดสนใจ"},
+  {d:'E',k:'+',en:"I start conversations.",th:"ฉันมักเป็นฝ่ายเริ่มบทสนทนาก่อน"},
+  {d:'E',k:'-',en:"I have little to say.",th:"ฉันมีเรื่องพูดคุยไม่มากนัก"},
+  {d:'E',k:'+',en:"I talk to many different people at social events.",th:"ฉันพูดคุยกับผู้คนหลากหลายในงานสังสรรค์"},
+  {d:'E',k:'-',en:"I don't like to draw attention to myself.",th:"ฉันไม่ชอบเป็นจุดสนใจ"},
+  {d:'E',k:'+',en:"I don't mind being the center of attention.",th:"ฉันไม่รังเกียจที่จะเป็นจุดสนใจ"},
+  {d:'E',k:'-',en:"I am quiet around strangers.",th:"ฉันเงียบเมื่ออยู่กับคนแปลกหน้า"},
+  // AGREEABLENESS
+  {d:'A',k:'-',en:"I feel little concern for others.",th:"ฉันไม่ค่อยใส่ใจความรู้สึกของผู้อื่น"},
+  {d:'A',k:'+',en:"I am interested in people.",th:"ฉันสนใจในตัวผู้คน"},
+  {d:'A',k:'-',en:"I insult people.",th:"ฉันพูดจาดูถูกผู้อื่น"},
+  {d:'A',k:'+',en:"I sympathize with others' feelings.",th:"ฉันเห็นอกเห็นใจความรู้สึกของผู้อื่น"},
+  {d:'A',k:'-',en:"I am not interested in other people's problems.",th:"ฉันไม่สนใจปัญหาของคนอื่น"},
+  {d:'A',k:'+',en:"I have a soft heart.",th:"ฉันเป็นคนใจอ่อน"},
+  {d:'A',k:'-',en:"I am not really interested in others.",th:"ฉันไม่ได้สนใจผู้อื่นอย่างแท้จริง"},
+  {d:'A',k:'+',en:"I take time out for others.",th:"ฉันสละเวลาเพื่อช่วยเหลือผู้อื่น"},
+  {d:'A',k:'+',en:"I feel others' emotions.",th:"ฉันรับรู้ถึงอารมณ์ความรู้สึกของผู้อื่นได้"},
+  {d:'A',k:'+',en:"I make people feel at ease.",th:"ฉันทำให้ผู้อื่นรู้สึกผ่อนคลาย"},
+  // CONSCIENTIOUSNESS
+  {d:'C',k:'+',en:"I am always prepared.",th:"ฉันเตรียมพร้อมอยู่เสมอ"},
+  {d:'C',k:'-',en:"I leave my belongings around.",th:"ฉันมักวางข้าวของไม่เป็นที่"},
+  {d:'C',k:'+',en:"I pay attention to details.",th:"ฉันใส่ใจในรายละเอียด"},
+  {d:'C',k:'-',en:"I make a mess of things.",th:"ฉันมักทำอะไรยุ่งเหยิงไม่เป็นระเบียบ"},
+  {d:'C',k:'+',en:"I get chores done right away.",th:"ฉันจัดการงานที่ต้องทำให้เสร็จทันที"},
+  {d:'C',k:'-',en:"I often forget to put things back in their proper place.",th:"ฉันมักลืมเก็บของเข้าที่"},
+  {d:'C',k:'+',en:"I like order.",th:"ฉันชอบความเป็นระเบียบเรียบร้อย"},
+  {d:'C',k:'-',en:"I shirk my duties.",th:"ฉันหลีกเลี่ยงหน้าที่ความรับผิดชอบ"},
+  {d:'C',k:'+',en:"I follow a schedule.",th:"ฉันทำงานตามกำหนดการที่วางไว้"},
+  {d:'C',k:'+',en:"I am exacting in my work.",th:"ฉันพิถีพิถันในการทำงาน"},
+  // EMOTIONAL STABILITY (reverse of Neuroticism)
+  {d:'ES',k:'-',en:"I get stressed out easily.",th:"ฉันเครียดได้ง่าย"},
+  {d:'ES',k:'+',en:"I am relaxed most of the time.",th:"ฉันรู้สึกผ่อนคลายเป็นส่วนใหญ่"},
+  {d:'ES',k:'-',en:"I worry about things.",th:"ฉันกังวลกับเรื่องต่าง ๆ"},
+  {d:'ES',k:'+',en:"I seldom feel blue.",th:"ฉันไม่ค่อยรู้สึกหดหู่"},
+  {d:'ES',k:'-',en:"I am easily disturbed.",th:"ฉันถูกรบกวนจิตใจได้ง่าย"},
+  {d:'ES',k:'-',en:"I get upset easily.",th:"ฉันอารมณ์เสียได้ง่าย"},
+  {d:'ES',k:'-',en:"I change my mood a lot.",th:"อารมณ์ของฉันแปรปรวนบ่อย"},
+  {d:'ES',k:'-',en:"I have frequent mood swings.",th:"ฉันมีอารมณ์ขึ้นลงบ่อยครั้ง"},
+  {d:'ES',k:'-',en:"I get irritated easily.",th:"ฉันหงุดหงิดง่าย"},
+  {d:'ES',k:'-',en:"I often feel blue.",th:"ฉันรู้สึกหดหู่อยู่บ่อย ๆ"},
+  // OPENNESS / INTELLECT
+  {d:'O',k:'+',en:"I have a rich vocabulary.",th:"ฉันมีคลังคำศัพท์ที่หลากหลาย"},
+  {d:'O',k:'-',en:"I have difficulty understanding abstract ideas.",th:"ฉันมีปัญหาในการทำความเข้าใจแนวคิดเชิงนามธรรม"},
+  {d:'O',k:'+',en:"I have a vivid imagination.",th:"ฉันมีจินตนาการที่ชัดเจน"},
+  {d:'O',k:'-',en:"I am not interested in abstract ideas.",th:"ฉันไม่สนใจแนวคิดเชิงนามธรรม"},
+  {d:'O',k:'+',en:"I have excellent ideas.",th:"ฉันมีความคิดที่ยอดเยี่ยม"},
+  {d:'O',k:'-',en:"I do not have a good imagination.",th:"ฉันไม่ค่อยมีจินตนาการ"},
+  {d:'O',k:'+',en:"I am quick to understand things.",th:"ฉันเข้าใจสิ่งต่าง ๆ ได้รวดเร็ว"},
+  {d:'O',k:'+',en:"I use difficult words.",th:"ฉันใช้คำศัพท์ที่ซับซ้อน"},
+  {d:'O',k:'+',en:"I spend time reflecting on things.",th:"ฉันใช้เวลาในการไตร่ตรองสิ่งต่าง ๆ"},
+  {d:'O',k:'+',en:"I am full of ideas.",th:"ฉันเต็มไปด้วยความคิดใหม่ ๆ"},
+  // HONESTY-HUMILITY
+  {d:'H',k:'+',en:"I would never take things that aren't mine.",th:"ฉันจะไม่หยิบสิ่งที่ไม่ใช่ของตนไปเป็นอันขาด",f:"Fairness"},
+  {d:'H',k:'-',en:"I would use dishonest means if it benefited me.",th:"ฉันยอมใช้วิธีที่ไม่ซื่อสัตย์หากเป็นประโยชน์ต่อตนเอง",f:"Fairness"},
+  {d:'H',k:'-',en:"I use flattery to get ahead.",th:"ฉันใช้คำประจบเพื่อให้ตนเองก้าวหน้า",f:"Sincerity"},
+  {d:'H',k:'+',en:"I am honest even when it is not to my advantage.",th:"ฉันซื่อสัตย์แม้ว่าจะไม่เป็นผลดีต่อตนเอง",f:"Sincerity"},
+  {d:'H',k:'-',en:"I would like to be seen driving a very expensive car.",th:"ฉันอยากให้คนอื่นเห็นว่าฉันขับรถราคาแพง",f:"Greed-Avoidance"},
+  {d:'H',k:'+',en:"I am not interested in showing off my status.",th:"ฉันไม่สนใจที่จะอวดฐานะของตนเอง",f:"Greed-Avoidance"},
+  {d:'H',k:'-',en:"I feel entitled to more than other people.",th:"ฉันรู้สึกว่าตนควรได้รับมากกว่าคนอื่น",f:"Modesty"},
+  {d:'H',k:'-',en:"I deserve more recognition than I receive.",th:"ฉันสมควรได้รับการยอมรับมากกว่าที่ได้รับอยู่",f:"Modesty"},
+  {d:'H',k:'+',en:"I think of myself as an ordinary person, no better than others.",th:"ฉันมองว่าตนเป็นคนธรรมดา ไม่ได้ดีเด่นไปกว่าใคร",f:"Modesty"},
+  {d:'H',k:'+',en:"I would not take advantage of others even if no one would find out.",th:"ฉันจะไม่เอาเปรียบผู้อื่นแม้จะไม่มีใครรู้เห็น",f:"Fairness"}
+];
+
+const DIMS = {
+  E:{th:"การแสดงออกทางสังคม",en:"Extraversion",color:"var(--e)"},
+  A:{th:"ความเป็นมิตร",en:"Agreeableness",color:"var(--a)"},
+  C:{th:"ความรับผิดชอบ",en:"Conscientiousness",color:"var(--c)"},
+  ES:{th:"ความมั่นคงทางอารมณ์",en:"Emotional Stability",color:"var(--es)"},
+  O:{th:"การเปิดรับสิ่งใหม่",en:"Openness",color:"var(--o)"},
+  H:{th:"ความซื่อสัตย์-ถ่อมตน",en:"Honesty-Humility",color:"var(--h)"}
+};
+
+/* Interpretation text per dimension: what HIGH and LOW mean at work */
+const INTERP = {
+  E:{high:{th:"เข้าสังคมเก่ง กระตือรือร้น เหมาะกับงานที่ต้องติดต่อสื่อสารและทำงานเป็นทีม",en:"Sociable and energetic; suits roles with communication and teamwork."},
+     low:{th:"ทำงานเป็นอิสระได้ดี ชอบสมาธิ เหมาะกับงานที่ต้องใช้ความละเอียดเป็นรายบุคคล",en:"Works well independently; suits focused, individual tasks."}},
+  A:{high:{th:"ให้ความร่วมมือ ประนีประนอม ทำงานร่วมกับผู้อื่นได้ราบรื่น",en:"Cooperative and considerate; collaborates smoothly."},
+     low:{th:"ตรงไปตรงมา แข่งขันสูง อาจต้องระวังเรื่องการทำงานเป็นทีม",en:"Direct and competitive; watch team dynamics."}},
+  C:{high:{th:"มีวินัย รับผิดชอบ ใส่ใจรายละเอียด — ตัวพยากรณ์ผลงานที่แข็งแรงที่สุดในเกือบทุกตำแหน่ง",en:"Disciplined, reliable, detail-oriented — the strongest single predictor of job performance across most roles."},
+     low:{th:"ยืดหยุ่นและปรับตัวได้ แต่ควรประเมินเรื่องความสม่ำเสมอและการทำงานตามกำหนด",en:"Flexible and adaptable; assess consistency and follow-through."}},
+  ES:{high:{th:"รับมือกับความกดดันได้ดี อารมณ์มั่นคง เหมาะกับงานที่มีความเครียดสูง",en:"Handles pressure well; steady under stress."},
+     low:{th:"อ่อนไหวต่อความกดดัน อาจต้องการสภาพแวดล้อมที่สนับสนุนและชัดเจน",en:"More sensitive to pressure; benefits from clear, supportive environments."}},
+  O:{high:{th:"ชอบเรียนรู้ คิดสร้างสรรค์ เหมาะกับงานที่ต้องแก้ปัญหาและปรับตัวกับสิ่งใหม่",en:"Curious and creative; suits problem-solving and change."},
+     low:{th:"เน้นความจริงและวิธีปฏิบัติที่พิสูจน์แล้ว เหมาะกับงานที่มีกระบวนการชัดเจน",en:"Practical and grounded; suits well-defined, procedural work."}},
+  H:{high:{th:"ซื่อสัตย์ ไม่เอาเปรียบ ถ่อมตน — เกี่ยวข้องกับความน่าเชื่อถือและพฤติกรรมการทำงานที่ดี",en:"Sincere, fair, and modest — linked to integrity and low counterproductive behavior."},
+     low:{th:"⚠ ควรตรวจสอบเพิ่มเติมเรื่องความซื่อสัตย์และการทำงานร่วมกับผู้อื่นในการสัมภาษณ์",en:"⚠ Probe integrity and cooperation further in the interview."}}
+};
+
+/* ---- i18n UI strings ---- */
+const T = {
+  th:{brand:"แบบประเมินบุคลิกภาพเพื่อการคัดเลือก",intro_eyebrow:"แบบประเมินมาตรฐาน · 60 ข้อ",
+    intro_title:"แบบประเมินบุคลิกภาพในการทำงาน",
+    intro_lead:"แบบประเมินนี้วัดคุณลักษณะบุคลิกภาพ 6 ด้านตามกรอบทฤษฎีที่ได้รับการยอมรับในระดับสากล เพื่อประกอบการพิจารณาความเหมาะสมกับตำแหน่งงาน กรุณาตอบตามความเป็นจริงที่สุด — ไม่มีคำตอบที่ถูกหรือผิด",
+    fact_items:"ข้อคำถาม",fact_time:"นาที",fact_dims:"มิติที่วัด",
+    f_name:"ชื่อ-นามสกุล *",f_pos:"ตำแหน่งที่สมัคร *",f_dept:"แผนก / หน่วยงาน",f_email:"อีเมล / รหัสผู้สมัคร",
+    opt_select:"— เลือก —",opt_eng:"วิศวกร / Engineer",opt_prod:"ฝ่ายผลิต / Production",opt_log:"โลจิสติกส์ / Logistics",opt_hr:"ทรัพยากรบุคคล / HR",opt_office:"พนักงานสำนักงาน / Office",opt_sales:"ขาย / Sales",opt_mgmt:"ระดับหัวหน้างาน / Supervisor",opt_other:"อื่น ๆ / Other",
+    note_title:"คำแนะนำในการทำแบบประเมิน",
+    note_body:"อ่านแต่ละข้อความแล้วเลือกระดับที่ตรงกับตัวคุณมากที่สุด ตอบตามที่คุณเป็นจริง ๆ ไม่ใช่ที่คุณคิดว่าควรจะเป็น ระบบมีการตรวจสอบความสอดคล้องของคำตอบ การตอบตามจริงจะให้ผลลัพธ์ที่แม่นยำและเป็นประโยชน์ต่อตัวคุณมากที่สุด",
+    err_fields:"กรุณากรอกชื่อและตำแหน่งที่สมัคร",btn_start:"เริ่มทำแบบประเมิน",
+    foot_src:"กรอบทฤษฎี: Five-Factor Model + Honesty-Humility · ข้อคำถามจาก International Personality Item Pool (IPIP, public domain)",
+    prog_page:"หน้า",prog_ans:"ตอบแล้ว",err_incomplete:"กรุณาตอบให้ครบทุกข้อในหน้านี้ก่อนดำเนินการต่อ",
+    btn_back:"ย้อนกลับ",btn_next:"ถัดไป",btn_finish:"ดูผลการประเมิน",
+    res_eyebrow:"รายงานผลการประเมิน",res_composite_t:"ดัชนีความเหมาะสมในการคัดเลือก (Selection Composite)",
+    res_composite_d:"ให้น้ำหนักกับความรับผิดชอบ (Conscientiousness) และความซื่อสัตย์-ถ่อมตน (Honesty-Humility) ซึ่งเป็นตัวพยากรณ์ผลการปฏิบัติงานและความน่าเชื่อถือที่แข็งแรงที่สุดตามงานวิจัยเชิงอภิวิเคราะห์",
+    res_profile:"โปรไฟล์บุคลิกภาพ 6 มิติ",res_raw:"ข้อมูลคะแนนดิบ (สำหรับ HR / การนำเข้าระบบ)",
+    res_raw_note:"คะแนนดิบแต่ละมิติมีช่วง 10–50 (10 ข้อต่อมิติ) แถบระดับเป็นค่าเริ่มต้นชั่วคราว ควรแทนที่ด้วย norm ภายในองค์กรเมื่อมีข้อมูลผู้สมัคร ≥ 100 ราย",
+    btn_csv:"ดาวน์โหลด CSV",btn_json:"JSON (สำหรับระบบ)",btn_print:"พิมพ์รายงาน",btn_restart:"เริ่มผู้สมัครใหม่",
+    res_disclaimer:"รายงานนี้เป็นเครื่องมือสนับสนุนการตัดสินใจ ไม่ควรใช้เป็นเกณฑ์เดียวในการคัดเลือก ควรพิจารณาร่วมกับการสัมภาษณ์และข้อมูลอื่น",
+    lk:["ไม่เห็นด้วยอย่างยิ่ง","ไม่เห็นด้วย","เฉย ๆ","เห็นด้วย","เห็นด้วยอย่างยิ่ง"],
+    band:["ต่ำ","ค่อนข้างต่ำ","ปานกลาง","ค่อนข้างสูง","สูง"],
+    fit_strong:"เหมาะสมสูง",fit_good:"เหมาะสม",fit_review:"ควรพิจารณาเพิ่มเติม",
+    val_ok:"คำตอบมีความน่าเชื่อถือ",val_sd:"อาจมีการตอบให้ดูดี — ตรวจสอบในสัมภาษณ์",val_straight:"พบการตอบแบบเดียวซ้ำต่อเนื่อง — ตรวจสอบความตั้งใจตอบ",
+    val_title:"การตรวจสอบความน่าเชื่อถือของคำตอบ"},
+  en:{brand:"Personality Assessment for Selection",intro_eyebrow:"Standardized Assessment · 60 items",
+    intro_title:"Workplace Personality Assessment",
+    intro_lead:"This assessment measures six internationally recognized personality traits to inform role fit. Please answer as honestly as possible — there are no right or wrong answers.",
+    fact_items:"items",fact_time:"minutes",fact_dims:"dimensions",
+    f_name:"Full name *",f_pos:"Position applied for *",f_dept:"Department / Unit",f_email:"Email / Candidate ID",
+    opt_select:"— Select —",opt_eng:"Engineer",opt_prod:"Production",opt_log:"Logistics",opt_hr:"Human Resources",opt_office:"Office Staff",opt_sales:"Sales",opt_mgmt:"Supervisor / Lead",opt_other:"Other",
+    note_title:"Instructions",
+    note_body:"Read each statement and choose how well it describes you. Answer as you really are, not as you think you should be. The system checks response consistency; honest answers give the most accurate and useful result.",
+    err_fields:"Please enter your name and the position applied for.",btn_start:"Start assessment",
+    foot_src:"Framework: Five-Factor Model + Honesty-Humility · Items from the International Personality Item Pool (IPIP, public domain)",
+    prog_page:"Page",prog_ans:"answered",err_incomplete:"Please answer every item on this page before continuing.",
+    btn_back:"Back",btn_next:"Next",btn_finish:"View results",
+    res_eyebrow:"Assessment Report",res_composite_t:"Selection Composite",
+    res_composite_d:"Weighted toward Conscientiousness and Honesty-Humility — the strongest meta-analytic predictors of job performance and integrity.",
+    res_profile:"Six-Dimension Personality Profile",res_raw:"Raw scores (for HR / system import)",
+    res_raw_note:"Each dimension raw score ranges 10–50 (10 items per dimension). Level bands are provisional defaults — replace with in-house norms once you have ≥100 candidates.",
+    btn_csv:"Download CSV",btn_json:"JSON (for system)",btn_print:"Print report",btn_restart:"New candidate",
+    res_disclaimer:"This report is a decision-support tool and should not be the sole basis for selection. Interpret alongside interviews and other information.",
+    lk:["Strongly Disagree","Disagree","Neutral","Agree","Strongly Agree"],
+    band:["Low","Below Avg","Average","Above Avg","High"],
+    fit_strong:"Strong Fit",fit_good:"Good Fit",fit_review:"Further Review",
+    val_ok:"Responses appear reliable",val_sd:"Possible impression management — verify in interview",val_straight:"Long run of identical answers — check engagement",
+    val_title:"Response Reliability Checks"}
+};
+
+/* ---- STATE ---- */
+let lang='th';
+let order=[];              // shuffled item indices
+let responses={};          // itemIndex -> 1..5
+const PER_PAGE=12, PAGES=5;
+let page=0;
+
+/* Fisher-Yates, but avoid two same-dimension items adjacent for balance */
+function buildOrder(){
+  let idx=[...Array(ITEMS.length).keys()];
+  for(let i=idx.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+  // light de-clustering pass
+  for(let i=1;i<idx.length;i++){
+    if(ITEMS[idx[i]].d===ITEMS[idx[i-1]].d){
+      for(let j=i+1;j<idx.length;j++){
+        if(ITEMS[idx[j]].d!==ITEMS[idx[i-1]].d){[idx[i],idx[j]]=[idx[j],idx[i]];break;}
+      }
+    }
+  }
+  order=idx;
+}
+
+function setLang(l){
+  lang=l;
+  document.documentElement.lang=l;
+  document.getElementById('btn-th').classList.toggle('on',l==='th');
+  document.getElementById('btn-en').classList.toggle('on',l==='en');
+  document.querySelectorAll('[data-t]').forEach(el=>{
+    const key=el.getAttribute('data-t'); if(T[l][key]!==undefined) el.textContent=T[l][key];
+  });
+  // re-render dynamic screens if visible
+  if(document.getElementById('s-test').classList.contains('active')) renderPage();
+  if(document.getElementById('s-result').classList.contains('active')) renderResults();
+}
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo({top:0,behavior:'instant'});
+}
+
+/* ---- START ---- */
+function startTest(){
+  const name=document.getElementById('in-name').value.trim();
+  const pos=document.getElementById('in-pos').value;
+  if(!name||!pos){document.getElementById('intro-err').classList.remove('hide');return;}
+  document.getElementById('intro-err').classList.add('hide');
+  buildOrder(); responses={}; page=0;
+  show('s-test'); renderPage();
+}
+
+/* ---- RENDER TEST PAGE ---- */
+function renderPage(){
+  const c=document.getElementById('q-container'); c.innerHTML='';
+  const start=page*PER_PAGE, end=Math.min(start+PER_PAGE,ITEMS.length);
+  for(let p=start;p<end;p++){
+    const gi=order[p], item=ITEMS[gi];
+    const answered=responses[gi]!==undefined;
+    const card=document.createElement('div');
+    card.className='qcard'+(answered?' answered':'');
+    let opts='';
+    for(let v=1;v<=5;v++){
+      opts+=`<div class="lk${responses[gi]===v?' sel':''}" onclick="answer(${gi},${v})">
+        <div class="dot"></div><div class="lbl">${T[lang].lk[v-1]}</div></div>`;
+    }
+    card.innerHTML=`<div class="qnum">${String(p+1).padStart(2,'0')} / 60</div>
+      <div class="qtext">${lang==='th'?item.th:item.en}</div>
+      <div class="likert">${opts}</div>`;
+    c.appendChild(card);
+  }
+  document.getElementById('pg-cur').textContent=page+1;
+  document.getElementById('pg-tot').textContent=PAGES;
+  document.getElementById('btn-back').style.visibility=page===0?'hidden':'visible';
+  const nextBtn=document.getElementById('btn-next');
+  nextBtn.querySelector('span').textContent = page===PAGES-1 ? T[lang].btn_finish : T[lang].btn_next;
+  nextBtn.innerHTML = page===PAGES-1
+    ? `<span>${T[lang].btn_finish}</span>`
+    : `<span>${T[lang].btn_next}</span> →`;
+  updateProg();
+  document.getElementById('page-err').classList.add('hide');
+}
+
+function answer(gi,v){
+  responses[gi]=v; renderPage();
+}
+
+function updateProg(){
+  const done=Object.keys(responses).length;
+  document.getElementById('pg-done').textContent=done;
+  document.getElementById('fill').style.width=(done/60*100)+'%';
+}
+
+function pageComplete(){
+  const start=page*PER_PAGE, end=Math.min(start+PER_PAGE,ITEMS.length);
+  for(let p=start;p<end;p++){if(responses[order[p]]===undefined)return false;}
+  return true;
+}
+
+function nextPage(){
+  if(!pageComplete()){document.getElementById('page-err').classList.remove('hide');return;}
+  if(page===PAGES-1){computeAndShow();return;}
+  page++; renderPage();
+}
+function prevPage(){if(page>0){page--;renderPage();}}
+
+/* ---- SCORING ---- */
+function scoreItem(item,resp){return item.k==='+'?resp:(6-resp);}
+
+let RESULT=null;
+function computeAndShow(){
+  const sums={E:0,A:0,C:0,ES:0,O:0,H:0}, counts={E:0,A:0,C:0,ES:0,O:0,H:0};
+  ITEMS.forEach((item,i)=>{
+    const s=scoreItem(item,responses[i]);
+    sums[item.d]+=s; counts[item.d]++;
+  });
+  // validity checks
+  const raw=ITEMS.map((_,i)=>responses[i]);
+  let maxRun=1,cur=1;
+  for(let i=1;i<raw.length;i++){if(raw[i]===raw[i-1]){cur++;maxRun=Math.max(maxRun,cur);}else cur=1;}
+  // social-desirability: proportion of maximally desirable answers on C + H items
+  let sd=0,sdTot=0;
+  ITEMS.forEach((item,i)=>{
+    if(item.d==='C'||item.d==='H'){sdTot++; if(scoreItem(item,responses[i])===5) sd++;}
+  });
+  const sdRatio=sd/sdTot;
+
+  RESULT={
+    meta:{
+      name:document.getElementById('in-name').value.trim(),
+      pos:document.getElementById('in-pos').value,
+      dept:document.getElementById('in-dept').value.trim(),
+      email:document.getElementById('in-email').value.trim(),
+      date:new Date().toISOString().slice(0,10)
+    },
+    scores:sums,
+    validity:{maxRun,sdRatio}
+  };
+  show('s-result'); renderResults();
+}
+
+function band(raw){ // raw 10-50 -> 0..4 index
+  if(raw<=18)return 0; if(raw<=25)return 1; if(raw<=35)return 2; if(raw<=42)return 3; return 4;
+}
+function pct(raw){return Math.round((raw-10)/40*100);}
+
+function renderResults(){
+  const r=RESULT; if(!r)return;
+  document.getElementById('r-name').textContent=r.meta.name;
+  document.getElementById('r-pos').textContent=r.meta.pos;
+  document.getElementById('r-date').textContent=r.meta.date;
+
+  // Selection composite = weighted C(40%) + H(40%) + ES(20%) as % of scale
+  const comp=Math.round(pct(r.scores.C)*0.4 + pct(r.scores.H)*0.4 + pct(r.scores.ES)*0.2);
+  let fitClass,fitLabel;
+  if(comp>=70){fitClass='ok';fitLabel=T[lang].fit_strong;}
+  else if(comp>=50){fitClass='warn';fitLabel=T[lang].fit_good;}
+  else {fitClass='flag';fitLabel=T[lang].fit_review;}
+  document.getElementById('r-fit').innerHTML=`<span class="badge ${fitClass}">● ${fitLabel} · ${comp}%</span>`;
+
+  document.getElementById('r-composite').innerHTML=`
+    <div class="gauge" style="height:12px"><div class="g" style="width:${comp}%;background:${comp>=70?'var(--ok)':comp>=50?'var(--warn)':'var(--flag)'}"></div></div>
+    <div class="kv" style="margin-top:10px">
+      <span class="chip">C ${lang==='th'?'ความรับผิดชอบ':'Conscientiousness'} · ${pct(r.scores.C)}%</span>
+      <span class="chip">H ${lang==='th'?'ซื่อสัตย์-ถ่อมตน':'Honesty-Humility'} · ${pct(r.scores.H)}%</span>
+      <span class="chip">ES ${lang==='th'?'มั่นคงอารมณ์':'Emotional Stability'} · ${pct(r.scores.ES)}%</span>
+    </div>`;
+
+  // dimension cards
+  const order6=['C','H','ES','A','E','O'];
+  let html='';
+  order6.forEach(d=>{
+    const raw=r.scores[d], b=band(raw), p=pct(raw);
+    const isLow=b<=1, interp=isLow?INTERP[d].low:INTERP[d].high;
+    html+=`<div class="dim">
+      <div class="dim-top">
+        <div class="dim-name"><span class="swatch" style="background:${DIMS[d].color}"></span>${lang==='th'?DIMS[d].th:DIMS[d].en}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="band">${T[lang].band[b]}</span>
+          <span class="dim-score">${p}%</span>
+        </div>
+      </div>
+      <div class="gauge"><div class="g" style="width:${p}%;background:${DIMS[d].color}"></div></div>
+      <div class="dim-desc">${interp[lang]}</div>
+    </div>`;
+  });
+  document.getElementById('r-dims').innerHTML=html;
+
+  // validity block
+  const v=r.validity; let checks=[];
+  if(v.sdRatio>=0.85) checks.push(`<span class="badge warn">▲ ${T[lang].val_sd}</span>`);
+  if(v.maxRun>=12) checks.push(`<span class="badge warn">▲ ${T[lang].val_straight}</span>`);
+  if(checks.length===0) checks.push(`<span class="badge ok">✓ ${T[lang].val_ok}</span>`);
+  document.getElementById('r-validity').innerHTML=`
+    <div class="divider"></div>
+    <div class="eyebrow">${T[lang].val_title}</div>
+    <div class="kv" style="margin-top:12px">${checks.join('')}</div>`;
+
+  // raw table
+  let rows='';
+  ['E','A','C','ES','O','H'].forEach(d=>{
+    rows+=`<tr><td>${DIMS[d].en} (${d})</td><td>${r.scores[d]} / 50 · ${pct(r.scores[d])}% · ${T[lang].band[band(r.scores[d])]}</td></tr>`;
+  });
+  rows+=`<tr><td>Selection Composite</td><td>${comp}%</td></tr>`;
+  rows+=`<tr><td>Social-desirability ratio</td><td>${(v.sdRatio*100).toFixed(0)}%</td></tr>`;
+  rows+=`<tr><td>Longest identical run</td><td>${v.maxRun}</td></tr>`;
+  document.getElementById('r-raw-table').innerHTML=rows;
+}
+
+/* ---- EXPORT ---- */
+function payload(){
+  const r=RESULT, comp=Math.round(pct(r.scores.C)*0.4+pct(r.scores.H)*0.4+pct(r.scores.ES)*0.2);
+  return {...r.meta, framework:"IPIP-BigFive+HH-60",
+    scores_raw:r.scores,
+    scores_pct:Object.fromEntries(Object.entries(r.scores).map(([k,x])=>[k,pct(x)])),
+    selection_composite:comp,
+    validity:r.validity};
+}
+function download(name,txt,type){
+  const b=new Blob([txt],{type}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u);
+}
+function exportJSON(){download(`HMA_${RESULT.meta.name.replace(/\s+/g,'_')}.json`,JSON.stringify(payload(),null,2),'application/json');}
+function exportCSV(){
+  const p=payload();
+  const head=['name','pos','dept','email','date','E','A','C','ES','O','H','composite','sd_ratio','max_run'];
+  const row=[p.name,p.pos,p.dept,p.email,p.date,p.scores_pct.E,p.scores_pct.A,p.scores_pct.C,p.scores_pct.ES,p.scores_pct.O,p.scores_pct.H,p.selection_composite,(p.validity.sdRatio).toFixed(2),p.validity.maxRun];
+  download(`HMA_${p.name.replace(/\s+/g,'_')}.csv`,'\ufeff'+head.join(',')+'\n'+row.map(x=>`"${x}"`).join(',')+'\n','text/csv');
+}
+function restart(){
+  document.getElementById('in-name').value='';document.getElementById('in-pos').value='';
+  document.getElementById('in-dept').value='';document.getElementById('in-email').value='';
+  RESULT=null; responses={}; page=0; show('s-intro');
+}
+
+setLang('th');
+</script>
+</body>
+</html>
