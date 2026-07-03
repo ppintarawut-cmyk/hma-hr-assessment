@@ -1680,29 +1680,64 @@ function continueTest(idx) {
 
 
 // ─── Randomization ────────────────────────────────────────────────
-function shuffleArray(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+// Deterministic 32-bit PRNG (mulberry32) seeded from a string — the SAME seed
+// always yields the SAME shuffle, so re-opening a test (resume after refresh,
+// a different device, or the post-exam review) reconstructs the identical
+// randomized question/option order WITHOUT persisting the shuffled question
+// list itself — which would otherwise duplicate any base64 image/audio
+// payloads into the autosaved session blob on every answer.
+function seededRng(seedStr) {
+  let h = 1779033703 ^ seedStr.length;
+  for (let i = 0; i < seedStr.length; i++) {
+    h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
   }
-  return arr;
+  let a = h >>> 0;
+  return function() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-
-function randomizeQuestions(qs) {
+function shuffleWithRng(arr, rng) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function randomizeQuestions(qs, seed) {
+  const rng = seededRng(seed);
   // สุ่มลำดับข้อ
-  const shuffled = shuffleArray([...qs]);
-  // สุ่มลำดับตัวเลือกสำหรับแต่ละข้อ (ยกเว้นข้อ abstract/svg)
+  const shuffled = shuffleWithRng(qs, rng);
+  // สุ่มลำดับตัวเลือกสำหรับแต่ละข้อ (ยกเว้นข้อ abstract/svg ซึ่งอ้างอิงตำแหน่งในรูป)
   return shuffled.map(q => {
-    if (q.svgOpts || q.svgStem) return q; // abstract ไม่สุ่ม
-    const paired = q.opts.map((o, i) => ({ opt: o, optTH: q.optsTH ? q.optsTH[i] : undefined, origIdx: i }));
-    shuffleArray(paired);
+    if (q.svgOpts || q.svgStem) return q;
+    const paired = q.opts.map((o, i) => ({ opt: o, optTH: q.optsTH ? q.optsTH[i] : undefined }));
+    const shuffledPairs = shuffleWithRng(paired, rng);
     return {
       ...q,
-      opts: paired.map(p => p.opt),
-      optsTH: q.optsTH ? paired.map(p => p.optTH) : undefined,
-      _answerMap: paired.map(p => p.origIdx), // track ตัวเลือกเดิม
+      opts:   shuffledPairs.map(p => p.opt),
+      optsTH: q.optsTH ? shuffledPairs.map(p => p.optTH) : undefined,
     };
   });
+}
+// Lazily build (and cache on the session object) this candidate+test's
+// randomized question order, reconciling _answersRandom to match its length —
+// safe to call repeatedly; the seed makes it idempotent across resume/refresh.
+function getRandomizedQs(s) {
+  if (!s._randomizedQs) {
+    const seed = `${(applicant && applicant.nid) || 'x'}|${s.test.code}`;
+    s._randomizedQs = randomizeQuestions(ALL_QUESTIONS[s.test.code] || [], seed);
+    const n   = s._randomizedQs.length;
+    const old = Array.isArray(s._answersRandom) ? s._answersRandom : [];
+    const next = new Array(n).fill(null);
+    for (let i=0;i<Math.min(n, old.length);i++) next[i] = old[i] != null ? old[i] : null;
+    s._answersRandom = next;
+  }
+  return s._randomizedQs;
 }
 
 function openTest() {
@@ -1743,9 +1778,8 @@ function startTimer() {
 
 function renderQ() {
   const s   = sessions[curSess];
-  // ใช้ randomized questions ถ้ามี ไม่งั้นใช้ original
-  const qs  = s._randomizedQs || ALL_QUESTIONS[s.test.code];
-  const ans = s._answersRandom || s.answers;
+  const qs  = getRandomizedQs(s);
+  const ans = s._answersRandom;
   const q   = qs[curQ];
   const answeredCount = ans.filter(a=>a!==null).length;
 
@@ -1807,13 +1841,16 @@ function renderQ() {
 
 function chooseAns(i) {
   const s = sessions[curSess];
+  getRandomizedQs(s);   // ensure s._answersRandom is initialized/sized
+  const ans = s._answersRandom;
   // toggle
-  s.answers[curQ] = s.answers[curQ]===i ? null : i;
+  ans[curQ] = ans[curQ]===i ? null : i;
   renderQ();
 }
 
 function moveQ(d) {
-  const len = ALL_QUESTIONS[sessions[curSess].test.code].length;
+  const s = sessions[curSess];
+  const len = getRandomizedQs(s).length;
   curQ = Math.max(0, Math.min(len-1, curQ+d));
   renderQ();
 }
@@ -1829,7 +1866,7 @@ document.addEventListener('keydown', e => {
   const ki = e.key.length===1 ? 'abcdefgh'.indexOf(e.key.toLowerCase()) : -1;
   if (ki>=0) {
     const s = sessions[curSess];
-    const qs = s && (s._randomizedQs || ALL_QUESTIONS[s.test.code]);
+    const qs = s && getRandomizedQs(s);
     const opts = qs && qs[curQ] && qs[curQ].opts;
     if (opts && ki < opts.length) chooseAns(ki);
   }
@@ -1837,8 +1874,9 @@ document.addEventListener('keydown', e => {
 
 function openConfirm() {
   const s = sessions[curSess];
-  const qs = ALL_QUESTIONS[s.test.code];
-  const answered = s.answers.filter(a=>a!==null).length;
+  const qs = getRandomizedQs(s);
+  const ans = s._answersRandom;
+  const answered = ans.filter(a=>a!==null).length;
   const unanswered = qs.length - answered;
   const warn = document.getElementById('confirm-warn');
   if (unanswered>0) {
@@ -1855,10 +1893,9 @@ function doSubmit() {
   clearInterval(timerInterval);
   closeModal('mod-confirm');
   const s  = sessions[curSess];
-  // ใช้ randomized questions+answers ถ้ามี
-  const qs  = s._randomizedQs  || ALL_QUESTIONS[s.test.code];
-  const ans = s._answersRandom || s.answers;
-  // copy กลับไปที่ s.answers เพื่อให้ renderReview ใช้ได้
+  const qs  = getRandomizedQs(s);
+  const ans = s._answersRandom;
+  // copy กลับไปที่ s.answers เพื่อให้ renderReview ใช้ได้ (same order as qs above)
   s.answers = ans.slice();
   // grade — graded tests use opts[i].p; binary tests use opts[ansIdx].p===max
   let raw = 0, maxP = 0;
@@ -1896,8 +1933,8 @@ function doSubmit() {
 function renderReview(idx) {
   window._lastReviewIdx = idx;
   const s  = sessions[idx];
-  // ใช้ randomized questions ถ้ามี (เพื่อให้ review ตรงกับข้อที่ทำ)
-  const qs = s._randomizedQs || ALL_QUESTIONS[s.test.code] || [];
+  // Same deterministic order used during the exam, so review lines up with what the candidate answered.
+  const qs = getRandomizedQs(s);
   const totalQ = qs.length;
   const correctCount = qs.filter((_,i) => {
     const chosen = s.answers[i];
@@ -3578,6 +3615,11 @@ function persistSession() {
         raw:        s.raw,
         maxP:       s.maxP,
         answers:    s.answers,
+        // Only the small answers array for the randomized order is persisted —
+        // the shuffled question list itself is regenerated deterministically
+        // (see getRandomizedQs) so we never duplicate base64 image/audio data
+        // into this autosaved blob on every answer/tick.
+        answersRandom: s._answersRandom || null,
         remainSecs: s.remainSecs,
         startedAt:  s.startedAt,
       })),
@@ -3615,7 +3657,11 @@ function restoreSession(data) {
     const old = Array.isArray(s.answers) ? s.answers : [];
     const answers = new Array(qLen).fill(null);
     for (let i=0;i<Math.min(qLen, old.length);i++) answers[i] = old[i] != null ? old[i] : null;
-    return { ...s, test, answers };
+    // Restore the randomized-order answers too; getRandomizedQs() will
+    // regenerate the (deterministic) shuffled question list on first access
+    // and reconcile this array to its length.
+    const answersRandom = Array.isArray(s.answersRandom) ? s.answersRandom : undefined;
+    return { ...s, test, answers, _answersRandom: answersRandom, _randomizedQs: undefined };
   });
   curSess = data.curSess;
   curQ    = data.curQ ?? 0;
@@ -3994,15 +4040,13 @@ function showIntro(test, instr) {
 }
 
 
-// pickAnswer — ใช้แทน chooseAns ใน qcard HTML
-// รองรับทั้ง randomized (_answersRandom) และ original (s.answers)
+// pickAnswer — used by the qcard option buttons (renderQ). Writes to the
+// same _answersRandom array chooseAns/moveQ read, so click and keyboard
+// selection never diverge.
 function pickAnswer(idx) {
   const s = sessions[curSess];
-  if (s._answersRandom) {
-    s._answersRandom[curQ] = idx;
-  } else {
-    s.answers[curQ] = idx;
-  }
+  getRandomizedQs(s);   // ensure s._answersRandom is initialized/sized
+  s._answersRandom[curQ] = idx;
   renderQ();
 }
 
