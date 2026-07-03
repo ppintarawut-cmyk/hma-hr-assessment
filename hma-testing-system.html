@@ -1523,6 +1523,29 @@ function nav(id) {
 }
 
 // ══════════════════════════════════════════
+// SHARED HELPERS (security + data)
+// ══════════════════════════════════════════
+// Escape user-controlled text before it goes into innerHTML (stored-XSS guard).
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+// Build a CSV cell: neutralise spreadsheet formula injection, then quote-escape.
+function csvCell(v) {
+  let s = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // stop Excel/Sheets from evaluating it as a formula
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+// All test codes that can appear in results — built-ins plus any custom/PERS
+// categories currently registered — so exports/tables never silently omit a test.
+function allTestCodes() {
+  const base = ['IQ','EQ','ENGLISH','AQ','LEADER','EXCEL'];
+  const extra = (typeof TESTS !== 'undefined' ? TESTS : [])
+    .map(t => t.code).filter(c => c && !base.includes(c));
+  return [...base, ...extra];
+}
+
+// ══════════════════════════════════════════
 // REGISTRATION
 // ══════════════════════════════════════════
 function showErr(id, msg) {
@@ -1531,9 +1554,9 @@ function showErr(id, msg) {
   const fid=id.replace('e-','r-'); const fel=(fid==='r-pos'?document.getElementById('reg-pos'):document.getElementById(fid)); fel?.classList.add('err');
 }
 function clearErrs() {
-  ['e-nid','e-fn','e-ln','e-age','e-pos','e-email'].forEach(id => {
+  ['e-nid','e-fn','e-ln','e-age','e-pos','e-email','e-pdpa'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.style.display='none'; el.textContent=''; }
+    if (el) { el.style.display='none'; }
   });
   ['r-nid','r-fn','r-ln','r-age','reg-pos','r-email'].forEach(id => {
     document.getElementById(id)?.classList.remove('err');
@@ -1562,6 +1585,12 @@ function submitReg() {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     const ee=document.getElementById('e-email'); ee.textContent='กรุณากรอก Email ที่ถูกต้อง'; ee.style.display='block';
     document.getElementById('r-email')?.classList.add('err'); ok=false;
+  }
+  const pdpaEl = document.getElementById('pdpa-consent');
+  if (pdpaEl && !pdpaEl.checked) {
+    const pe = document.getElementById('e-pdpa');
+    if (pe) pe.style.display = 'block';
+    ok = false;
   }
   if (!ok) return;
 
@@ -1689,18 +1718,26 @@ function openTest() {
 }
 
 function startTimer() {
-  const tick = () => {
-    const s = sessions[curSess];
-    const elapsed = Math.floor((Date.now() - s.startedAt) / 1000);
-    const left = Math.max((s.test.mins*60) - elapsed, 0);
-    s.remainSecs = left;
+  const render = (left) => {
     const m=Math.floor(left/60), sec=left%60;
     const el = document.getElementById('t-timer');
+    if (!el) return;
     el.textContent = `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
     el.className = 'timer ' + (left<=60?'timer-danger':left<=300?'timer-warn':'timer-normal');
+  };
+  // Count down from the remaining time only — never subtract wall-clock time
+  // that elapsed while the tab was closed, so a resumed session isn't
+  // auto-submitted for "offline" time it never actually used.
+  const s0 = sessions[curSess];
+  s0.remainSecs = Math.max(s0.remainSecs ?? (s0.test.mins*60), 0);
+  render(s0.remainSecs);
+  const tick = () => {
+    const s = sessions[curSess];
+    const left = Math.max((s.remainSecs ?? (s.test.mins*60)) - 1, 0);
+    s.remainSecs = left;
+    render(left);
     if (left===0) { clearInterval(timerInterval); window.doSubmit(); }
   };
-  tick();
   timerInterval = setInterval(tick, 1000);
 }
 
@@ -1733,8 +1770,10 @@ function renderQ() {
   // abstract svg stem
   if (q.svgStem) html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0">${q.svgStem.join('')}</div>`;
 
-  // choices
-  const keys = ['A','B','C','D'];
+  // choices — badge letters generated from the option index so banks with
+  // more than 4 options (e.g. the 5-point Likert personality items) render
+  // A–E… instead of an "undefined" badge on the 5th choice.
+  const keyFor = (idx) => idx < 26 ? String.fromCharCode(65 + idx) : String(idx + 1);
   html += `<div style="display:flex;flex-direction:column;gap:9px;margin-top:16px">`;
   q.opts.forEach((o, idx) => {
     const isSel = ans[curQ] === idx;
@@ -1745,7 +1784,7 @@ function renderQ() {
     const otext  = (LANG==='th' && q.optsTH && q.optsTH[idx]!=null && q.optsTH[idx]!=='') ? q.optsTH[idx] : o.t;
     const body   = q.svgOpts ? q.svgOpts[idx] : `<span style="font-size:14.5px;line-height:1.45">${otext}</span>`;
     html += `<button onclick="pickAnswer(${idx})" style="display:flex;align-items:center;gap:12px;border:1.5px solid ${selBorder};border-radius:10px;padding:12px 15px;text-align:left;width:100%;cursor:pointer;transition:all .12s;background:${selBg};${selShadow}">
-      <span style="flex:0 0 26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:monospace;transition:all .15s;${keyBg}">${keys[idx]}</span>
+      <span style="flex:0 0 26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:monospace;transition:all .15s;${keyBg}">${keyFor(idx)}</span>
       ${body}
     </button>`;
   });
@@ -1787,8 +1826,13 @@ document.addEventListener('keydown', e => {
   if (document.getElementById('mod-confirm').classList.contains('open')) return;
   if (e.key==='ArrowRight') moveQ(1);
   if (e.key==='ArrowLeft')  moveQ(-1);
-  const ki = ['a','b','c','d'].indexOf(e.key.toLowerCase());
-  if (ki>=0) chooseAns(ki);
+  const ki = e.key.length===1 ? 'abcdefgh'.indexOf(e.key.toLowerCase()) : -1;
+  if (ki>=0) {
+    const s = sessions[curSess];
+    const qs = s && (s._randomizedQs || ALL_QUESTIONS[s.test.code]);
+    const opts = qs && qs[curQ] && qs[curQ].opts;
+    if (opts && ki < opts.length) chooseAns(ki);
+  }
 });
 
 function openConfirm() {
@@ -1822,7 +1866,11 @@ function doSubmit() {
   qs.forEach((q,i) => {
     const best = Math.max(...q.opts.map(o=>o.p));
     maxP += best;
-    const got  = ans[i]!==null ? q.opts[ans[i]].p : 0;
+    // Guard against a persisted answers array that is shorter than the current
+    // (grown) bank: ans[i] can be undefined, and a stale index may point past
+    // the options — treat either as "unanswered" instead of dereferencing null.
+    const pick = ans[i];
+    const got  = (pick != null && q.opts[pick]) ? q.opts[pick].p : 0;
     raw += got;
     if (!sectionData[q.sec]) sectionData[q.sec] = {got:0,max:0};
     sectionData[q.sec].got += got;
@@ -2075,25 +2123,10 @@ function togglePw() {
   inp.type = inp.type==='password'?'text':'password';
 }
 
-function submitLogin() {
-  const u=document.getElementById('l-user').value.trim();
-  const p=document.getElementById('l-pass').value;
-  const err=document.getElementById('login-err');
-  err.style.display='none';
-  if (!u||!p){err.textContent='กรุณากรอก username และ password';err.style.display='block';return;}
-  const btn=document.getElementById('login-btn');
-  btn.innerHTML='<span class="spin"></span> กำลังเข้าสู่ระบบ...'; btn.disabled=true;
-  setTimeout(()=>{
-    btn.innerHTML='เข้าสู่ระบบ'; btn.disabled=false;
-    if (u==='admin'&&p==='Hino@HMA-2026#R7vq') {
-      document.getElementById('login-expired').style.display='none';
-      nav('p-admin');
-      setTimeout(()=>{ document.getElementById('expiry-banner').classList.add('show'); },3000);
-    } else {
-      err.textContent='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'; err.style.display='block';
-    }
-  }, 700);
-}
+// NOTE: the real submitLogin() lives further down (multi-user + Firebase Auth).
+// The previous duplicate here was dead code (shadowed by that later
+// declaration) and shipped a hardcoded admin password in page source, so it
+// has been removed.
 
 function adminLogout() {
   document.getElementById('expiry-banner').classList.remove('show');
@@ -2153,7 +2186,7 @@ function getStoredRows() {
       const nameParts = (rec.name || '').split(' ');
       const fn = nameParts[0] || rec.name || '';
       const ln = nameParts.slice(1).join(' ') || '';
-      const testCodes = ['IQ','EQ','ENGLISH','AQ','LEADER','EXCEL'];
+      const testCodes = allTestCodes();
       testCodes.forEach(code => {
         const score   = rec[`${code}_score`];
         const outcome = rec[`${code}_outcome`];
@@ -2241,7 +2274,7 @@ function renderAdmin() {
 // CANDIDATE PROFILES — อ่านจาก localStorage hma_exam_records
 // ═══════════════════════════════════════════════════════════
 function getCandidateProfiles() {
-  const CODES = ['IQ','EQ','ENGLISH','AQ','LEADER','EXCEL'];
+  const CODES = allTestCodes();
   try {
     const stored = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
     // group by national_id — merge all attempts → latest data wins
@@ -2279,7 +2312,7 @@ function toggleCandidates() {
 }
 
 function renderCandidates() {
-  const CODES = ['IQ','EQ','ENGLISH','AQ','LEADER','EXCEL'];
+  const CODES = allTestCodes();
   const profiles = getCandidateProfiles();
 
   // Also include live session data (applicant ปัจจุบัน)
@@ -2355,18 +2388,18 @@ function renderCandidates() {
     return `<tr style="${p.isLive ? 'background:color-mix(in srgb,var(--teal-l) 35%,transparent)' : ''}">
       <td>
         <div style="display:flex;align-items:center;gap:8px">
-          <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${init}</div>
+          <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(init)}</div>
           <div>
-            <div style="font-weight:500;font-size:13px;white-space:nowrap">${liveTag}${p.name || '—'}</div>
-            <div style="font-size:11px;color:var(--gray-400)">${p.national_id || '—'}</div>
+            <div style="font-weight:500;font-size:13px;white-space:nowrap">${liveTag}${esc(p.name || '—')}</div>
+            <div style="font-size:11px;color:var(--gray-400)">${esc(p.national_id || '—')}</div>
           </div>
         </div>
       </td>
-      <td style="font-size:12px">${p.email ? `<a href="mailto:${p.email}" style="color:var(--blue)">${p.email}</a>` : '<span style="color:var(--gray-400)">—</span>'}</td>
-      <td style="font-size:12px;white-space:nowrap">${p.phone || '<span style="color:var(--gray-400)">—</span>'}</td>
-      <td style="font-size:12px;text-align:center">${p.age || '—'}</td>
-      <td style="font-size:12px;text-align:center">${p.experience || '—'}</td>
-      <td style="font-size:12px">${p.position || '—'}</td>
+      <td style="font-size:12px">${p.email ? `<a href="mailto:${encodeURIComponent(p.email)}" style="color:var(--blue)">${esc(p.email)}</a>` : '<span style="color:var(--gray-400)">—</span>'}</td>
+      <td style="font-size:12px;white-space:nowrap">${p.phone ? esc(p.phone) : '<span style="color:var(--gray-400)">—</span>'}</td>
+      <td style="font-size:12px;text-align:center">${esc(p.age || '—')}</td>
+      <td style="font-size:12px;text-align:center">${esc(p.experience || '—')}</td>
+      <td style="font-size:12px">${esc(p.position || '—')}</td>
       <td style="font-size:11px;line-height:1.8">${pills}</td>
       <td style="font-size:13px;font-weight:600;text-align:center;color:${pass.length===taken.length&&taken.length>0?'var(--pass)':'var(--gray-700)'}">${taken.length?pass.length+'/'+taken.length:'—'}</td>
       <td style="font-size:13px;font-weight:600;text-align:center;color:${avg!=null?(avg>=70?'var(--pass)':'var(--red)'):'var(--gray-400)'}">${avg != null ? avg : '—'}</td>
@@ -2407,15 +2440,15 @@ function filterAdmin() {
       : '';
     return `<tr style="cursor:pointer${r.isLive?';background:color-mix(in srgb, var(--teal-l) 40%, transparent)':''}">
       <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" ><div style="display:flex;align-items:center;gap:8px">
-        <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${r.fn.charAt(0)}</div>
+        <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(r.fn.charAt(0))}</div>
         <div>
-          <div style="font-weight:500;white-space:nowrap">${liveTag}${r.fn} ${r.ln}${attemptTag}</div>
-          <div style="font-size:11px;color:var(--gray-400)">${r.nid}</div>
+          <div style="font-weight:500;white-space:nowrap">${liveTag}${esc(r.fn)} ${esc(r.ln)}${attemptTag}</div>
+          <div style="font-size:11px;color:var(--gray-400)">${esc(r.nid)}</div>
         </div>
       </div></td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="white-space:nowrap">${r.test}</td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="font-size:12px;color:var(--gray-400);white-space:nowrap">${r.date}</td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="font-size:12px;white-space:nowrap">${r.time}</td>
+      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="white-space:nowrap">${esc(r.test)}</td>
+      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="font-size:12px;color:var(--gray-400);white-space:nowrap">${esc(r.date)}</td>
+      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="font-size:12px;white-space:nowrap">${esc(r.time)}</td>
       <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')">${sc}</td>
       <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')">${pill}</td>
       <td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="showIndivPdf('${encodeURIComponent(rowKey)}')">📄 ดูผล</button> ${delBtn}</td>
@@ -2448,12 +2481,12 @@ function showDetailByKey(encodedKey) {
     const c=s.out==='P'?'var(--teal)':'var(--red)';
     return `<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:14px;margin-bottom:10px${s.isLive?';border-color:var(--teal-b);background:var(--teal-l)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-weight:600;font-size:13px">${s.test}</span>${pill}
+        <span style="font-weight:600;font-size:13px">${esc(s.test)}</span>${pill}
       </div>
       <div class="grid3">
         <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">คะแนน</div><div style="font-weight:600;color:${c}">${s.score}/100</div></div>
-        <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">เวลาที่ใช้</div><div>${s.time}</div></div>
-        <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">วันที่สอบ</div><div style="font-size:12px">${s.date}</div></div>
+        <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">เวลาที่ใช้</div><div>${esc(s.time)}</div></div>
+        <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">วันที่สอบ</div><div style="font-size:12px">${esc(s.date)}</div></div>
       </div>
     </div>`;
   }).join('');
@@ -2899,8 +2932,8 @@ function saveExamData() {
 
 // ④ Delete applicant data (Super Admin only)
 function deleteApplicantData(encodedKey) {
-  if (!currentAdmin || currentAdmin.role !== 'superadmin') {
-    showToast('❌ เฉพาะ Super Admin เท่านั้น'); return;
+  if (!currentAdmin || !(ROLE_INFO[currentAdmin.role] && ROLE_INFO[currentAdmin.role].canDelete)) {
+    showToast('❌ ไม่มีสิทธิ์ลบข้อมูล'); return;
   }
   const key = JSON.parse(decodeURIComponent(encodedKey));
   const name = `${key.fn} ${key.ln}`;
@@ -2962,7 +2995,7 @@ function exportAdminPDF(btn) {
 
 // ── shared data builder ──────────────────────────────────────────────
 function buildExportData() {
-  const CODES = ['IQ','EQ','ENGLISH','AQ','LEADER','EXCEL'];
+  const CODES = allTestCodes();
   const stored = (() => { try { return JSON.parse(localStorage.getItem('hma_exam_records') || '[]'); } catch(e){ return []; } })();
 
   const fromStored = stored.map(r => {
@@ -3018,7 +3051,7 @@ function exportToCSV() {
   if (!data.length) { showToast('ยังไม่มีข้อมูล'); return; }
   const headers = Object.keys(data[0]);
   const csv = [headers, ...data.map(r => headers.map(h => r[h]))].map(row =>
-    row.map(c => '"' + String(c ?? '').replace(/"/g, '""') + '"').join(',')
+    row.map(csvCell).join(',')
   ).join('\n');
   const blob = new Blob(['\ufeff' + csv], {type: 'text/csv;charset=utf-8'});
   const url  = URL.createObjectURL(blob);
@@ -3031,7 +3064,7 @@ function exportToCSV() {
 function exportToXLSX() {
   const XLSX  = window.XLSX;
   const data  = buildExportData();
-  const CODES = ['IQ','EQ','ENGLISH','AQ','LEADER','EXCEL'];
+  const CODES = allTestCodes();
   const wb    = XLSX.utils.book_new();
 
   // ── SHEET 1: ผลสอบรวม ─────────────────────────────────────────────
@@ -3121,6 +3154,9 @@ function getEditQ() {
         let opts = q.opts ? q.opts.map(o=>({...o}))
                           : (q.choices||[]).map((t,i)=>({t, p: i===q.ans?1:0}));
         return {
+          // Preserve fields the editor UI doesn't expose (Thai stem/options,
+          // abstract-IQ SVG stem/options, etc.) so saving never strips them.
+          ...q,
           q:     q.q || '',
           opts,
           exp:   q.why || q.exp || '',
@@ -3340,15 +3376,29 @@ function saveQuestions() {
   // Apply edits back to ALL_QUESTIONS (keep opts schema for doSubmit compatibility)
   Object.keys(EQ).forEach(k=>{
     ALL_QUESTIONS[k]=EQ[k].map(q=>({...q}));
-    // fix sessions answers array length if changed
+    // Reconcile answers array length only if the count actually changed —
+    // and preserve answers already given, so saving the editor never wipes
+    // a candidate who is mid-test (or a completed set) on this device.
     sessions.forEach(s=>{
-      if(s.test.code===k) s.answers=new Array(EQ[k].length).fill(null);
+      if(s.test.code===k){
+        const n = EQ[k].length;
+        const old = Array.isArray(s.answers) ? s.answers : [];
+        if (old.length !== n) {
+          const next = new Array(n).fill(null);
+          for (let i=0;i<Math.min(n, old.length);i++) next[i]=old[i];
+          s.answers = next;
+        }
+      }
     });
   });
   try { localStorage.setItem('hma_custom_questions', JSON.stringify(EQ)); } catch(e){}
   // Sync the bank to the cloud so other devices/candidates get the changes
   if (typeof cloudSaveQuestionBank === 'function' && cloudEnabled() && cloudSignedIn()) {
-    cloudSaveQuestionBank().then(ok => { if (ok) showToast('☁️ ซิงค์ข้อสอบขึ้น cloud แล้ว'); });
+    cloudSaveQuestionBank().then(res => {
+      if (res.settingsOk && res.bankOk) showToast('☁️ ซิงค์ข้อสอบขึ้น cloud แล้ว');
+      else if (res.settingsOk)          showToast('⚠️ ซิงค์หมวด/ตำแหน่งแล้ว แต่คลังข้อสอบยังไม่ขึ้น cloud', 6000);
+      else                               showToast('⚠️ ยังซิงค์ขึ้น cloud ไม่สำเร็จ', 6000);
+    });
   }
   showToast('✅ บันทึกข้อสอบแล้ว ' + Object.keys(EQ).map(k=>`${k}(${EQ[k].length})`).join(', '));
 }
@@ -3481,7 +3531,11 @@ function seedPersonalityQuestionsIfEmpty(){
   if (document.getElementById('p-question-editor') && document.getElementById('p-question-editor').classList.contains('active')) renderQuestionEditor();
   // Best-effort, silent push to cloud so other devices get it too (no toast either way —
   // this is an automatic bootstrap, not a user-initiated save).
-  if (typeof cloudEnabled === 'function' && cloudEnabled() && typeof cloudSignedIn === 'function' && cloudSignedIn()) {
+  // Only push if we've actually READ the cloud bank first; otherwise a device
+  // whose bank read failed would overwrite config/bank (one opaque JSON field)
+  // with its local-only PERS seed and erase every other category's questions.
+  if (typeof _cloudBankLoaded !== 'undefined' && _cloudBankLoaded
+      && typeof cloudEnabled === 'function' && cloudEnabled() && typeof cloudSignedIn === 'function' && cloudSignedIn()) {
     (async () => {
       try {
         const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
@@ -3554,7 +3608,14 @@ function restoreSession(data) {
   sessions  = data.sessions.map(s => {
     const test = TESTS.find(t => t.code === s.test.code) || s.test;
     const qLen = (ALL_QUESTIONS[test.code] || []).length || 10;
-    return { ...s, test, answers: s.answers || new Array(qLen).fill(null) };
+    // Reconcile the persisted answers to the CURRENT bank length: the bank may
+    // have grown/shrunk (admin edit or cloud sync) since this session was saved.
+    // Keep answers we have, pad/truncate the rest — never leave it shorter than
+    // the bank, which would make doSubmit dereference an undefined option.
+    const old = Array.isArray(s.answers) ? s.answers : [];
+    const answers = new Array(qLen).fill(null);
+    for (let i=0;i<Math.min(qLen, old.length);i++) answers[i] = old[i] != null ? old[i] : null;
+    return { ...s, test, answers };
   });
   curSess = data.curSess;
   curQ    = data.curQ ?? 0;
@@ -3612,9 +3673,10 @@ function initResumeCheck() {
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;background:var(--teal,#0a8f73);color:#fff;'
     + 'padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;'
     + 'font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.18)';
+  const nm = esc(data.applicant.name);
   const label = inProg
-    ? `🔄 คุณมีแบบทดสอบที่ทำค้างไว้ (${data.applicant.name}) — ทำต่อได้เลย`
-    : `🔄 มีแบบทดสอบค้างอยู่ของ ${data.applicant.name}`;
+    ? `🔄 คุณมีแบบทดสอบที่ทำค้างไว้ (${nm}) — ทำต่อได้เลย`
+    : `🔄 มีแบบทดสอบค้างอยู่ของ ${nm}`;
   bar.innerHTML = `<span>${label}</span>
     <span style="display:flex;gap:8px;flex-shrink:0">
       <button onclick="resumeFromBar()" style="background:#fff;color:var(--teal,#0a8f73);border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer">ทำต่อ →</button>
@@ -4049,10 +4111,10 @@ function showIndivPdf(encodedKey) {
 
   document.getElementById('ipdf-content').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--gray-200)">
-      <div class="avatar" style="background:${colors[ci]};color:${textc[ci]};width:44px;height:44px;font-size:16px">${rows[0].fn.charAt(0)}</div>
+      <div class="avatar" style="background:${colors[ci]};color:${textc[ci]};width:44px;height:44px;font-size:16px">${esc(rows[0].fn.charAt(0))}</div>
       <div>
-        <p style="font-weight:600;font-size:15px">${name}</p>
-        <p style="font-size:12px;color:var(--gray-400)">${rows[0].nid} · ${rows[0].pos}</p>
+        <p style="font-weight:600;font-size:15px">${esc(name)}</p>
+        <p style="font-size:12px;color:var(--gray-400)">${esc(rows[0].nid)} · ${esc(rows[0].pos)}</p>
       </div>
     </div>
     <div class="grid3" style="margin-bottom:16px">
@@ -4065,12 +4127,12 @@ function showIndivPdf(encodedKey) {
       const pill = r.out==='P' ? '<span class="badge b-pass">✓ ผ่าน</span>' : '<span class="badge b-fail">✗ ไม่ผ่าน</span>';
       return `<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span style="font-weight:600;font-size:13px">${r.test}</span>${pill}
+          <span style="font-weight:600;font-size:13px">${esc(r.test)}</span>${pill}
         </div>
         <div class="grid3" style="gap:6px">
           <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">คะแนน</div><div style="font-weight:600;color:${c}">${r.score}/100</div></div>
-          <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">เวลาที่ใช้</div><div style="font-size:12px">${r.time}</div></div>
-          <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">วันที่สอบ</div><div style="font-size:11px">${r.date}</div></div>
+          <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">เวลาที่ใช้</div><div style="font-size:12px">${esc(r.time)}</div></div>
+          <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">วันที่สอบ</div><div style="font-size:11px">${esc(r.date)}</div></div>
         </div>
       </div>`;
     }).join('')}
@@ -4103,7 +4165,7 @@ function downloadIndivCSV() {
   } else {
     const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ชื่อ','เลขประชาชน','ตำแหน่ง'];
     const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, r.out, person, r.nid, r.pos]);
-    const csv = [headers,...csvRows].map(row=>row.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const csv = [headers,...csvRows].map(row=>row.map(csvCell).join(',')).join('\n');
     const blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4167,7 +4229,7 @@ function printIndivPDF(person) {
   const styles = Array.from(document.querySelectorAll('style')).map(s => s.outerHTML).join('');
   w.document.write(
     '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">' +
-    '<title>HMA ผลการทดสอบ — ' + person + '</title>' + styles +
+    '<title>HMA ผลการทดสอบ — ' + esc(person) + '</title>' + styles +
     '<style>body{background:#fff;margin:0;padding:24px;font-family:"Segoe UI",Tahoma,sans-serif}' +
     'h2{font-size:16px;margin:0 0 14px}@media print{@page{margin:14mm}}</style></head>' +
     '<body><h2>HMA Testing System — ผลการทดสอบผู้สมัคร</h2>' + el.innerHTML + '</body></html>'
@@ -4411,9 +4473,16 @@ function saveResultSnapshot(){
   try {
     const all = getResultSnapshots();
     const i = all.findIndex(x => x.nid === snap.nid && !x._sealed);
-    if (i >= 0) all[i] = { ...all[i], ...snap };
-    else all.push(snap);
-    if (sessions.every(s => s.status === 'completed') && i >= 0) all[i]._sealed = true;
+    const allDone = sessions.every(s => s.status === 'completed');
+    if (i >= 0) {
+      all[i] = { ...all[i], ...snap };
+      if (allDone) all[i]._sealed = true;
+    } else {
+      // Seal on first push too when the attempt is already complete, otherwise a
+      // later attempt would findIndex-match this unsealed snapshot and overwrite it.
+      if (allDone) snap._sealed = true;
+      all.push(snap);
+    }
     localStorage.setItem('hma_result_snapshots', JSON.stringify(all));
   } catch(e){ console.warn('saveResultSnapshot:', e); }
 }
@@ -4453,6 +4522,13 @@ function backFromResults(){
 function cloudEnabled(){ return !!window.db; }
 function cloudSignedIn(){ return !!(window.fbAuth && fbAuth.currentUser); }
 
+// Have we successfully READ the shared cloud config yet? We must never let a
+// device that hasn't loaded it overwrite the shared docs with empty local state.
+// (var, not let: seedPersonalityQuestionsIfEmpty() runs earlier in this script
+// and reads _cloudBankLoaded via typeof — let would put it in the TDZ and throw.)
+var _cloudSettingsLoaded = false;   // config/settings read succeeded (doc may or may not exist)
+var _cloudBankLoaded     = false;   // config/bank read succeeded
+
 // Dedup keys (cloud records originate from local, so keys line up)
 function _recKey(r){ return (r.national_id||'') + '|' + (r.attempt||1) + '|' + (r.datetime||''); }
 function _snapKey(s){ return (s.nid||'') + '|' + (s.datetime||''); }
@@ -4482,7 +4558,36 @@ async function cloudPushOnComplete(){
     if (rec)  await db.collection('exam_records').add({ ...rec,  createdAt: stamp });
     if (snap) await db.collection('result_snapshots').add({ ...snap, createdAt: stamp });
     console.info('cloud: result uploaded for', nid);
-  } catch(e){ console.warn('cloud push failed:', e); }
+  } catch(e){
+    console.warn('cloud push failed:', e);
+    // Don't lose the result: queue it and tell the candidate it will retry.
+    try {
+      const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => r.national_id === nid);
+      const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => s.nid === nid);
+      const q = JSON.parse(localStorage.getItem('hma_cloud_pending') || '[]');
+      q.push({ rec: recs[recs.length-1], snap: snaps[snaps.length-1], nid, at: Date.now() });
+      localStorage.setItem('hma_cloud_pending', JSON.stringify(q));
+    } catch(_){}
+    if (typeof showToast === 'function') showToast('⚠️ อัปโหลดผลขึ้น cloud ไม่สำเร็จ — ระบบจะลองใหม่อัตโนมัติเมื่อเชื่อมต่อได้', 6000);
+  }
+}
+
+// Retry any result uploads that failed earlier (create-only, so safe to replay
+// once; deduped server-side is not needed because we clear on success).
+async function cloudFlushPending(){
+  if (!cloudEnabled()) return;
+  let q; try { q = JSON.parse(localStorage.getItem('hma_cloud_pending') || '[]'); } catch(e){ return; }
+  if (!Array.isArray(q) || !q.length) return;
+  const stamp = firebase.firestore.FieldValue.serverTimestamp();
+  const remain = [];
+  for (const item of q){
+    try {
+      if (item.rec)  await db.collection('exam_records').add({ ...item.rec, createdAt: stamp });
+      if (item.snap) await db.collection('result_snapshots').add({ ...item.snap, createdAt: stamp });
+    } catch(e){ remain.push(item); }
+  }
+  try { localStorage.setItem('hma_cloud_pending', JSON.stringify(remain)); } catch(e){}
+  if (q.length && !remain.length && typeof showToast === 'function') showToast('☁️ อัปโหลดผลที่ค้างขึ้น cloud สำเร็จแล้ว');
 }
 
 // Admin side: pull all candidate data and merge into local cache so every
@@ -4516,9 +4621,8 @@ function updateCloudStatus(state, info){
   if (!cloudEnabled()){ el.style.display = 'none'; return; }
   el.style.display = 'inline-flex';
   el.style.cursor = 'pointer';
-  el.title = 'คลิกเพื่อซิงค์ข้อมูลจาก cloud ใหม่';
   el.onclick = () => cloudDiagnose();
-  el.title = 'คลิกเพื่อทดสอบ/ซิงค์การเชื่อมต่อ cloud';
+  el.title = 'คลิกเพื่อทดสอบการเชื่อมต่อ และดึงข้อมูลจาก cloud ใหม่';
   if (state === 'loading'){ el.textContent = '☁️ กำลังซิงค์…'; el.style.color = 'var(--gray-400)'; }
   else if (state === 'ok'){ el.textContent = '☁️ เชื่อมต่อ cloud · ' + (info||0) + ' รายการ'; el.style.color = 'var(--pass)'; }
   else if (state === 'error'){ el.textContent = '⚠️ cloud: ' + info; el.style.color = 'var(--amber)'; }
@@ -4541,11 +4645,18 @@ async function cloudDiagnose(){
   try {
     const email = fbAuth.currentUser.email;
     await db.collection('config').doc('settings').set({ diagBy: email, diagAt: Date.now() }, { merge: true });
-    const ok = await cloudSaveQuestionBank();
+    const res = await cloudSaveQuestionBank();
     if (settled) return;
     settled = true; clearTimeout(timer);
     updateCloudStatus('ok');
-    alert('✅ เชื่อมต่อ cloud สำเร็จ! เขียนข้อมูลขึ้น cloud ได้\n\n' + (ok ? 'ซิงค์คลังข้อสอบ + ตำแหน่งขึ้น cloud เรียบร้อยแล้ว\nตอนนี้เครื่องอื่น/ผู้สมัครจะเห็นข้อมูลตรงกัน' : 'แต่ซิงค์คลังข้อมูลไม่สำเร็จ — ลองอีกครั้ง'));
+    // Also pull the latest candidate data so the pill really does "re-sync".
+    cloudFetchAll();
+    const syncMsg = (res.settingsOk && res.bankOk)
+      ? 'ซิงค์คลังข้อสอบ + ตำแหน่งขึ้น cloud เรียบร้อยแล้ว\nตอนนี้เครื่องอื่น/ผู้สมัครจะเห็นข้อมูลตรงกัน'
+      : res.settingsOk
+        ? 'ซิงค์หมวด/ตำแหน่งแล้ว แต่คลังข้อสอบยังไม่ขึ้น cloud — ลองอีกครั้ง'
+        : 'ยังโหลดค่าจาก cloud ไม่เสร็จ จึงยังไม่เขียนทับค่ากลาง — เปิดหน้าใหม่แล้วลองอีกครั้ง';
+    alert('✅ เชื่อมต่อ cloud สำเร็จ! เขียนข้อมูลขึ้น cloud ได้\n\n' + syncMsg);
   } catch(e){
     if (settled) return;
     settled = true; clearTimeout(timer);
@@ -4559,6 +4670,7 @@ if (window.fbAuth) {
   fbAuth.onAuthStateChanged(user => {
     updateCloudStatus();
     if (user && document.getElementById('p-admin') && document.getElementById('p-admin').classList.contains('active')) cloudFetchAll();
+    cloudFlushPending();   // retry any result uploads that failed earlier
   });
 }
 
@@ -4570,7 +4682,14 @@ if (window.fbAuth) {
 //   config/settings : { customTests, positionPresets }   ← small, always syncs
 //   config/bank     : { customQuestions, instructions }  ← large, best-effort
 async function cloudSaveQuestionBank(){
-  if (!cloudEnabled() || !cloudSignedIn()) return false;
+  if (!cloudEnabled() || !cloudSignedIn()) return { settingsOk:false, bankOk:false };
+  // Never overwrite the shared config from a device that hasn't loaded it yet —
+  // otherwise a fresh/blocked browser would push empty customTests/presets over
+  // everyone else's data (e.g. via the status-pill diagnostic).
+  if (!_cloudSettingsLoaded) {
+    if (typeof showToast === 'function') showToast('⌛ ยังโหลดค่าจาก cloud ไม่เสร็จ — รอสักครู่แล้วลองใหม่', 5000);
+    return { settingsOk:false, bankOk:false };
+  }
   const stamp = firebase.firestore.FieldValue.serverTimestamp();
   const customTests = TESTS.filter(t => t.custom).map(t => ({
     code:t.code, name:t.name, nameTH:t.nameTH, mins:t.mins, passing:t.passing,
@@ -4580,13 +4699,13 @@ async function cloudSaveQuestionBank(){
   const customQuestions = JSON.parse(localStorage.getItem('hma_custom_questions') || '{}');
   const instructions    = JSON.parse(localStorage.getItem('hma_instructions') || '{}');
 
-  let settingsOk = false;
+  let settingsOk = false, bankOk = false;
   try {
     await db.collection('config').doc('settings').set({
       customTests: JSON.stringify(customTests),
       positionPresets: JSON.stringify(positionPresets),
       updatedAt: stamp
-    });
+    }, { merge: true });
     settingsOk = true;
   } catch(e){
     console.warn('cloud settings save failed:', e);
@@ -4599,13 +4718,18 @@ async function cloudSaveQuestionBank(){
       customQuestions: JSON.stringify(customQuestions),
       instructions: JSON.stringify(instructions),
       updatedAt: stamp
-    });
+    }, { merge: true });
+    bankOk = true;
   } catch(e){
     console.warn('cloud bank save failed:', e);
-    if (e && e.code !== 'permission-denied')
+    // Report the failure honestly (including permission-denied) so callers don't
+    // claim the question bank synced when it didn't.
+    if (e && e.code === 'permission-denied')
+      showToast('⚠️ คลังข้อสอบซิงค์ไม่ได้ — ตรวจ Firestore rule ของ config/bank', 7000);
+    else
       showToast('⚠️ คลังข้อสอบใหญ่เกินไป (รูปเยอะ?) — ตำแหน่ง/หมวดซิงค์แล้ว แต่ข้อสอบยังไม่ขึ้น', 7000);
   }
-  return settingsOk;
+  return { settingsOk, bankOk };
 }
 function _parseMaybe(v, fallback){ try { return typeof v === 'string' ? JSON.parse(v) : (v ?? fallback); } catch(e){ return fallback; } }
 async function cloudLoadQuestionBank(){
@@ -4614,20 +4738,27 @@ async function cloudLoadQuestionBank(){
   // 1) settings — custom test metadata + position presets (small, critical)
   try {
     const s = await db.collection('config').doc('settings').get();
+    _cloudSettingsLoaded = true;   // the read itself succeeded (doc may not exist yet)
     if (s.exists) {
       const d = s.data() || {};
-      const customTests = _parseMaybe(d.customTests, []) || [];
-      customTests.forEach(t => {
-        const i = TESTS.findIndex(x => x.code === t.code);
-        if (i < 0) TESTS.push({ ...t, custom:true });
-        else if (TESTS[i].custom) TESTS[i] = { ...t, custom:true };
-        if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
-      });
-      try { localStorage.setItem('hma_custom_tests', JSON.stringify(customTests)); } catch(e){}
-      const presets = _parseMaybe(d.positionPresets, null);
-      if (presets) {
-        try { localStorage.setItem('hma_position_presets', JSON.stringify(presets)); } catch(e){}
-        if (typeof populatePositionTypes === 'function' && document.getElementById('p-register') && document.getElementById('p-register').classList.contains('active')) populatePositionTypes();
+      // Only touch local custom tests when the cloud actually carries the field —
+      // a diagnostic-only doc ({diagBy,diagAt}) must NOT wipe local categories.
+      if (d.customTests !== undefined) {
+        const customTests = _parseMaybe(d.customTests, []) || [];
+        customTests.forEach(t => {
+          const i = TESTS.findIndex(x => x.code === t.code);
+          if (i < 0) TESTS.push({ ...t, custom:true });
+          else if (TESTS[i].custom) TESTS[i] = { ...t, custom:true };
+          if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
+        });
+        try { localStorage.setItem('hma_custom_tests', JSON.stringify(customTests)); } catch(e){}
+      }
+      if (d.positionPresets !== undefined) {
+        const presets = _parseMaybe(d.positionPresets, null);
+        if (presets) {
+          try { localStorage.setItem('hma_position_presets', JSON.stringify(presets)); } catch(e){}
+          if (typeof populatePositionTypes === 'function' && document.getElementById('p-register') && document.getElementById('p-register').classList.contains('active')) populatePositionTypes();
+        }
       }
       loaded = true;
     }
@@ -4635,6 +4766,7 @@ async function cloudLoadQuestionBank(){
   // 2) bank — questions + instructions (large, best-effort)
   try {
     const b = await db.collection('config').doc('bank').get();
+    _cloudBankLoaded = true;   // the read succeeded; safe to auto-push seeds later
     if (b.exists) {
       const d = b.data() || {};
       const cq = _parseMaybe(d.customQuestions, {}) || {};
@@ -4649,10 +4781,42 @@ async function cloudLoadQuestionBank(){
       loaded = true;
     }
   } catch(e){ console.warn('cloud bank load failed:', e); }
+  // 3) Legacy migration — orgs that synced before the settings/bank split kept
+  //    everything in a single config/question_bank doc. Read it once if neither
+  //    new doc provided data, so their custom tests/questions aren't lost.
+  if (!loaded) {
+    try {
+      const legacy = await db.collection('config').doc('question_bank').get();
+      if (legacy.exists) {
+        const d = legacy.data() || {};
+        const customTests = _parseMaybe(d.customTests, []) || [];
+        customTests.forEach(t => {
+          const i = TESTS.findIndex(x => x.code === t.code);
+          if (i < 0) TESTS.push({ ...t, custom:true });
+          else if (TESTS[i].custom) TESTS[i] = { ...t, custom:true };
+          if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
+        });
+        if (customTests.length) { try { localStorage.setItem('hma_custom_tests', JSON.stringify(customTests)); } catch(e){} }
+        const cq = _parseMaybe(d.customQuestions, {}) || {};
+        Object.keys(cq).forEach(k => {
+          ALL_QUESTIONS[k] = cq[k].map(q => ({ ...q, opts: q.opts || (q.choices||[]).map((t,i)=>({t,p:i===(q.ans||0)?1:0})) }));
+        });
+        if (Object.keys(cq).length) { try { localStorage.setItem('hma_custom_questions', JSON.stringify(cq)); } catch(e){} }
+        const presets = _parseMaybe(d.positionPresets, null);
+        if (presets) { try { localStorage.setItem('hma_position_presets', JSON.stringify(presets)); } catch(e){} }
+        const instr = _parseMaybe(d.instructions, null);
+        if (instr) { try { localStorage.setItem('hma_instructions', JSON.stringify(instr)); } catch(e){} }
+        EDIT_QUESTIONS = null;
+        loaded = true;
+        // Best-effort forward-migrate into the new split docs so this only happens once.
+        if (cloudSignedIn()) { try { await cloudSaveQuestionBank(); } catch(e){} }
+      }
+    } catch(e){ console.warn('cloud legacy-bank migration failed:', e); }
+  }
   return loaded;
 }
 // Pull the shared bank on startup (for admins AND candidates).
-cloudLoadQuestionBank().then(() => seedPersonalityQuestionsIfEmpty());
+cloudLoadQuestionBank().then(() => { seedPersonalityQuestionsIfEmpty(); cloudFlushPending(); });
 
 // Initial FAB state
 updateFABs('p-landing');
