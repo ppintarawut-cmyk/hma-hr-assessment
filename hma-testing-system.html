@@ -2062,6 +2062,11 @@ function renderResults() {
   document.getElementById('r-breakdown').innerHTML = done.map(s=>{
     const c=s.score>=70?'var(--teal)':'var(--red)';
     const pill=s.outcome==='P'?'<span class="badge b-pass">✓ ผ่าน</span>':'<span class="badge b-fail">✗ ไม่ผ่าน</span>';
+    // From a live session use its violations; from an admin-opened snapshot use the stored count.
+    const leaves = (s.leaves != null) ? s.leaves : examLeaveCount(s.violations);
+    const leaveNote = leaves > 0
+      ? ` · <span style="color:var(--red);font-weight:600">⚠️ ออกจากหน้าสอบ ${leaves} ครั้ง</span>`
+      : '';
     return `<div style="padding:14px 20px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:10px">
       <span style="font-size:11px;font-weight:600;background:var(--gray-100);color:var(--gray-500);padding:2px 8px;border-radius:4px;flex-shrink:0">${s.test.code}</span>
       <div style="flex:1;min-width:0">
@@ -2070,7 +2075,7 @@ function renderResults() {
           <div class="bar-score-track"><div class="bar-score-fill" style="width:${s.score}%;background:${c}"></div></div>
           <span style="font-size:12px;font-weight:600;color:${c}">${s.score}</span>
         </div>
-        <div style="font-size:11px;color:var(--gray-400);margin-top:3px">เกณฑ์ผ่าน ${s.test.passing} คะแนน · ใช้เวลา ~${s.test.mins} นาที</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:3px">เกณฑ์ผ่าน ${s.test.passing} คะแนน · ใช้เวลา ~${s.test.mins} นาที${leaveNote}</div>
       </div>
       ${pill}
     </div>`;
@@ -2209,6 +2214,9 @@ function getLiveRows() {
       score: s.score,
       out:   s.outcome,
       pos:   applicant.pos,
+      // Live session → count its violations; admin-reconstructed session (from a
+      // snapshot) already carries the stored count and has no violations array.
+      leaves: (s.leaves != null) ? s.leaves : examLeaveCount(s.violations),
       isLive: true,
     }));
 }
@@ -2238,6 +2246,7 @@ function getStoredRows() {
           score:    score,
           out:      outcome,
           pos:      rec.position || '',
+          leaves:   rec[`${code}_leaves`] ?? null,   // null = ระเบียนเก่าที่ยังไม่ได้บันทึกค่านี้
           attempt:  rec.attempt || 1,
           isStored: true,
           isLive:   false,
@@ -2524,6 +2533,9 @@ function showDetailByKey(encodedKey) {
         <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">คะแนน</div><div style="font-weight:600;color:${c}">${s.score}/100</div></div>
         <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">เวลาที่ใช้</div><div>${esc(s.time)}</div></div>
         <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">วันที่สอบ</div><div style="font-size:12px">${esc(s.date)}</div></div>
+      </div>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--gray-200);font-size:12px;display:flex;align-items:center;gap:6px">
+        <span style="color:var(--gray-400)">ออกจากหน้าสอบระหว่างทำ:</span> ${leaveBadgeHtml(s.leaves)}
       </div>
     </div>`;
   }).join('');
@@ -2844,7 +2856,7 @@ function startFocusGuard() {
 function onCopyBlock(e) {
   if (!focusGuardActive) return;
   e.preventDefault();
-  triggerCheat('พยายาม Copy/Cut/Paste ข้อความ');
+  triggerCheat('พยายาม Copy/Cut/Paste ข้อความ', 'copy');
 }
 function onContextBlock(e) {
   if (!focusGuardActive) return;
@@ -2864,13 +2876,27 @@ function stopFocusGuard() {
 }
 
 function onVisibilityChange() {
-  if (document.hidden && focusGuardActive) triggerCheat('สลับ Tab หรือออกจากหน้าต่าง');
+  if (document.hidden && focusGuardActive) triggerCheat('สลับ Tab หรือออกจากหน้าต่าง', 'leave');
 }
 function onWindowBlur() {
-  if (focusGuardActive) triggerCheat('คลิกออกนอกหน้าต่างเบราว์เซอร์');
+  if (focusGuardActive) triggerCheat('คลิกออกนอกหน้าต่างเบราว์เซอร์', 'leave');
 }
 
-function triggerCheat(reason) {
+// How many times the candidate left the exam window/tab during a session
+// (tab-switch or window-blur), independent of copy/paste attempts.
+function examLeaveCount(violations) {
+  return (violations || []).filter(v => v && v.type === 'leave').length;
+}
+// Shared inline badge for the "left the exam page" count in candidate reports.
+// null → the record predates this feature (unknown); 0 → clean; >0 → flagged.
+function leaveBadgeHtml(leaves) {
+  if (leaves == null) return '<span style="color:var(--gray-400)">— ไม่มีข้อมูล</span>';
+  return leaves > 0
+    ? `<span style="color:var(--red);font-weight:600">⚠️ ${leaves} ครั้ง</span>`
+    : `<span style="color:var(--teal)">✓ ไม่ออกจากหน้าสอบ</span>`;
+}
+
+function triggerCheat(reason, type='other') {
   cheatCount++;
   const banner = document.getElementById('cheat-banner');
   document.getElementById('cheat-count').textContent = `ครั้งที่ ${cheatCount}`;
@@ -2878,7 +2904,7 @@ function triggerCheat(reason) {
   // log ลง session
   if (sessions[curSess]) {
     if (!sessions[curSess].violations) sessions[curSess].violations = [];
-    sessions[curSess].violations.push({ reason, time: new Date().toLocaleTimeString('th-TH'), seq: cheatCount });
+    sessions[curSess].violations.push({ reason, type, time: new Date().toLocaleTimeString('th-TH'), seq: cheatCount });
   }
 }
 function dismissCheat() {
@@ -2920,6 +2946,7 @@ function buildExamRecord() {
       row[`${s.test.code}_outcome`] = s.outcome;
       row[`${s.test.code}_correct`] = s.raw   ?? '';
       row[`${s.test.code}_total`]   = s.maxP  ?? '';
+      row[`${s.test.code}_leaves`]  = examLeaveCount(s.violations);
       // time used
       if (s.remainSecs != null) {
         const used = s.test.mins*60 - s.remainSecs;
@@ -3051,6 +3078,7 @@ function buildExportData() {
       obj[c + '_คะแนน'] = r[c + '_score']   ?? '';
       obj[c + '_ผล']    = r[c + '_outcome'] ?? '';
       obj[c + '_เวลา']  = r[c + '_time']    ?? '';
+      obj[c + '_ออกจากหน้าจอ'] = r[c + '_leaves'] ?? '';
     });
     const taken  = CODES.filter(c => r[c + '_score'] != null).length;
     const passed = CODES.filter(c => r[c + '_outcome'] === 'P').length;
@@ -3072,6 +3100,7 @@ function buildExportData() {
       obj[c+'_คะแนน'] = p.tests[c]?.score ?? '';
       obj[c+'_ผล']    = p.tests[c]?.out   ?? '';
       obj[c+'_เวลา']  = '';
+      obj[c+'_ออกจากหน้าจอ'] = '';
     });
     const taken  = CODES.filter(c => p.tests[c]).length;
     const passed = CODES.filter(c => p.tests[c]?.out === 'P').length;
@@ -3107,13 +3136,13 @@ function exportToXLSX() {
   // ── SHEET 1: ผลสอบรวม ─────────────────────────────────────────────
   const s1Headers = [
     'วันที่/เวลา','เลขประชาชน','ชื่อ-สกุล','Email','โทรศัพท์','อายุ','ประสบ.(ปี)','ตำแหน่ง','ครั้งที่',
-    ...CODES.flatMap(c => [c+' คะแนน', c+' ผล', c+' เวลา']),
+    ...CODES.flatMap(c => [c+' คะแนน', c+' ผล', c+' เวลา', c+' ออกจากจอ']),
     'ผ่าน/ทั้งหมด',
   ];
   const s1Rows = data.map(r => [
     r['วันที่/เวลา'], r['เลขประชาชน'], r['ชื่อ-สกุล'], r['Email'], r['โทรศัพท์'],
     r['อายุ'], r['ประสบการณ์(ปี)'], r['ตำแหน่ง'], r['ครั้งที่'],
-    ...CODES.flatMap(c => [r[c+'_คะแนน'], r[c+'_ผล'], r[c+'_เวลา']]),
+    ...CODES.flatMap(c => [r[c+'_คะแนน'], r[c+'_ผล'], r[c+'_เวลา'], r[c+'_ออกจากหน้าจอ']]),
     r['ผ่าน/ทั้งหมด'],
   ]);
   const ws1 = XLSX.utils.aoa_to_sheet([
@@ -3124,7 +3153,7 @@ function exportToXLSX() {
     ...s1Rows,
   ]);
   ws1['!cols'] = [{wch:18},{wch:14},{wch:20},{wch:24},{wch:13},{wch:6},{wch:10},{wch:18},{wch:7},
-    ...CODES.flatMap(()=>[{wch:10},{wch:6},{wch:9}]),{wch:12}];
+    ...CODES.flatMap(()=>[{wch:10},{wch:6},{wch:9},{wch:10}]),{wch:12}];
   ws1['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}},{s:{r:1,c:0},e:{r:1,c:5}}];
   XLSX.utils.book_append_sheet(wb, ws1, 'ผลสอบรวม');
 
@@ -4178,6 +4207,9 @@ function showIndivPdf(encodedKey) {
           <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">เวลาที่ใช้</div><div style="font-size:12px">${esc(r.time)}</div></div>
           <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">วันที่สอบ</div><div style="font-size:11px">${esc(r.date)}</div></div>
         </div>
+        <div style="margin-top:8px;font-size:11.5px;display:flex;align-items:center;gap:6px">
+          <span style="color:var(--gray-400)">ออกจากหน้าสอบระหว่างทำ:</span> ${leaveBadgeHtml(r.leaves)}
+        </div>
       </div>`;
     }).join('')}
     <p style="font-size:11px;color:var(--gray-400);margin-top:8px;text-align:right">สร้างเมื่อ: ${new Date().toLocaleString('th-TH')}</p>
@@ -4197,18 +4229,18 @@ function downloadIndivCSV() {
       [person + ' — ผลการสอบ','','','','','','',''],
       ['เลขประชาชน: ' + rows[0].nid,'','','','','','',''],
       [],
-      ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ชื่อ-สกุล','เลขประชาชน','ตำแหน่ง'],
-      ...rows.map(r=>[r.test, r.date, r.time, r.score, r.out, person, r.nid, r.pos]),
+      ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ออกจากหน้าจอ','ชื่อ-สกุล','เลขประชาชน','ตำแหน่ง'],
+      ...rows.map(r=>[r.test, r.date, r.time, r.score, r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]),
     ];
     const ws = window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:10},{wch:18},{wch:12},{wch:8},{wch:6},{wch:20},{wch:14},{wch:18}];
+    ws['!cols'] = [{wch:10},{wch:18},{wch:12},{wch:8},{wch:6},{wch:12},{wch:20},{wch:14},{wch:18}];
     ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:4}},{s:{r:1,c:0},e:{r:1,c:4}}];
     window.XLSX.utils.book_append_sheet(wb, ws, 'ผลสอบ');
     window.XLSX.writeFile(wb, 'HMA_' + fname + '_' + date + '.xlsx');
     showToast('✅ Export Excel ' + person + ' สำเร็จ');
   } else {
-    const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ชื่อ','เลขประชาชน','ตำแหน่ง'];
-    const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, r.out, person, r.nid, r.pos]);
+    const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ออกจากหน้าจอ','ชื่อ','เลขประชาชน','ตำแหน่ง'];
+    const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]);
     const csv = [headers,...csvRows].map(row=>row.map(csvCell).join(',')).join('\n');
     const blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -4512,6 +4544,7 @@ function saveResultSnapshot(){
       score: s.score, outcome: s.outcome, raw: s.raw, maxP: s.maxP,
       sections: s.sections || {}, percentile: s.percentile ?? null,
       remainSecs: s.remainSecs ?? null,
+      leaves: examLeaveCount(s.violations),
     })),
   };
   try {
@@ -4546,7 +4579,7 @@ function adminOpenScoreDash(nid){
     test: (typeof TESTS !== 'undefined' && TESTS.find(t => t.code === s.code)) ||
           { code:s.code, name:s.name, nameTH:s.nameTH, passing:s.passing, mins:s.mins },
     status:'completed', score:s.score, outcome:s.outcome, raw:s.raw, maxP:s.maxP,
-    sections:s.sections, percentile:s.percentile, remainSecs:s.remainSecs,
+    sections:s.sections, percentile:s.percentile, remainSecs:s.remainSecs, leaves:s.leaves,
   }));
   adminViewingResults = true;
   if (typeof closeModal === 'function') closeModal('mod-indiv-pdf');
