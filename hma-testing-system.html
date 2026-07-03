@@ -2214,6 +2214,7 @@ function getLiveRows() {
       score: s.score,
       out:   s.outcome,
       pos:   applicant.pos,
+      passing: s.test.passing ?? null,
       // Live session → count its violations; admin-reconstructed session (from a
       // snapshot) already carries the stored count and has no violations array.
       leaves: (s.leaves != null) ? s.leaves : examLeaveCount(s.violations),
@@ -2246,6 +2247,7 @@ function getStoredRows() {
           score:    score,
           out:      outcome,
           pos:      rec.position || '',
+          passing:  (rec[`${code}_passing`] === '' || rec[`${code}_passing`] == null) ? null : rec[`${code}_passing`],
           leaves:   rec[`${code}_leaves`] ?? null,   // null = ระเบียนเก่าที่ยังไม่ได้บันทึกค่านี้
           attempt:  rec.attempt || 1,
           isStored: true,
@@ -2525,6 +2527,7 @@ function showDetailByKey(encodedKey) {
   document.getElementById('mod-body').innerHTML = rows.map(s=>{
     const pill=s.out==='P'?'<span class="badge b-pass">✓ ผ่าน</span>':'<span class="badge b-fail">✗ ไม่ผ่าน</span>';
     const c=s.out==='P'?'var(--teal)':'var(--red)';
+    const passVal = (s.passing != null) ? s.passing : (((typeof TESTS!=='undefined' && TESTS.find(t=>t.code===s.test)) || {}).passing);
     return `<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:14px;margin-bottom:10px${s.isLive?';border-color:var(--teal-b);background:var(--teal-l)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-weight:600;font-size:13px">${esc(s.test)}</span>${pill}
@@ -2534,7 +2537,12 @@ function showDetailByKey(encodedKey) {
         <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">เวลาที่ใช้</div><div>${esc(s.time)}</div></div>
         <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">วันที่สอบ</div><div style="font-size:12px">${esc(s.date)}</div></div>
       </div>
-      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--gray-200);font-size:12px;display:flex;align-items:center;gap:6px">
+      <div style="margin-top:10px;font-size:12px;display:flex;align-items:center;gap:6px">
+        <span style="color:var(--gray-400)">เกณฑ์ผ่าน:</span>
+        <strong style="color:var(--gray-700)">${passVal != null ? passVal + ' คะแนน' : '—'}</strong>
+        <span style="color:${c};font-weight:600">${s.out==='P' ? '· ผ่านเกณฑ์' : '· ไม่ผ่านเกณฑ์'}</span>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--gray-200);font-size:12px;display:flex;align-items:center;gap:6px">
         <span style="color:var(--gray-400)">ออกจากหน้าสอบระหว่างทำ:</span> ${leaveBadgeHtml(s.leaves)}
       </div>
     </div>`;
@@ -2582,6 +2590,7 @@ document.querySelector('#p-register .alert-info').style.display='flex';
       <div style="display:flex;gap:6px;flex-wrap:wrap" id="qe-tabs"></div>
       <button class="btn btn-secondary btn-sm" onclick="addQuestion()" style="margin-left:auto">＋ เพิ่มข้อสอบ</button>
     </div>
+    <div id="qe-meta" style="margin-bottom:16px"></div>
     <div id="qe-list"></div>
   </div>
 </div>
@@ -2946,6 +2955,7 @@ function buildExamRecord() {
       row[`${s.test.code}_outcome`] = s.outcome;
       row[`${s.test.code}_correct`] = s.raw   ?? '';
       row[`${s.test.code}_total`]   = s.maxP  ?? '';
+      row[`${s.test.code}_passing`] = s.test.passing ?? '';
       row[`${s.test.code}_leaves`]  = examLeaveCount(s.violations);
       // time used
       if (s.remainSecs != null) {
@@ -3250,6 +3260,20 @@ function renderQuestionEditor() {
     }).join('')
     + `<button class="btn btn-sm btn-secondary" style="border-style:dashed" onclick="addTestCategory()" title="เพิ่มหมวดหมู่ข้อสอบใหม่">＋ หมวดหมู่</button>`
     + (isCustom ? `<button class="btn btn-sm" style="background:var(--red-l);color:var(--red)" onclick="deleteTestCategory('${qeActiveSet}')" title="ลบหมวดหมู่นี้">🗑 ลบหมวด ${qeActiveSet}</button>` : '');
+  // Per-test passing criteria (editable) — shown in the candidate report so the
+  // final-round committee sees the threshold and whether each test passed it.
+  const tdef = TESTS.find(t => t.code === qeActiveSet) || {};
+  const metaEl = document.getElementById('qe-meta');
+  if (metaEl) {
+    metaEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:12px 14px">
+      <label style="font-size:13px;font-weight:600;color:var(--gray-700)">เกณฑ์ผ่านของชุด ${qeActiveSet}:</label>
+      <input type="number" min="0" max="100" step="1" value="${tdef.passing != null ? tdef.passing : 70}"
+        oninput="qeSetPassing(this.value)"
+        style="width:80px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit;text-align:center">
+      <span style="font-size:13px;color:var(--gray-500)">คะแนน (จาก 100)</span>
+      <span style="font-size:11px;color:var(--gray-400);margin-left:auto">ผู้สมัครที่ได้คะแนนถึงเกณฑ์นี้จะแสดงผลเป็น “ผ่าน” · กด 💾 บันทึก เพื่อจัดเก็บ</span>
+    </div>`;
+  }
   // List
   const qs = EQ[qeActiveSet];
   document.getElementById('qe-list').innerHTML = qs.map((q, i) => {
@@ -3326,6 +3350,24 @@ function renderQuestionEditor() {
 }
 
 function qeSwitch(code) { qeActiveSet=code; renderQuestionEditor(); }
+// Edit the active test's passing criteria (0–100). Applied live so the report
+// and scoring reflect it immediately; persisted when the admin presses 💾 บันทึก.
+function qeSetPassing(v) {
+  const t = TESTS.find(x => x.code === qeActiveSet);
+  if (!t) return;
+  let n = parseInt(v, 10);
+  if (isNaN(n)) return;
+  t.passing = Math.min(100, Math.max(0, n));
+}
+// Persist every test's passing threshold (built-in + custom) so it survives
+// reload and can be applied on other devices via the cloud.
+function saveTestPassing() {
+  try {
+    const map = {};
+    TESTS.forEach(t => { if (t.passing != null) map[t.code] = t.passing; });
+    localStorage.setItem('hma_test_passing', JSON.stringify(map));
+  } catch(e){}
+}
 function qeToggle(i) { const b=document.getElementById(`qe-body-${i}`); b.classList.toggle('open'); }
 function qeSetQ(i,v)          { getEditQ()[qeActiveSet][i].q=v; }
 function qeSetExp(i,v)        { getEditQ()[qeActiveSet][i].exp=v; }
@@ -3458,6 +3500,9 @@ function saveQuestions() {
     });
   });
   try { localStorage.setItem('hma_custom_questions', JSON.stringify(EQ)); } catch(e){}
+  // Persist passing-criteria edits (built-in + custom) alongside the questions.
+  saveTestPassing();
+  saveCustomTests();
   // Sync the bank to the cloud so other devices/candidates get the changes
   if (typeof cloudSaveQuestionBank === 'function' && cloudEnabled() && cloudSignedIn()) {
     cloudSaveQuestionBank().then(res => {
@@ -3479,6 +3524,12 @@ try {
       if (!ALL_QUESTIONS[t.code]) ALL_QUESTIONS[t.code] = [];
     }
   });
+} catch(e){}
+
+// Apply admin-edited passing thresholds (built-in + custom) after all tests exist.
+try {
+  const pass = JSON.parse(localStorage.getItem('hma_test_passing') || '{}');
+  TESTS.forEach(t => { if (pass[t.code] != null) t.passing = pass[t.code]; });
 } catch(e){}
 
 // Load saved questions on startup (normalise to opts schema)
@@ -4198,6 +4249,7 @@ function showIndivPdf(encodedKey) {
     ${rows.map(r => {
       const c = r.out==='P' ? 'var(--teal)' : 'var(--red)';
       const pill = r.out==='P' ? '<span class="badge b-pass">✓ ผ่าน</span>' : '<span class="badge b-fail">✗ ไม่ผ่าน</span>';
+      const passVal = (r.passing != null) ? r.passing : (((typeof TESTS!=='undefined' && TESTS.find(t=>t.code===r.test)) || {}).passing);
       return `<div style="border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span style="font-weight:600;font-size:13px">${esc(r.test)}</span>${pill}
@@ -4208,6 +4260,11 @@ function showIndivPdf(encodedKey) {
           <div><div style="font-size:11px;color:var(--gray-400);margin-bottom:1px">วันที่สอบ</div><div style="font-size:11px">${esc(r.date)}</div></div>
         </div>
         <div style="margin-top:8px;font-size:11.5px;display:flex;align-items:center;gap:6px">
+          <span style="color:var(--gray-400)">เกณฑ์ผ่าน:</span>
+          <strong style="color:var(--gray-700)">${passVal != null ? passVal + ' คะแนน' : '—'}</strong>
+          <span style="color:${c};font-weight:600">${r.out==='P' ? '· ผ่านเกณฑ์' : '· ไม่ผ่านเกณฑ์'}</span>
+        </div>
+        <div style="margin-top:6px;font-size:11.5px;display:flex;align-items:center;gap:6px">
           <span style="color:var(--gray-400)">ออกจากหน้าสอบระหว่างทำ:</span> ${leaveBadgeHtml(r.leaves)}
         </div>
       </div>`;
@@ -4215,6 +4272,14 @@ function showIndivPdf(encodedKey) {
     <p style="font-size:11px;color:var(--gray-400);margin-top:8px;text-align:right">สร้างเมื่อ: ${new Date().toLocaleString('th-TH')}</p>
   `;
   openModal('mod-indiv-pdf');
+}
+
+// Passing threshold for an export row: the value stored at submit time, or the
+// test's current passing as a fallback for older records, or '' if unknown.
+function indivPassing(r) {
+  if (r.passing != null) return r.passing;
+  const t = (typeof TESTS !== 'undefined' && TESTS.find(x => x.code === r.test)) || {};
+  return t.passing != null ? t.passing : '';
 }
 
 function downloadIndivCSV() {
@@ -4229,18 +4294,18 @@ function downloadIndivCSV() {
       [person + ' — ผลการสอบ','','','','','','',''],
       ['เลขประชาชน: ' + rows[0].nid,'','','','','','',''],
       [],
-      ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ออกจากหน้าจอ','ชื่อ-สกุล','เลขประชาชน','ตำแหน่ง'],
-      ...rows.map(r=>[r.test, r.date, r.time, r.score, r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]),
+      ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ-สกุล','เลขประชาชน','ตำแหน่ง'],
+      ...rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]),
     ];
     const ws = window.XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:10},{wch:18},{wch:12},{wch:8},{wch:6},{wch:12},{wch:20},{wch:14},{wch:18}];
+    ws['!cols'] = [{wch:10},{wch:18},{wch:12},{wch:8},{wch:10},{wch:6},{wch:12},{wch:20},{wch:14},{wch:18}];
     ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:4}},{s:{r:1,c:0},e:{r:1,c:4}}];
     window.XLSX.utils.book_append_sheet(wb, ws, 'ผลสอบ');
     window.XLSX.writeFile(wb, 'HMA_' + fname + '_' + date + '.xlsx');
     showToast('✅ Export Excel ' + person + ' สำเร็จ');
   } else {
-    const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','ผล','ออกจากหน้าจอ','ชื่อ','เลขประชาชน','ตำแหน่ง'];
-    const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]);
+    const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ','เลขประชาชน','ตำแหน่ง'];
+    const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]);
     const csv = [headers,...csvRows].map(row=>row.map(csvCell).join(',')).join('\n');
     const blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -4778,9 +4843,12 @@ async function cloudSaveQuestionBank(){
 
   let settingsOk = false, bankOk = false;
   try {
+    const testPassing = {};
+    TESTS.forEach(t => { if (t.passing != null) testPassing[t.code] = t.passing; });
     await db.collection('config').doc('settings').set({
       customTests: JSON.stringify(customTests),
       positionPresets: JSON.stringify(positionPresets),
+      testPassing: JSON.stringify(testPassing),
       updatedAt: stamp
     }, { merge: true });
     settingsOk = true;
@@ -4836,6 +4904,12 @@ async function cloudLoadQuestionBank(){
           try { localStorage.setItem('hma_position_presets', JSON.stringify(presets)); } catch(e){}
           if (typeof populatePositionTypes === 'function' && document.getElementById('p-register') && document.getElementById('p-register').classList.contains('active')) populatePositionTypes();
         }
+      }
+      // Admin-edited passing thresholds (per test), applied to built-in + custom.
+      if (d.testPassing !== undefined) {
+        const pass = _parseMaybe(d.testPassing, {}) || {};
+        TESTS.forEach(t => { if (pass[t.code] != null) t.passing = pass[t.code]; });
+        try { localStorage.setItem('hma_test_passing', JSON.stringify(pass)); } catch(e){}
       }
       loaded = true;
     }
