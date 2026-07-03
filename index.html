@@ -3986,12 +3986,12 @@ function deleteUser(i) {
 let pendingTestIdx = null;
 
 const DEFAULT_INSTRUCTIONS = {
-  IQ:      { title:'คำชี้แจงการสอบ — Cognitive Ability', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 15 ข้อ เวลา 18 นาที\n• ครอบคลุม Verbal, Numerical, Logical และ Abstract reasoning\n• ทุกข้อมีคำตอบถูกต้องเพียงข้อเดียว\n• ห้ามใช้เครื่องคิดเลข — ใช้การคิดในใจ\n• เกณฑ์ผ่าน: 70 คะแนนขึ้นไป', image:null },
-  EQ:      { title:'คำชี้แจงการสอบ — Emotional Intelligence (SJT)', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 12 ข้อ เวลา 12 นาที\n• แต่ละข้อเป็น Situational Judgement — ตัวเลือกให้คะแนน 0–2\n• เลือกการตอบสนองที่ดีที่สุดตามที่คุณจะทำจริง\n• เกณฑ์ผ่าน: 70 คะแนนขึ้นไป', image:null },
-  ENGLISH: { title:'คำชี้แจงการสอบ — Business English', body:'📋 Instructions\n\n• This test has 15 items, 22 minutes\n• Covers Grammar (B1–C1), Vocabulary, and Reading passages\n• Choose the single best answer for each item\n• For reading items, base your answers only on the passage\n• Passing score: 70 points or above', image:null },
-  AQ:      { title:'คำชี้แจงการสอบ — Adversity Quotient', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 12 ข้อ เวลา 12 นาที\n• วัด CORE: Control, Ownership, Reach, Endurance\n• ตัวเลือกให้คะแนน 0–2 ตามระดับ AQ\n• เกณฑ์ผ่าน: 70 คะแนนขึ้นไป', image:null },
-  LEADER:  { title:'คำชี้แจงการสอบ — Leadership Potential', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 12 ข้อ เวลา 12 นาที\n• เลือกการตอบสนองที่ดีที่สุดในฐานะผู้นำทีม\n• ตัวเลือกให้คะแนน 0–2 ตามระดับภาวะผู้นำ\n• เกณฑ์ผ่าน: 70 คะแนนขึ้นไป', image:null },
-  EXCEL:   { title:'คำชี้แจงการสอบ — Microsoft Excel', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 16 ข้อ เวลา 16 นาที\n• ครอบคลุม Basic → Intermediate → Advanced\n• เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว\n• เกณฑ์ผ่าน: 70 คะแนนขึ้นไป', image:null },
+  IQ:      { title:'คำชี้แจงการสอบ — Cognitive Ability', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 15 ข้อ เวลา 18 นาที\n• ครอบคลุม Verbal, Numerical, Logical และ Abstract reasoning\n• ทุกข้อมีคำตอบถูกต้องเพียงข้อเดียว\n• ห้ามใช้เครื่องคิดเลข — ใช้การคิดในใจ', image:null },
+  EQ:      { title:'คำชี้แจงการสอบ — Emotional Intelligence (SJT)', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 12 ข้อ เวลา 12 นาที\n• แต่ละข้อเป็น Situational Judgement — ตัวเลือกให้คะแนน 0–2\n• เลือกการตอบสนองที่ดีที่สุดตามที่คุณจะทำจริง', image:null },
+  ENGLISH: { title:'คำชี้แจงการสอบ — Business English', body:'📋 Instructions\n\n• This test has 15 items, 22 minutes\n• Covers Grammar (B1–C1), Vocabulary, and Reading passages\n• Choose the single best answer for each item\n• For reading items, base your answers only on the passage', image:null },
+  AQ:      { title:'คำชี้แจงการสอบ — Adversity Quotient', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 12 ข้อ เวลา 12 นาที\n• วัด CORE: Control, Ownership, Reach, Endurance\n• ตัวเลือกให้คะแนน 0–2 ตามระดับ AQ', image:null },
+  LEADER:  { title:'คำชี้แจงการสอบ — Leadership Potential', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 12 ข้อ เวลา 12 นาที\n• เลือกการตอบสนองที่ดีที่สุดในฐานะผู้นำทีม\n• ตัวเลือกให้คะแนน 0–2 ตามระดับภาวะผู้นำ', image:null },
+  EXCEL:   { title:'คำชี้แจงการสอบ — Microsoft Excel', body:'📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี 16 ข้อ เวลา 16 นาที\n• ครอบคลุม Basic → Intermediate → Advanced\n• เลือกคำตอบที่ถูกต้องที่สุดเพียงข้อเดียว', image:null },
 };
 
 function getInstructions() {
@@ -4026,41 +4026,17 @@ function showIntro(test, instr) {
   document.getElementById('intro-brand').textContent = (LANG==='th' ? (test.nameTH||test.name) : test.name);
   document.getElementById('intro-title').textContent = instr.title || t18n('intro_default_title');
 
-  // Build rich body from test metadata + custom instr
-  const qs = ALL_QUESTIONS[test.code] || [];
-  const diffMix = qs.reduce((a,q)=>{a[q.diff]=(a[q.diff]||0)+1;return a;},{});
-  let bodyHtml = '';
-
-  // Specs row
-  bodyHtml += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:1px;background:var(--gray-200);border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:18px">
-    <div style="background:var(--white);padding:12px 14px"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);margin-bottom:3px">${t18n('intro_specs_q')}</div><div style="font-size:18px;font-weight:600;font-variant-numeric:tabular-nums">${qs.length}</div></div>
-    <div style="background:var(--white);padding:12px 14px"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);margin-bottom:3px">${t18n('intro_specs_t')}</div><div style="font-size:18px;font-weight:600;font-variant-numeric:tabular-nums">${test.mins}:00</div></div>
-    <div style="background:var(--white);padding:12px 14px"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);margin-bottom:3px">${t18n('intro_specs_s')}</div><div style="font-size:14px;font-weight:600">${test.graded?t18n('intro_graded'):t18n('intro_binary')}</div></div>
-    <div style="background:var(--white);padding:12px 14px"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);margin-bottom:3px">${t18n('intro_specs_d')}</div><div style="font-size:16px;font-weight:600">${diffMix.E||0}·${diffMix.M||0}·${diffMix.H||0}</div></div>
-  </div>`;
-
-  // Standard / desc
-  const introStd = (LANG==='th' && test.standardTH) ? test.standardTH : test.standard;
-  if (introStd) bodyHtml += `<p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;line-height:1.6">${introStd}</p>`;
-
-  // Rules
-  const introRules = (LANG==='th' && test.rulesTH && test.rulesTH.length) ? test.rulesTH : test.rules;
-  if (introRules && introRules.length) {
-    bodyHtml += `<ul style="list-style:none;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">`;
-    introRules.forEach(r => {
-      bodyHtml += `<li style="display:flex;gap:10px;font-size:14px;color:var(--gray-700);align-items:flex-start">
-        <span style="flex:0 0 6px;height:6px;border-radius:50%;background:var(--teal);margin-top:8px"></span>
-        ${r}
-      </li>`;
-    });
-    bodyHtml += `</ul>`;
-  }
-
-  // Custom instruction body (if any)
-  if (instr.body) bodyHtml += `<div style="white-space:pre-line;font-size:13px;color:var(--gray-600);padding:12px;background:var(--gray-50);border-radius:8px;margin-bottom:12px">${instr.body}</div>`;
+  // The intro page is entirely admin-authored: show ONLY the instruction the
+  // admin entered in the Instruction editor (body + optional image). No
+  // auto-generated specs row, no test-standard/reference blurb, no hardcoded
+  // rules, and no passing-score line — those could not be edited and some were
+  // leading, so they've been removed.
+  const bodyHtml = instr.body
+    ? `<div style="white-space:pre-line;font-size:14px;color:var(--gray-700);line-height:1.7">${instr.body}</div>`
+    : '';
 
   document.getElementById('intro-body').innerHTML = bodyHtml;
-  document.getElementById('intro-meta').textContent  = `${test.mins} ${t18n('unit_min')} · ${t18n('intro_pass')} ${test.passing}`;
+  document.getElementById('intro-meta').textContent = '';
   const imgWrap = document.getElementById('intro-img-wrap');
   imgWrap.innerHTML = instr.image
     ? `<img src="${instr.image}" class="instruction-img" alt="รูปประกอบ">`
@@ -4099,11 +4075,12 @@ let instrActiveSet = 'IQ';
 // A helpful starting instruction for tests that have none saved yet (incl. custom)
 function defaultInstrBody(t) {
   if (!t) return '';
-  const rules = (t.rules || []).map(r => '• ' + r).join('\n');
   const n = (ALL_QUESTIONS[t.code] || []).length;
+  // Neutral starter only — the admin edits everything shown to the candidate.
+  // No leading references and no passing-score line.
   return '📋 คำแนะนำ\n\n• ข้อสอบชุดนี้มี ' + n + ' ข้อ เวลา ' + (t.mins || '-') + ' นาที\n'
-       + (rules ? rules + '\n' : '')
-       + '• เกณฑ์ผ่าน: ' + (t.passing != null ? t.passing : 70) + ' คะแนนขึ้นไป';
+       + '• เลือกคำตอบที่ดีที่สุดในแต่ละข้อ\n'
+       + '• สามารถย้อนกลับไปแก้คำตอบได้ก่อนส่ง';
 }
 function renderInstructionEditor() {
   const instr = getInstructions();
