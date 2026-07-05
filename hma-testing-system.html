@@ -165,7 +165,10 @@
 [data-theme="dark"] .role-hr         { background: var(--teal-l); color: var(--teal); }
 [data-theme="dark"] .role-viewer     { background: var(--gray-200); color: var(--gray-500); }
 [data-theme="dark"] .user-row        { border-color: var(--gray-200); }
-[data-theme="dark"] .permission-tag  { color: var(--gray-400); }
+[data-theme="dark"] .perm-chip       { background: var(--teal-l); color: var(--teal); }
+[data-theme="dark"] .perm-chip.off   { background: var(--gray-100); color: var(--gray-400); }
+[data-theme="dark"] .pm-table thead th { background: var(--gray-100); }
+[data-theme="dark"] .pm-slider       { background: var(--gray-200); }
 [data-theme="dark"] .pr-track        { background: var(--gray-200); }
 [data-theme="dark"] #toast { background: #f1f3f5; color: #0d0f14; }
 [data-theme="dark"] .fab-btn.fab-fs  { background: var(--gray-200); color: var(--gray-900); }
@@ -347,6 +350,36 @@ tr:last-child td{border-bottom:none}
 .pr-track{flex:1;height:7px;background:var(--gray-100);border-radius:3px;overflow:hidden}
 .pr-fill{height:100%;border-radius:3px;transition:width .6s}
 .pr-pct{font-size:11px;font-weight:600;width:28px}
+
+/* ── Roles & permissions ── */
+.role-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1.4}
+.role-superadmin{background:#fef3c7;color:#92600a}
+.role-admin{background:#dbeafe;color:#1e40af}
+.role-hr{background:#d1fae5;color:#047857}
+.role-viewer{background:#e5e7eb;color:#4b5563}
+.user-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid var(--gray-100)}
+.user-row:last-child{border-bottom:none}
+.permission-tag{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.perm-chip{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:500;padding:2px 7px;border-radius:12px;background:var(--teal-l);color:var(--teal)}
+.perm-chip.off{background:var(--gray-100);color:var(--gray-400)}
+/* permission matrix */
+.pm-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px}
+.pm-table th,.pm-table td{padding:11px 8px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+.pm-table thead th{position:sticky;top:0;background:var(--gray-50);font-size:11px;text-transform:none}
+.pm-table th:first-child,.pm-table td:first-child{text-align:left;padding-left:2px}
+.pm-table th:not(:first-child),.pm-table td:not(:first-child){text-align:center;width:96px}
+.pm-feat-name{font-weight:600;color:var(--gray-900);font-size:13px;display:flex;align-items:center;gap:7px}
+.pm-feat-pages{font-size:11px;color:var(--gray-400);margin-top:3px;padding-left:24px;line-height:1.45}
+.pm-col-head{display:flex;flex-direction:column;align-items:center;gap:4px}
+.pm-lock{font-size:10px;color:var(--gray-400)}
+/* toggle switch */
+.pm-switch{position:relative;display:inline-block;width:40px;height:22px}
+.pm-switch input{opacity:0;width:0;height:0;position:absolute}
+.pm-slider{position:absolute;inset:0;background:var(--gray-200);border-radius:20px;transition:.2s;cursor:pointer}
+.pm-slider::before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.pm-switch input:checked+.pm-slider{background:var(--teal)}
+.pm-switch input:checked+.pm-slider::before{transform:translateX(18px)}
+.pm-switch input:disabled+.pm-slider{cursor:not-allowed;opacity:.55}
 
 /* ── Landing ── */
 .landing-card{cursor:pointer;transition:box-shadow .15s,transform .15s;text-align:center;padding:28px 20px}
@@ -2643,31 +2676,26 @@ document.querySelector('#p-register .alert-info').style.display='flex';
       <button class="btn btn-secondary btn-sm" onclick="nav('p-admin')">← กลับ</button>
     </div>
   </div>
-  <div class="main" style="max-width:640px">
-    <!-- Role legend -->
-    <div class="card" style="margin-bottom:12px;padding:14px">
-      <p style="font-size:12px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">ระดับสิทธิ์</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div style="background:var(--gray-50);border-radius:var(--radius);padding:10px">
-          <span class="role-badge role-superadmin">👑 Super Admin</span>
-          <p style="font-size:11px;color:var(--gray-400);margin-top:5px">จัดการทุกอย่าง รวมถึงเพิ่ม/ลบ Admin และแก้ไขข้อสอบ</p>
+  <div class="main" style="max-width:860px">
+    <!-- Permission matrix (feature access per role) -->
+    <div class="card" style="margin-bottom:14px;padding:18px 20px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--gray-900);display:flex;align-items:center;gap:7px">🔐 สิทธิ์การเข้าถึงฟีเจอร์</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-top:3px;line-height:1.5">เลือกว่าผู้ดูแลแต่ละระดับใช้ฟีเจอร์ใดได้บ้าง — เปลี่ยนแล้ว<strong>มีผลทันที</strong></div>
         </div>
-        <div style="background:var(--gray-50);border-radius:var(--radius);padding:10px">
-          <span class="role-badge role-admin">🔧 Admin</span>
-          <p style="font-size:11px;color:var(--gray-400);margin-top:5px">ดูผล Export CSV แก้ไขข้อสอบ ไม่สามารถจัดการ User ได้</p>
-        </div>
-        <div style="background:var(--gray-50);border-radius:var(--radius);padding:10px">
-          <span class="role-badge role-hr">👤 HR</span>
-          <p style="font-size:11px;color:var(--gray-400);margin-top:5px">ดูผลและ Export CSV เท่านั้น ไม่แก้ไขข้อสอบ</p>
-        </div>
-        <div style="background:var(--gray-50);border-radius:var(--radius);padding:10px">
-          <span class="role-badge role-viewer">👁 Viewer</span>
-          <p style="font-size:11px;color:var(--gray-400);margin-top:5px">ดูผลได้อย่างเดียว ไม่ Export ไม่แก้ไขได้</p>
-        </div>
+        <button class="btn btn-secondary btn-sm" onclick="resetRolePerms()" id="perm-reset-btn">↺ คืนค่าเริ่มต้น</button>
+      </div>
+      <div id="perm-readonly-note" class="alert alert-info" style="display:none;align-items:center;gap:8px;margin-top:12px;font-size:12.5px">
+        <span>👁</span><span>คุณดูสิทธิ์ได้อย่างเดียว — เฉพาะ <strong>Super Admin</strong> เท่านั้นที่ปรับสิทธิ์ได้</span>
+      </div>
+      <div style="overflow-x:auto;margin-top:14px">
+        <div id="perm-matrix"></div>
       </div>
     </div>
     <!-- User list -->
-    <div class="card" style="padding:0 20px" id="collab-list"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;margin:0 4px 8px">บัญชีผู้ดูแลระบบ</div>
+    <div class="card" style="padding:4px 20px" id="collab-list"></div>
   </div>
 </div>
 
@@ -3843,11 +3871,57 @@ function discardResume() {
 // ② ADMIN COLLAB + ROLES
 // ═══════════════════════════════════════════════════════════
 const ROLE_INFO = {
-  superadmin: { label:'👑 Super Admin', cls:'role-superadmin', canExport:true,  canEditQ:true,  canManageUsers:true,  canDelete:true  },
-  admin:      { label:'🔧 Admin',       cls:'role-admin',      canExport:true,  canEditQ:true,  canManageUsers:false, canDelete:false },
-  hr:         { label:'👤 HR',          cls:'role-hr',         canExport:true,  canEditQ:false, canManageUsers:false, canDelete:false },
-  viewer:     { label:'👁 Viewer',      cls:'role-viewer',     canExport:false, canEditQ:false, canManageUsers:false, canDelete:false },
+  superadmin: { label:'👑 Super Admin', cls:'role-superadmin', canExport:true,  canEditQ:true,  canManagePos:true,  canManageUsers:true,  canDelete:true  },
+  admin:      { label:'🔧 Admin',       cls:'role-admin',      canExport:true,  canEditQ:true,  canManagePos:true,  canManageUsers:false, canDelete:false },
+  hr:         { label:'👤 HR',          cls:'role-hr',         canExport:true,  canEditQ:false, canManagePos:false, canManageUsers:false, canDelete:false },
+  viewer:     { label:'👁 Viewer',      cls:'role-viewer',     canExport:false, canEditQ:false, canManagePos:false, canManageUsers:false, canDelete:false },
 };
+
+// ── Configurable feature map: each capability → which pages/actions it unlocks ──
+// Super Admin can turn these on/off per role in the "จัดการทีม" screen.
+const FEATURES = [
+  { key:'canEditQ',       icon:'✏️', short:'แก้ข้อสอบ',    label:'จัดการข้อสอบ & คำแนะนำ', pages:'หน้า “จัดการข้อสอบ” และ “จัดการคำแนะนำ”' },
+  { key:'canManagePos',   icon:'🎯', short:'ตั้งค่าตำแหน่ง', label:'ตั้งค่าชุดสอบตามตำแหน่ง', pages:'หน้า “ชุดสอบ/ตำแหน่ง”' },
+  { key:'canExport',      icon:'📊', short:'Export',       label:'Export ผลการทดสอบ',      pages:'ปุ่ม “Export Excel”, ดาวน์โหลด CSV / PDF' },
+  { key:'canManageUsers', icon:'👥', short:'จัดการทีม',    label:'จัดการผู้ดูแลระบบ',       pages:'หน้า “จัดการทีม” — เพิ่ม / แก้ไข / ลบผู้ดูแล' },
+  { key:'canDelete',      icon:'🗑️', short:'ลบข้อมูล',      label:'ลบข้อมูลผู้สมัคร',        pages:'ปุ่ม “ลบ” ในตารางผลการทดสอบ' },
+];
+
+// Editable roles (Super Admin is always full-access and cannot be limited).
+const EDITABLE_ROLES = ['admin','hr','viewer'];
+
+// Baseline permissions — restored by "คืนค่าเริ่มต้น".
+const DEFAULT_ROLE_PERMS = {
+  admin:  { canEditQ:true,  canManagePos:true,  canExport:true,  canManageUsers:false, canDelete:false },
+  hr:     { canEditQ:false, canManagePos:false, canExport:true,  canManageUsers:false, canDelete:false },
+  viewer: { canEditQ:false, canManagePos:false, canExport:false, canManageUsers:false, canDelete:false },
+};
+
+function getRolePerms() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('hma_role_perms') || '{}') || {}; } catch(e) { saved = {}; }
+  const out = {};
+  EDITABLE_ROLES.forEach(r => {
+    out[r] = {};
+    FEATURES.forEach(f => {
+      out[r][f.key] = (saved[r] && typeof saved[r][f.key] === 'boolean')
+        ? saved[r][f.key]
+        : !!DEFAULT_ROLE_PERMS[r][f.key];
+    });
+  });
+  return out;
+}
+function saveRolePerms(rp) {
+  try { localStorage.setItem('hma_role_perms', JSON.stringify(rp)); } catch(e) {}
+}
+
+// Push the stored config into the live ROLE_INFO used by every permission check.
+function applyRolePerms() {
+  const rp = getRolePerms();
+  EDITABLE_ROLES.forEach(r => { FEATURES.forEach(f => { ROLE_INFO[r][f.key] = !!rp[r][f.key]; }); });
+  FEATURES.forEach(f => { ROLE_INFO.superadmin[f.key] = true; });  // Super Admin: always all
+}
+applyRolePerms();
 
 const DEFAULT_ADMIN_USERS = [
   { name:'Super Admin', username:'admin',  password:'Hino@HMA-2026#R7vq',  role:'superadmin' },
@@ -3938,27 +4012,101 @@ function admGo(pageId){ toggleAdminSidebar(false); nav(pageId); }
 function admExport(btn){ exportAdminPDF(btn); }
 
 function renderCollabPage() {
+  renderPermMatrix();
   const users = getAdminUsers();
   document.getElementById('collab-list').innerHTML = users.map((u, i) => {
     const role = ROLE_INFO[u.role] || ROLE_INFO.viewer;
     const isSelf = currentAdmin && u.username === currentAdmin.username;
     const canEdit = currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers && !isSelf;
+    const chips = FEATURES.map(f =>
+      role[f.key]
+        ? `<span class="perm-chip">${f.icon} ${f.short}</span>`
+        : `<span class="perm-chip off">${f.short}</span>`
+    ).join('');
     return `<div class="user-row">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="avatar" style="background:var(--gray-100);color:var(--gray-500);width:34px;height:34px;font-size:14px">${u.name.charAt(0)}</div>
-        <div>
-          <div style="font-weight:500;font-size:13px">${u.name} ${isSelf ? '<span style="font-size:11px;color:var(--teal)">(คุณ)</span>' : ''}</div>
+      <div style="display:flex;align-items:flex-start;gap:10px;min-width:0">
+        <div class="avatar" style="background:var(--gray-100);color:var(--gray-500);width:34px;height:34px;font-size:14px;margin-top:1px">${u.name.charAt(0)}</div>
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:13px">${u.name} ${isSelf ? '<span style="font-size:11px;color:var(--teal)">(คุณ)</span>' : ''}</div>
           <div style="font-size:12px;color:var(--gray-400)">@${u.username}</div>
-          <div class="permission-tag">${ROLE_INFO[u.role]?.canEditQ?'✓ แก้ข้อสอบ':'—'} · ${ROLE_INFO[u.role]?.canExport?'✓ Export':'—'} · ${ROLE_INFO[u.role]?.canManageUsers?'✓ จัดการ User':'—'}</div>
+          <div class="permission-tag">${chips}</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <span class="role-badge ${role.cls}">${role.label}</span>
         ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="editUser(${i})">แก้ไข</button>
         <button class="btn btn-sm" style="background:var(--red-l);color:var(--red)" onclick="deleteUser(${i})">ลบ</button>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+// ── Permission matrix: features × roles, editable by Super Admin ──
+function renderPermMatrix() {
+  const host = document.getElementById('perm-matrix');
+  if (!host) return;
+  const editable = !!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers);
+  const roleCols = ['superadmin', ...EDITABLE_ROLES];
+
+  const note = document.getElementById('perm-readonly-note');
+  if (note) note.style.display = editable ? 'none' : 'flex';
+  const resetBtn = document.getElementById('perm-reset-btn');
+  if (resetBtn) resetBtn.style.display = editable ? '' : 'none';
+
+  const head = roleCols.map(r => {
+    const ri = ROLE_INFO[r];
+    const lock = r === 'superadmin' ? '<span class="pm-lock">🔒 เต็มสิทธิ์</span>' : '';
+    return `<th><div class="pm-col-head"><span class="role-badge ${ri.cls}">${ri.label}</span>${lock}</div></th>`;
+  }).join('');
+
+  const rows = FEATURES.map(f => {
+    const cells = roleCols.map(r => {
+      const on = !!ROLE_INFO[r][f.key];
+      const locked = (r === 'superadmin') || !editable;
+      return `<td><label class="pm-switch">
+        <input type="checkbox" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}
+          onchange="setRolePerm('${r}','${f.key}',this.checked)">
+        <span class="pm-slider"></span>
+      </label></td>`;
+    }).join('');
+    return `<tr>
+      <td>
+        <div class="pm-feat-name">${f.icon} ${f.label}</div>
+        <div class="pm-feat-pages">${f.pages}</div>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  host.innerHTML = `<table class="pm-table">
+    <thead><tr><th>ฟีเจอร์ / หน้าที่เกี่ยวข้อง</th>${head}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function setRolePerm(role, key, checked) {
+  if (!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers)) {
+    showToast('❌ ไม่มีสิทธิ์แก้ไขสิทธิ์การใช้งาน'); renderPermMatrix(); return;
+  }
+  if (role === 'superadmin' || !EDITABLE_ROLES.includes(role)) { renderPermMatrix(); return; }
+  const rp = getRolePerms();
+  rp[role][key] = !!checked;
+  saveRolePerms(rp);
+  applyRolePerms();
+  if (typeof renderAdminNav === 'function') renderAdminNav();
+  renderCollabPage();
+  const f = FEATURES.find(x => x.key === key);
+  showToast(`${checked ? '✅ เปิด' : '🚫 ปิด'} “${f ? f.label : key}” สำหรับ ${ROLE_INFO[role].label}`);
+}
+
+function resetRolePerms() {
+  if (!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers)) { showToast('❌ ไม่มีสิทธิ์'); return; }
+  if (!confirm('คืนค่าสิทธิ์ทุกระดับกลับเป็นค่าเริ่มต้น?')) return;
+  try { localStorage.removeItem('hma_role_perms'); } catch(e) {}
+  applyRolePerms();
+  if (typeof renderAdminNav === 'function') renderAdminNav();
+  renderCollabPage();
+  showToast('↺ คืนค่าสิทธิ์เริ่มต้นแล้ว');
 }
 
 function openAddUser() {
@@ -4521,7 +4669,7 @@ const NAV_ICONS = {
 const ADMIN_MENU = [
   { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')",    perm:'canEditQ' },
   { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')", perm:'canEditQ' },
-  { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')" },
+  { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')", perm:'canManagePos' },
   { key:'collab',  label:'จัดการทีม',      action:"admGo('p-collab')",             perm:'canManageUsers' },
   { key:'export',  label:'Export Excel',   action:"admExport(this)",               perm:'canExport' },
 ];
