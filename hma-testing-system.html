@@ -381,6 +381,37 @@ tr:last-child td{border-bottom:none}
 .pm-switch input:checked+.pm-slider::before{transform:translateX(18px)}
 .pm-switch input:disabled+.pm-slider{cursor:not-allowed;opacity:.55}
 
+/* ── Candidate management page ── */
+.cand-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.cand-toolbar input[type=text],.cand-toolbar select{padding:8px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--gray-900);background:var(--white);outline:none}
+.cand-toolbar input[type=text]:focus,.cand-toolbar select:focus{border-color:var(--teal)}
+.cand-toolbar .grow{flex:1;min-width:150px}
+.sel-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--teal-l);border:1px solid var(--teal-b);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px}
+.sel-bar .sel-count{font-size:13px;font-weight:600;color:var(--teal)}
+.cand-check{width:16px;height:16px;accent-color:var(--teal);cursor:pointer;vertical-align:middle}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 4px 2px}
+.pager .pg-info{font-size:12px;color:var(--gray-400)}
+.pager .pg-btns{display:flex;gap:4px;align-items:center}
+.pg-btn{min-width:32px;height:32px;padding:0 9px;border:1px solid var(--gray-200);background:var(--white);color:var(--gray-700);border-radius:var(--radius);font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit}
+.pg-btn:hover:not(:disabled){background:var(--gray-50)}
+.pg-btn.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.pg-btn:disabled{opacity:.4;cursor:not-allowed}
+.sort-ind{font-size:10px;color:var(--teal);margin-left:2px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--teal)}
+/* comparison dashboard */
+.modal-xl{max-width:920px !important}
+.cmp-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.cmp-table th,.cmp-table td{padding:9px 10px;border-bottom:1px solid var(--gray-100);text-align:center}
+.cmp-table th:first-child,.cmp-table td:first-child{text-align:left;font-weight:500;color:var(--gray-500);white-space:nowrap}
+.cmp-table thead th{background:var(--gray-50);font-size:11px;position:sticky;top:0}
+.cmp-table .best{background:var(--teal-l);color:var(--teal);font-weight:700;border-radius:4px}
+.cmp-cand-head{font-weight:600;font-size:12.5px;color:var(--gray-900)}
+[data-theme="dark"] .pg-btn{background:var(--gray-100);color:var(--gray-700);border-color:var(--gray-200)}
+[data-theme="dark"] .pg-btn:hover:not(:disabled){background:var(--gray-200)}
+[data-theme="dark"] .cmp-table thead th{background:var(--gray-100)}
+[data-theme="dark"] .cand-toolbar input[type=text],[data-theme="dark"] .cand-toolbar select{background:var(--gray-100);color:var(--gray-900);border-color:var(--gray-200)}
+
 /* ── Landing ── */
 .landing-card{cursor:pointer;transition:box-shadow .15s,transform .15s;text-align:center;padding:28px 20px}
 .landing-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1);transform:translateY(-2px)}
@@ -977,7 +1008,10 @@ textarea.q-inp:focus{border-color:var(--teal)}
           <p style="font-size:13px;font-weight:600;margin-bottom:2px">ข้อมูลผู้สมัคร</p>
           <p style="font-size:11px;color:var(--gray-400)" id="a-cand-count">—</p>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="toggleCandidates()" id="a-cand-toggle">ซ่อน ▲</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="nav('p-candidates')">⚖️ เปรียบเทียบ / จัดการ →</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleCandidates()" id="a-cand-toggle">ซ่อน ▲</button>
+        </div>
       </div>
       <div id="a-candidates-body" style="overflow-x:auto">
         <table style="min-width:860px">
@@ -1024,6 +1058,100 @@ textarea.q-inp:focus{border-color:var(--teal)}
           <tbody id="a-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     CANDIDATES — sortable / paginated / compare / bulk-delete
+══════════════════════════════════════════════ -->
+<div id="p-candidates" class="page">
+  <div class="topbar">
+    <div><div class="brand">HMA Admin</div><div class="topbar-title">ผู้สมัคร</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="nav('p-admin')">← กลับ</button>
+    </div>
+  </div>
+  <div class="main-wide">
+    <div class="card" style="padding:14px">
+      <div class="cand-toolbar">
+        <input type="text" class="grow" id="cand-search" placeholder="🔍 ค้นหาชื่อ / ตำแหน่ง / เลขบัตร..." oninput="onCandSearch()">
+        <select id="cand-sort" onchange="onCandControls()" title="เรียงตาม">
+          <option value="date">🕒 วันเวลาที่สอบ</option>
+          <option value="name">🔤 ชื่อ</option>
+          <option value="position">💼 ตำแหน่ง</option>
+          <option value="avg">📊 คะแนนเฉลี่ย</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="cand-dir" onclick="toggleCandDir()" title="สลับทิศทาง">↓ มาก→น้อย</button>
+        <select id="cand-pagesize" onchange="onCandControls()" title="ต่อหน้า">
+          <option value="10">10 / หน้า</option>
+          <option value="25">25 / หน้า</option>
+          <option value="50">50 / หน้า</option>
+        </select>
+      </div>
+      <!-- selection / bulk-action bar -->
+      <div class="sel-bar" id="cand-selbar" style="display:none">
+        <span class="sel-count" id="cand-selcount">เลือกแล้ว 0 คน</span>
+        <button class="btn btn-primary btn-sm" onclick="openCompare()">⚖️ เปรียบเทียบ</button>
+        <button class="btn btn-sm" id="cand-delbtn" style="background:var(--red-l);color:var(--red)" onclick="bulkDeleteCandidates()">🗑 ลบที่เลือก</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearCandSelection()">ล้างการเลือก</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;margin-top:12px">
+      <div style="overflow-x:auto">
+        <table style="min-width:820px">
+          <thead><tr>
+            <th style="width:34px;text-align:center"><input type="checkbox" class="cand-check" id="cand-selall" onclick="toggleCandSelectAll(this)" title="เลือกทั้งหน้า"></th>
+            <th class="sortable" onclick="setCandSort('name')">ผู้สมัคร <span class="sort-ind" id="si-name"></span></th>
+            <th class="sortable" onclick="setCandSort('position')">ตำแหน่ง <span class="sort-ind" id="si-position"></span></th>
+            <th style="text-align:center">อายุ</th>
+            <th style="text-align:center">ประสบ.(ปี)</th>
+            <th class="sortable" onclick="setCandSort('date')">วันเวลาที่สอบ <span class="sort-ind" id="si-date"></span></th>
+            <th>ผลสอบ</th>
+            <th class="sortable" style="text-align:center" onclick="setCandSort('avg')">เฉลี่ย <span class="sort-ind" id="si-avg"></span></th>
+            <th></th>
+          </tr></thead>
+          <tbody id="cand-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span class="pg-info" id="cand-pginfo">—</span>
+        <div class="pg-btns" id="cand-pgbtns"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Comparison dashboard modal -->
+<div class="overlay" id="mod-compare">
+  <div class="modal modal-xl">
+    <div class="modal-head">
+      <span style="font-weight:600">⚖️ เปรียบเทียบผู้สมัคร</span>
+      <button onclick="closeModal('mod-compare')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-400)">✕</button>
+    </div>
+    <div class="modal-body" id="cmp-body" style="max-height:70vh"></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('mod-compare')">ปิด</button>
+      <button class="btn btn-secondary" id="cmp-xlsx-btn" onclick="openExportPreview('xlsx')">📊 Export Excel</button>
+      <button class="btn btn-primary" id="cmp-pdf-btn" onclick="openExportPreview('pdf')">📄 Export PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export preview modal (preview-before-download) -->
+<div class="overlay" id="mod-export-preview">
+  <div class="modal modal-xl">
+    <div class="modal-head">
+      <span style="font-weight:600" id="exp-title">พรีวิวก่อน Export</span>
+      <button onclick="closeModal('mod-export-preview')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-400)">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh">
+      <p style="font-size:12px;color:var(--gray-400);margin-bottom:10px" id="exp-hint"></p>
+      <div id="exp-preview" style="background:#fff;color:#111;padding:18px;border-radius:8px;border:1px solid var(--gray-200)"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal('mod-export-preview')">ยกเลิก</button>
+      <button class="btn btn-primary" id="exp-confirm-btn" onclick="confirmExport()">⬇ ดาวน์โหลด</button>
     </div>
   </div>
 </div>
@@ -2466,6 +2594,365 @@ function renderCandidates() {
   }).join('');
 }
 
+// ═══════════════════════════════════════════════════════════
+// CANDIDATE MANAGEMENT PAGE — sort · filter · paginate · compare · bulk delete
+// ═══════════════════════════════════════════════════════════
+let candSort = 'date';
+let candDir  = 'desc';        // 'asc' | 'desc'
+let candPage = 1;
+let candPageSize = 10;
+let candSearch = '';
+const candSelected = new Set();   // set of national_id
+
+// Thai-locale datetime → timestamp (records saved before _ts existed). 0 when unknown.
+function parseThaiDatetime(s){
+  if (!s) return 0;
+  const m = String(s).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m){ const t = Date.parse(s); return isNaN(t) ? 0 : t; }
+  let y = Number(m[3]); if (y > 2400) y -= 543;   // Buddhist era → Gregorian
+  return new Date(y, Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]), Number(m[6]||0)).getTime();
+}
+
+// One enriched row per candidate (grouped by national_id) with latest info + computed stats.
+function getCandidateList(){
+  const CODES = allTestCodes();
+  let recs = [];
+  try { recs = JSON.parse(localStorage.getItem('hma_exam_records') || '[]'); } catch(e){ recs = []; }
+  const byNid = {};
+  recs.forEach(rec => {
+    const nid = rec.national_id || '—';
+    if (!byNid[nid]) byNid[nid] = { national_id:nid, attempts:0, _ts:0, datetime:'' };
+    const o = byNid[nid];
+    o.attempts++;
+    const ts = (rec._ts != null) ? Number(rec._ts) : parseThaiDatetime(rec.datetime);
+    if (ts >= o._ts){ o._ts = ts; o.datetime = rec.datetime || o.datetime; }
+    if (rec.name)       o.name       = rec.name;
+    if (rec.position)   o.position   = rec.position;
+    if (rec.age)        o.age        = rec.age;
+    if (rec.experience) o.experience = rec.experience;
+    if (rec.email)      o.email      = rec.email;
+    if (rec.phone)      o.phone      = rec.phone;
+    CODES.forEach(c => {
+      if (rec[c+'_score'] != null){ o[c+'_score'] = rec[c+'_score']; o[c+'_outcome'] = rec[c+'_outcome']; }
+    });
+  });
+  return Object.values(byNid).map(p => {
+    const taken  = CODES.filter(c => p[c+'_score'] != null);
+    const passed = taken.filter(c => p[c+'_outcome'] === 'P');
+    const scores = taken.map(c => Number(p[c+'_score'])).filter(n => !isNaN(n));
+    p.taken  = taken.length;
+    p.passed = passed.length;
+    p.avg    = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+    return p;
+  });
+}
+
+// Apply current search + sort.
+function getCandidateView(){
+  let list = getCandidateList();
+  const q = candSearch.trim().toLowerCase();
+  if (q) list = list.filter(p => `${p.name||''} ${p.position||''} ${p.national_id||''}`.toLowerCase().includes(q));
+  const dir = candDir === 'asc' ? 1 : -1;
+  const cmpStr = (a,b) => a < b ? -1*dir : a > b ? 1*dir : 0;
+  list.sort((a,b) => {
+    switch(candSort){
+      case 'name':     return cmpStr((a.name||'').toLowerCase(),     (b.name||'').toLowerCase());
+      case 'position': return cmpStr((a.position||'').toLowerCase(), (b.position||'').toLowerCase());
+      case 'avg':      return ((a.avg==null?-1:a.avg) - (b.avg==null?-1:b.avg)) * dir;
+      case 'date':
+      default:         return ((a._ts||0) - (b._ts||0)) * dir;
+    }
+  });
+  return list;
+}
+
+function renderCandidatesPage(){
+  const all   = getCandidateView();
+  const total = all.length;
+  const pages = Math.max(1, Math.ceil(total / candPageSize));
+  if (candPage > pages) candPage = pages;
+  const start    = (candPage-1) * candPageSize;
+  const pageRows = all.slice(start, start + candPageSize);
+  const CODES = allTestCodes();
+  const canDelete = currentAdmin && ROLE_INFO[currentAdmin.role]?.canDelete;
+  const colors = ['#E1F5EE','#FAEEDA','#E6F1FB','#FCEBEB','#EAF3DE'];
+  const textc  = ['#085041','#633806','#0C447C','#791F1F','#27500A'];
+
+  ['name','position','date','avg'].forEach(k => {
+    const el = document.getElementById('si-'+k);
+    if (el) el.textContent = candSort===k ? (candDir==='asc'?'▲':'▼') : '';
+  });
+
+  const tb = document.getElementById('cand-tbody');
+  if (!tb) return;
+  if (!total){
+    tb.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray-400);font-size:13px">ยังไม่มีข้อมูลผู้สมัคร</td></tr>`;
+  } else {
+    tb.innerHTML = pageRows.map(p => {
+      const nid  = p.national_id;
+      const init = (p.name||'?').charAt(0).toUpperCase();
+      const ci   = ((p.name||'').charCodeAt(0) + (nid||'').charCodeAt(0)) % 5;
+      const checked = candSelected.has(nid) ? 'checked' : '';
+      const pills = CODES.map(c => {
+        const sc = p[c+'_score'], out = p[c+'_outcome'];
+        if (sc == null) return `<span class="cand-test-pill cand-pend">${c}</span>`;
+        return `<span class="cand-test-pill ${out==='P'?'cand-pass':'cand-fail'}">${c} ${sc}</span>`;
+      }).join(' ');
+      const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), nid });
+      const delBtn = canDelete
+        ? `<button class="btn btn-sm" style="background:var(--red-l);color:var(--red);font-size:11px;padding:3px 8px" onclick="deleteApplicantData('${encodeURIComponent(rowKey)}')" title="ลบผู้สมัครนี้">🗑</button>`
+        : '';
+      return `<tr>
+        <td style="text-align:center"><input type="checkbox" class="cand-check" ${checked} onclick="toggleCandSelect('${esc(nid)}')"></td>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(init)}</div>
+          <div><div style="font-weight:500;font-size:13px;white-space:nowrap">${esc(p.name||'—')}</div>
+          <div style="font-size:11px;color:var(--gray-400)">${esc(nid)}</div></div>
+        </div></td>
+        <td style="font-size:12px">${esc(p.position||'—')}</td>
+        <td style="font-size:12px;text-align:center">${esc(p.age||'—')}</td>
+        <td style="font-size:12px;text-align:center">${esc(p.experience||'—')}</td>
+        <td style="font-size:12px;color:var(--gray-400);white-space:nowrap">${esc(p.datetime||'—')}</td>
+        <td style="font-size:11px;line-height:1.9">${pills}</td>
+        <td style="text-align:center;font-weight:600;color:${p.avg!=null?(p.avg>=70?'var(--pass)':'var(--red)'):'var(--gray-400)'}">${p.avg!=null?p.avg:'—'}</td>
+        <td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="showIndivPdf('${encodeURIComponent(rowKey)}')">📄 ดูผล</button> ${delBtn}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const selAll = document.getElementById('cand-selall');
+  if (selAll){ const nids = pageRows.map(p=>p.national_id); selAll.checked = nids.length>0 && nids.every(n=>candSelected.has(n)); }
+
+  const info = document.getElementById('cand-pginfo');
+  if (info) info.textContent = total ? `${start+1}–${Math.min(start+candPageSize,total)} จาก ${total} คน` : '0 คน';
+  renderCandPager(pages);
+  updateCandSelBar();
+  const delSel = document.getElementById('cand-delbtn'); if (delSel) delSel.style.display = canDelete ? '' : 'none';
+  syncCandDirLabel();
+}
+
+function renderCandPager(pages){
+  const host = document.getElementById('cand-pgbtns'); if (!host) return;
+  if (pages <= 1){ host.innerHTML=''; return; }
+  const btn = (label,pg,o={}) => `<button class="pg-btn ${o.active?'active':''}" ${o.disabled?'disabled':''} onclick="gotoCandPage(${pg})">${label}</button>`;
+  let html = btn('‹', candPage-1, {disabled:candPage<=1});
+  const win = [], from = Math.max(1,candPage-2), to = Math.min(pages,candPage+2);
+  if (from > 1){ win.push(1); if (from > 2) win.push('…'); }
+  for (let i=from;i<=to;i++) win.push(i);
+  if (to < pages){ if (to < pages-1) win.push('…'); win.push(pages); }
+  html += win.map(w => w==='…' ? `<span style="padding:0 4px;color:var(--gray-400)">…</span>` : btn(w,w,{active:w===candPage})).join('');
+  html += btn('›', candPage+1, {disabled:candPage>=pages});
+  host.innerHTML = html;
+}
+
+function gotoCandPage(n){ candPage = n; renderCandidatesPage(); }
+function onCandSearch(){ candSearch = document.getElementById('cand-search').value; candPage = 1; renderCandidatesPage(); }
+function onCandControls(){
+  candSort = document.getElementById('cand-sort').value;
+  candPageSize = Number(document.getElementById('cand-pagesize').value);
+  candPage = 1; renderCandidatesPage();
+}
+function setCandSort(k){
+  if (candSort === k){ candDir = candDir==='asc'?'desc':'asc'; }
+  else { candSort = k; candDir = (k==='name'||k==='position') ? 'asc' : 'desc'; }
+  const sel = document.getElementById('cand-sort'); if (sel) sel.value = candSort;
+  candPage = 1; renderCandidatesPage();
+}
+function toggleCandDir(){ candDir = candDir==='asc'?'desc':'asc'; candPage = 1; renderCandidatesPage(); }
+function syncCandDirLabel(){ const b = document.getElementById('cand-dir'); if (b) b.textContent = candDir==='asc' ? '↑ น้อย→มาก' : '↓ มาก→น้อย'; }
+
+function toggleCandSelect(nid){ candSelected.has(nid) ? candSelected.delete(nid) : candSelected.add(nid); renderCandidatesPage(); }
+function toggleCandSelectAll(cb){
+  const start = (candPage-1)*candPageSize;
+  getCandidateView().slice(start, start+candPageSize).forEach(p => cb.checked ? candSelected.add(p.national_id) : candSelected.delete(p.national_id));
+  renderCandidatesPage();
+}
+function clearCandSelection(){ candSelected.clear(); renderCandidatesPage(); }
+function updateCandSelBar(){
+  const bar = document.getElementById('cand-selbar'), cnt = document.getElementById('cand-selcount');
+  if (!bar) return;
+  const n = candSelected.size;
+  bar.style.display = n>0 ? 'flex' : 'none';
+  if (cnt) cnt.textContent = `เลือกแล้ว ${n} คน`;
+}
+
+function bulkDeleteCandidates(){
+  if (!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canDelete)){ showToast('❌ ไม่มีสิทธิ์ลบข้อมูล'); return; }
+  const nids = [...candSelected];
+  if (!nids.length){ showToast('เลือกผู้สมัครก่อน'); return; }
+  if (!confirm(`⚠️ ลบข้อมูลผู้สมัคร ${nids.length} คนที่เลือก?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
+  const nidSet = new Set(nids);
+  try { const s = JSON.parse(localStorage.getItem('hma_exam_records')||'[]');   localStorage.setItem('hma_exam_records',   JSON.stringify(s.filter(r => !nidSet.has(r.national_id)))); } catch(e){}
+  try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !nidSet.has(x.nid)))); } catch(e){}
+  nids.forEach(nid => cloudDeleteCandidate(nid));
+  if (applicant && nidSet.has(applicant.nid)){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
+  candSelected.clear();
+  showToast(`✅ ลบข้อมูล ${nids.length} คนแล้ว`);
+  renderCandidatesPage();
+}
+
+// ── Compare dashboard ──
+let compareChart = null;
+let compareData  = [];   // candidates currently being compared
+
+function openCompare(){
+  const list = getCandidateList().filter(p => candSelected.has(p.national_id));
+  if (list.length < 2){ showToast('เลือกอย่างน้อย 2 คนเพื่อเปรียบเทียบ'); return; }
+  if (list.length > 6){ showToast('เปรียบเทียบได้สูงสุด 6 คน'); return; }
+  compareData = list;
+  openModal('mod-compare');
+  requestAnimationFrame(renderCompare);
+}
+
+const CMP_PALETTE = ['#e84060','#185fa5','#0f9b78','#f59e0b','#7c4dff','#0891b2'];
+
+function renderCompare(){
+  const CODES = allTestCodes();
+  const list  = compareData;
+  const activeCodes = CODES.filter(c => list.some(p => p[c+'_score'] != null));
+
+  // Export honours the same "canExport" permission as the rest of the app (Viewer = view only).
+  const canExport = !currentAdmin || ROLE_INFO[currentAdmin.role]?.canExport;
+  ['cmp-xlsx-btn','cmp-pdf-btn'].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = canExport ? '' : 'none'; });
+
+  const rowDefs = [
+    { label:'ตำแหน่ง',          get:p => p.position||'—',   best:false },
+    { label:'อายุ',             get:p => p.age||'—',        best:false },
+    { label:'ประสบการณ์ (ปี)',  get:p => p.experience||'—', best:true  },
+    ...activeCodes.map(c => ({ label:c, get:p => p[c+'_score']!=null ? p[c+'_score'] : '—', best:true })),
+    { label:'ผ่าน/ทั้งหมด',     get:p => `${p.passed}/${p.taken}`, best:false },
+    { label:'คะแนนเฉลี่ย',      get:p => p.avg!=null ? p.avg : '—', best:true },
+  ];
+  const bestIdx = def => {
+    if (!def.best) return -1;
+    let bi=-1, bv=-Infinity;
+    list.forEach((p,i) => { const v = Number(def.get(p)); if (!isNaN(v) && v > bv){ bv=v; bi=i; } });
+    return bi;
+  };
+
+  const headCells = list.map((p,i) => `<th><div class="cmp-cand-head"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CMP_PALETTE[i%CMP_PALETTE.length]};margin-right:5px"></span>${esc(p.name||'—')}</div></th>`).join('');
+  const bodyRows = rowDefs.map(def => {
+    const bi = bestIdx(def);
+    const cells = list.map((p,i) => {
+      const v = def.get(p);
+      return `<td class="${(i===bi && String(v)!=='—') ? 'best' : ''}">${esc(v)}</td>`;
+    }).join('');
+    return `<tr><td>${esc(def.label)}</td>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('cmp-body').innerHTML = `
+    <div style="height:270px;margin-bottom:16px">${activeCodes.length ? '<canvas id="cmp-chart"></canvas>' : '<p style="text-align:center;color:var(--gray-400);font-size:13px;padding:30px">ยังไม่มีผลสอบให้เปรียบเทียบ</p>'}</div>
+    <div style="overflow-x:auto"><table class="cmp-table">
+      <thead><tr><th>รายการ</th>${headCells}</tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table></div>`;
+
+  if (compareChart){ compareChart.destroy(); compareChart = null; }
+  if (window.Chart && activeCodes.length){
+    const isRadar = activeCodes.length >= 3;
+    compareChart = new Chart(document.getElementById('cmp-chart'), {
+      type: isRadar ? 'radar' : 'bar',
+      data: {
+        labels: activeCodes,
+        datasets: list.map((p,i) => ({
+          label: p.name || '—',
+          data: activeCodes.map(c => p[c+'_score']!=null ? Number(p[c+'_score']) : 0),
+          borderColor: CMP_PALETTE[i%CMP_PALETTE.length],
+          backgroundColor: CMP_PALETTE[i%CMP_PALETTE.length] + (isRadar ? '22' : 'cc'),
+          borderWidth: 2, pointRadius: 3,
+        })),
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        scales: isRadar
+          ? { r:{ suggestedMin:0, suggestedMax:100, ticks:{ stepSize:20 } } }
+          : { y:{ suggestedMin:0, suggestedMax:100 } },
+        plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } },
+      },
+    });
+  }
+}
+
+// ── Export with preview ──
+let exportKind = 'pdf';
+function openExportPreview(kind){
+  exportKind = kind;
+  document.getElementById('exp-title').textContent   = kind==='xlsx' ? 'พรีวิวก่อน Export Excel' : 'พรีวิวก่อน Export PDF';
+  document.getElementById('exp-hint').textContent    = kind==='xlsx' ? 'ตรวจสอบข้อมูลก่อนดาวน์โหลดไฟล์ .xlsx' : 'ตรวจสอบเลย์เอาต์ก่อนดาวน์โหลดไฟล์ PDF (A4)';
+  document.getElementById('exp-confirm-btn').innerHTML = kind==='xlsx' ? '⬇ ดาวน์โหลด Excel' : '⬇ ดาวน์โหลด PDF';
+  document.getElementById('exp-preview').innerHTML   = buildComparePreviewHTML();
+  openModal('mod-export-preview');
+}
+function confirmExport(){ exportKind==='xlsx' ? exportCompareXLSX() : exportComparePDF(); }
+
+function buildComparePreviewHTML(){
+  const CODES = allTestCodes();
+  const list  = compareData;
+  const activeCodes = CODES.filter(c => list.some(p => p[c+'_score'] != null));
+  const rows = [
+    ['ตำแหน่ง',          ...list.map(p => p.position||'—')],
+    ['อายุ',             ...list.map(p => p.age||'—')],
+    ['ประสบการณ์ (ปี)',  ...list.map(p => p.experience||'—')],
+    ...activeCodes.map(c => [c, ...list.map(p => p[c+'_score']!=null ? `${p[c+'_score']} (${p[c+'_outcome']||'-'})` : '—')]),
+    ['ผ่าน/ทั้งหมด',     ...list.map(p => `${p.passed}/${p.taken}`)],
+    ['คะแนนเฉลี่ย',      ...list.map(p => p.avg!=null ? p.avg : '—')],
+  ];
+  const th  = ['รายการ', ...list.map(p => p.name||'—')].map(h => `<th style="border:1px solid #ccc;padding:6px 9px;background:#f3f4f6;text-align:left;font-size:12px;color:#111">${esc(h)}</th>`).join('');
+  const trs = rows.map(r => `<tr>${r.map((c,i) => `<td style="border:1px solid #ddd;padding:6px 9px;font-size:12px;color:#111;${i===0?'font-weight:600;color:#555':'text-align:center'}">${esc(c)}</td>`).join('')}</tr>`).join('');
+  return `<div id="cmp-export-root" style="background:#fff;color:#111">
+    <div style="font-size:16px;font-weight:700;margin-bottom:2px">HMA — เปรียบเทียบผู้สมัคร</div>
+    <div style="font-size:11px;color:#666;margin-bottom:12px">สร้างเมื่อ ${esc(new Date().toLocaleString('th-TH'))} · ${list.length} คน</div>
+    <table style="width:100%;border-collapse:collapse"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>
+  </div>`;
+}
+
+function exportCompareXLSX(){
+  if (!window.XLSX){ showToast('❌ ไลบรารี Excel ไม่พร้อม'); return; }
+  const XLSX = window.XLSX, CODES = allTestCodes(), list = compareData;
+  const activeCodes = CODES.filter(c => list.some(p => p[c+'_score'] != null));
+  const header = ['รายการ', ...list.map(p => p.name||'—')];
+  const aoa = [
+    ['HMA — เปรียบเทียบผู้สมัคร'],
+    ['สร้างเมื่อ ' + new Date().toLocaleString('th-TH')],
+    [],
+    header,
+    ['ตำแหน่ง',         ...list.map(p => p.position||'')],
+    ['อายุ',            ...list.map(p => p.age||'')],
+    ['ประสบการณ์ (ปี)', ...list.map(p => p.experience||'')],
+    ...activeCodes.map(c => [c+' คะแนน', ...list.map(p => p[c+'_score']!=null ? p[c+'_score'] : '')]),
+    ...activeCodes.map(c => [c+' ผล',    ...list.map(p => p[c+'_outcome']||'')]),
+    ['ผ่าน/ทั้งหมด',    ...list.map(p => `${p.passed}/${p.taken}`)],
+    ['คะแนนเฉลี่ย',     ...list.map(p => p.avg!=null ? p.avg : '')],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:18}, ...list.map(()=>({wch:16}))];
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:list.length}}, {s:{r:1,c:0},e:{r:1,c:list.length}}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'เปรียบเทียบ');
+  XLSX.writeFile(wb, 'HMA_Compare_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  closeModal('mod-export-preview');
+  showToast('✅ ดาวน์โหลด Excel สำเร็จ');
+}
+
+async function exportComparePDF(){
+  const jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+  const el = document.getElementById('cmp-export-root');
+  if (!(jsPDFCtor && typeof window.html2canvas === 'function' && el)){ showToast('❌ ไลบรารี PDF ไม่พร้อม'); return; }
+  const btn = document.getElementById('exp-confirm-btn'), orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span> กำลังสร้าง...'; btn.disabled = true;
+  try {
+    const canvas = await window.html2canvas(el, { scale:2, backgroundColor:'#ffffff' });
+    const pdf = new jsPDFCtor('p','mm','a4');
+    const pw = pdf.internal.pageSize.getWidth() - 20;
+    const ph = canvas.height * pw / canvas.width;
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 10, 10, pw, ph);
+    pdf.save('HMA_Compare_' + new Date().toISOString().slice(0,10) + '.pdf');
+    closeModal('mod-export-preview');
+    showToast('✅ ดาวน์โหลด PDF สำเร็จ');
+  } catch(e){ console.error(e); showToast('❌ สร้าง PDF ไม่สำเร็จ'); }
+  finally { btn.innerHTML = orig; btn.disabled = false; }
+}
+
 function filterAdmin() {
   const name = (document.getElementById('f-name')?.value||'').toLowerCase();
   const test = document.getElementById('f-test')?.value||'';
@@ -2947,6 +3434,7 @@ function buildExamRecord() {
   const now = new Date();
   const row = {
     datetime:     now.toLocaleString('th-TH'),
+    _ts:          now.getTime(),   // sortable timestamp (Thai-locale string above isn't reliably parseable)
     national_id:  applicant.nid,
     name:         applicant.name,
     email:        applicant.email || '',
@@ -3040,8 +3528,10 @@ function deleteApplicantData(encodedKey) {
     clearPersistedSession();
   }
 
+  candSelected.delete(key.nid);
   showToast(`✅ ลบข้อมูล ${name} แล้ว`);
-  filterAdmin(); // refresh table
+  filterAdmin(); // refresh admin overview table
+  if (document.getElementById('p-candidates')?.classList.contains('active')) renderCandidatesPage();
 }
 
 // Remove a candidate's records from Firestore (exam_records + result_snapshots).
@@ -4589,6 +5079,7 @@ window.nav = function(id) {
   if (id === 'p-question-editor')    renderQuestionEditor();
   if (id === 'p-dash')               checkAndShowResume();
   if (id === 'p-collab')             renderCollabPage();
+  if (id === 'p-candidates')         renderCandidatesPage();
   if (id === 'p-instruction-editor') renderInstructionEditor();
 };
 
@@ -4657,6 +5148,7 @@ function makeLogosHome(){
 
 // ── Professional line icons (Feather/Lucide style) ──
 const NAV_ICONS = {
+  candidates: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-1a5 5 0 0 0-3-4.58"/></svg>',
   editq:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   instr:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>',
   postype: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg>',
@@ -4667,6 +5159,7 @@ const NAV_ICONS = {
 };
 
 const ADMIN_MENU = [
+  { key:'candidates', label:'ผู้สมัคร',    action:"admGo('p-candidates')" },
   { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')",    perm:'canEditQ' },
   { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')", perm:'canEditQ' },
   { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')", perm:'canManagePos' },
