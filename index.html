@@ -781,7 +781,6 @@ textarea.q-inp:focus{border-color:var(--teal)}
       <div class="thankyou-badge">✓</div>
       <h2 style="font-size:21px;font-weight:800;color:var(--gray-900);margin-bottom:10px">ขอบคุณที่ทำแบบทดสอบ</h2>
       <p style="font-size:14px;color:var(--gray-700);max-width:420px;line-height:1.6">คุณทำแบบทดสอบครบทุกชุดเรียบร้อยแล้ว ผลการทดสอบได้ถูกส่งให้ทีม HR ของ Hino Motors Asia เพื่อพิจารณาในขั้นตอนถัดไป</p>
-      <p style="font-size:12px;color:var(--gray-400);margin-top:14px;max-width:420px">ระบบจะไม่แสดงคะแนนแก่ผู้สมัครโดยตรง — ทีมงานจะติดต่อกลับหากผ่านการพิจารณา</p>
       <button class="btn btn-primary" style="margin-top:26px;min-width:160px" onclick="goHome()">เสร็จสิ้น</button>
     </div>
   </div>
@@ -812,6 +811,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
       <button class="btn btn-secondary btn-sm" id="btn-prev" data-i18n="t_prev" onclick="moveQ(-1)">← ก่อนหน้า</button>
       <span style="font-size:11px;color:var(--gray-400)">← → เลื่อน · A B C D ตอบ</span>
       <button class="btn btn-secondary btn-sm" id="btn-next" data-i18n="t_next" onclick="moveQ(1)">ถัดไป →</button>
+      <button class="btn btn-primary btn-sm" id="btn-submit-last" style="display:none" onclick="openConfirm()">✓ ส่งคำตอบ</button>
     </div>
 
     <!-- Q navigator -->
@@ -1847,10 +1847,13 @@ function shuffleWithRng(arr, rng) {
   }
   return a;
 }
-function randomizeQuestions(qs, seed) {
+function randomizeQuestions(qs, seed, shuffleOpts = true) {
   const rng = seededRng(seed);
   // สุ่มลำดับข้อ
   const shuffled = shuffleWithRng(qs, rng);
+  // เมื่อชุดสอบปิดการสุ่มตัวเลือก (เช่น แบบทดสอบบุคลิกภาพที่ตัวเลือกเรียงตามระดับ)
+  // ให้คงลำดับตัวเลือกตามที่ผู้ดูแลกำหนดไว้ — สุ่มเฉพาะลำดับข้อ
+  if (!shuffleOpts) return shuffled;
   // สุ่มลำดับตัวเลือกสำหรับแต่ละข้อ (ยกเว้นข้อ abstract/svg ซึ่งอ้างอิงตำแหน่งในรูป)
   return shuffled.map(q => {
     if (q.svgOpts || q.svgStem) return q;
@@ -1869,7 +1872,11 @@ function randomizeQuestions(qs, seed) {
 function getRandomizedQs(s) {
   if (!s._randomizedQs) {
     const seed = `${(applicant && applicant.nid) || 'x'}|${s.test.code}`;
-    s._randomizedQs = randomizeQuestions(ALL_QUESTIONS[s.test.code] || [], seed);
+    // Look up the live test definition so an admin toggle applies even to
+    // sessions whose cached s.test copy predates the change. Default = shuffle.
+    const tdef = TESTS.find(t => t.code === s.test.code) || s.test;
+    const shuffleOpts = tdef.shuffleOpts !== false;
+    s._randomizedQs = randomizeQuestions(ALL_QUESTIONS[s.test.code] || [], seed, shuffleOpts);
     const n   = s._randomizedQs.length;
     const old = Array.isArray(s._answersRandom) ? s._answersRandom : [];
     const next = new Array(n).fill(null);
@@ -1926,11 +1933,12 @@ function renderQ() {
   const pct = Math.round((answeredCount/qs.length)*100);
   document.getElementById('t-prog-bar').style.width = `${pct}%`;
 
-  // Question header — section badge only.
-  // (Difficulty level and per-item score are intentionally hidden from candidates.)
+  // Question header — item counter only.
+  // The section/category badge is intentionally hidden from candidates so they
+  // can't infer the answer from the topic (e.g. "Memory", "Logic"). Difficulty
+  // level and per-item score are hidden for the same reason.
   let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
     <span style="font-size:11px;font-weight:600;color:var(--gray-400);font-variant-numeric:tabular-nums">Q${curQ+1}&nbsp;/&nbsp;${qs.length}</span>`;
-  if (q.sec)  html += `<span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:var(--blue-l);color:var(--blue);padding:3px 9px;border-radius:20px">${secLabel(q.sec)}</span>`;
   html += `</div>`;
 
   // passage
@@ -1956,7 +1964,7 @@ function renderQ() {
     const keyBg  = isSel ? 'background:var(--teal);border-color:var(--teal);color:#fff' : 'background:var(--white);border:1px solid var(--gray-200);color:var(--gray-500)';
     const otext  = (LANG==='th' && q.optsTH && q.optsTH[idx]!=null && q.optsTH[idx]!=='') ? q.optsTH[idx] : o.t;
     const body   = q.svgOpts ? q.svgOpts[idx] : `<span style="font-size:14.5px;line-height:1.45">${otext}</span>`;
-    html += `<button onclick="pickAnswer(${idx})" style="display:flex;align-items:center;gap:12px;border:1.5px solid ${selBorder};border-radius:10px;padding:12px 15px;text-align:left;width:100%;cursor:pointer;transition:all .12s;background:${selBg};${selShadow}">
+    html += `<button onclick="pickAnswer(${idx})" style="display:flex;align-items:center;gap:12px;border:1.5px solid ${selBorder};border-radius:10px;padding:12px 15px;text-align:left;width:100%;cursor:pointer;transition:all .12s;background:${selBg};color:var(--gray-900);${selShadow}">
       <span style="flex:0 0 26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:monospace;transition:all .15s;${keyBg}">${keyFor(idx)}</span>
       ${body}
     </button>`;
@@ -1974,8 +1982,12 @@ function renderQ() {
     `<button class="qdot${i===curQ?' curr':ans[i]!==null?' done':''}" onclick="jumpQ(${i})">${i+1}</button>`
   ).join('');
 
-  document.getElementById('btn-prev').disabled = curQ===0;
-  document.getElementById('btn-next').disabled = curQ===qs.length-1;
+  // On the last question, replace "ถัดไป →" with the "ส่งคำตอบ" submit button
+  // in the same slot so the candidate can submit without hunting for the topbar.
+  const isLast = curQ === qs.length - 1;
+  document.getElementById('btn-prev').disabled = curQ === 0;
+  document.getElementById('btn-next').style.display        = isLast ? 'none' : '';
+  document.getElementById('btn-submit-last').style.display = isLast ? '' : 'none';
 }
 
 function chooseAns(i) {
@@ -3334,6 +3346,10 @@ document.addEventListener('fullscreenchange', () => {
 let cheatCount = 0;
 let focusGuardActive = false;
 let guardWarned = false;
+// True while the candidate is currently away from the exam (tab hidden or window
+// unfocused). Used to count ONE "leave" per exit episode — a single tab switch
+// fires both visibilitychange(hidden) and window blur, which would double-count.
+let outsideExam = false;
 
 function startFocusGuard() {
   // Anti-copy/paste: ปิดการ copy ข้อความในหน้าสอบ
@@ -3345,6 +3361,7 @@ function startFocusGuard() {
   if (focusGuardActive) return;
   focusGuardActive = true;
   cheatCount = 0;
+  outsideExam = false;
 
   // แจ้งเตือนก่อนเริ่มจับ
   if (!guardWarned) {
@@ -3353,6 +3370,7 @@ function startFocusGuard() {
   }
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('blur', onWindowBlur);
+  window.addEventListener('focus', onWindowFocus);
 }
 
 function onCopyBlock(e) {
@@ -3372,17 +3390,28 @@ function stopFocusGuard() {
   document.removeEventListener('contextmenu', onContextBlock);
 
   focusGuardActive = false;
+  outsideExam = false;
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('blur', onWindowBlur);
+  window.removeEventListener('focus', onWindowFocus);
   document.getElementById('cheat-banner').classList.remove('show');
 }
 
+// Count ONE leave per exit episode. A tab switch fires both visibilitychange
+// (hidden) and window blur; returning (visible/focus) re-arms the counter so a
+// later, separate exit is still recorded.
+function markLeave(reason) {
+  if (!focusGuardActive || outsideExam) return;
+  outsideExam = true;
+  triggerCheat(reason, 'leave');
+}
 function onVisibilityChange() {
-  if (document.hidden && focusGuardActive) triggerCheat('สลับ Tab หรือออกจากหน้าต่าง', 'leave');
+  if (!focusGuardActive) return;
+  if (document.hidden) markLeave('สลับ Tab หรือออกจากหน้าต่าง');
+  else outsideExam = false;
 }
-function onWindowBlur() {
-  if (focusGuardActive) triggerCheat('คลิกออกนอกหน้าต่างเบราว์เซอร์', 'leave');
-}
+function onWindowBlur()  { markLeave('คลิกออกนอกหน้าต่างเบราว์เซอร์'); }
+function onWindowFocus() { outsideExam = false; }
 
 // How many times the candidate left the exam window/tab during a session
 // (tab-switch or window-blur), independent of copy/paste attempts.
@@ -3767,8 +3796,12 @@ function renderQuestionEditor() {
         oninput="qeSetPassing(this.value)"
         style="width:80px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit;text-align:center">
       <span style="font-size:13px;color:var(--gray-500)">คะแนน (จาก 100)</span>
-      <span style="font-size:11px;color:var(--gray-400);margin-left:auto">ผู้สมัครที่ได้คะแนนถึงเกณฑ์นี้จะแสดงผลเป็น “ผ่าน” · กด 💾 บันทึก เพื่อจัดเก็บ</span>
-    </div>`;
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:var(--gray-700);margin-left:auto;padding-left:12px;border-left:1px solid var(--gray-200)">
+        <input type="checkbox" ${tdef.shuffleOpts !== false ? 'checked' : ''} onchange="qeSetShuffle(this.checked)" style="width:16px;height:16px;accent-color:var(--teal)">
+        <span>สุ่มลำดับตัวเลือก <small style="color:var(--gray-400)">(ปิดสำหรับชุดที่ตัวเลือกเรียงตามลำดับ เช่น บุคลิกภาพ)</small></span>
+      </label>
+    </div>
+    <p style="font-size:11px;color:var(--gray-400);margin-top:6px">ผู้สมัครที่ได้คะแนนถึงเกณฑ์จะแสดงผลเป็น “ผ่าน” · กด 💾 บันทึก เพื่อจัดเก็บการตั้งค่า</p>`;
   }
   // List
   const qs = EQ[qeActiveSet];
@@ -3862,6 +3895,20 @@ function saveTestPassing() {
     const map = {};
     TESTS.forEach(t => { if (t.passing != null) map[t.code] = t.passing; });
     localStorage.setItem('hma_test_passing', JSON.stringify(map));
+  } catch(e){}
+}
+// Per-set toggle: whether to shuffle answer choices for this test.
+function qeSetShuffle(checked) {
+  const t = TESTS.find(x => x.code === qeActiveSet);
+  if (t) t.shuffleOpts = !!checked;
+}
+// Persist the shuffle-choices flag per test (only when explicitly set), so the
+// default (shuffle) stays implicit and the setting survives reload / syncs.
+function saveTestShuffle() {
+  try {
+    const map = {};
+    TESTS.forEach(t => { if (typeof t.shuffleOpts === 'boolean') map[t.code] = t.shuffleOpts; });
+    localStorage.setItem('hma_test_shuffle', JSON.stringify(map));
   } catch(e){}
 }
 function qeToggle(i) { const b=document.getElementById(`qe-body-${i}`); b.classList.toggle('open'); }
@@ -3996,8 +4043,9 @@ function saveQuestions() {
     });
   });
   try { localStorage.setItem('hma_custom_questions', JSON.stringify(EQ)); } catch(e){}
-  // Persist passing-criteria edits (built-in + custom) alongside the questions.
+  // Persist passing-criteria + shuffle-choices edits (built-in + custom) alongside the questions.
   saveTestPassing();
+  saveTestShuffle();
   saveCustomTests();
   // Sync the bank to the cloud so other devices/candidates get the changes
   if (typeof cloudSaveQuestionBank === 'function' && cloudEnabled() && cloudSignedIn()) {
@@ -4026,6 +4074,12 @@ try {
 try {
   const pass = JSON.parse(localStorage.getItem('hma_test_passing') || '{}');
   TESTS.forEach(t => { if (pass[t.code] != null) t.passing = pass[t.code]; });
+} catch(e){}
+
+// Apply admin-edited "shuffle answer choices" flags (default = shuffle when unset).
+try {
+  const shuf = JSON.parse(localStorage.getItem('hma_test_shuffle') || '{}');
+  TESTS.forEach(t => { if (typeof shuf[t.code] === 'boolean') t.shuffleOpts = shuf[t.code]; });
 } catch(e){}
 
 // Load saved questions on startup (normalise to opts schema)
@@ -5442,10 +5496,13 @@ async function cloudSaveQuestionBank(){
   try {
     const testPassing = {};
     TESTS.forEach(t => { if (t.passing != null) testPassing[t.code] = t.passing; });
+    const testShuffle = {};
+    TESTS.forEach(t => { if (typeof t.shuffleOpts === 'boolean') testShuffle[t.code] = t.shuffleOpts; });
     await db.collection('config').doc('settings').set({
       customTests: JSON.stringify(customTests),
       positionPresets: JSON.stringify(positionPresets),
       testPassing: JSON.stringify(testPassing),
+      testShuffle: JSON.stringify(testShuffle),
       updatedAt: stamp
     }, { merge: true });
     settingsOk = true;
@@ -5507,6 +5564,12 @@ async function cloudLoadQuestionBank(){
         const pass = _parseMaybe(d.testPassing, {}) || {};
         TESTS.forEach(t => { if (pass[t.code] != null) t.passing = pass[t.code]; });
         try { localStorage.setItem('hma_test_passing', JSON.stringify(pass)); } catch(e){}
+      }
+      // Admin-edited "shuffle answer choices" flags (per test).
+      if (d.testShuffle !== undefined) {
+        const shuf = _parseMaybe(d.testShuffle, {}) || {};
+        TESTS.forEach(t => { if (typeof shuf[t.code] === 'boolean') t.shuffleOpts = shuf[t.code]; });
+        try { localStorage.setItem('hma_test_shuffle', JSON.stringify(shuf)); } catch(e){}
       }
       loaded = true;
     }
