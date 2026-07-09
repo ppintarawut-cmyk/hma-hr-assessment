@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HMA — ATS · Resume Scanner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<!-- Firebase (compat) — อ่านผลสอบจาก hma-testing-system แบบ read-only (decision 0003) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+  // Config เดียวกับ hma-testing-system (public — ความปลอดภัยอยู่ที่ Firestore Rules + Auth)
+  var FB = { app: null, db: null, auth: null, user: null, records: null, error: null, fetching: false };
+  try {
+    if (window.firebase) {
+      FB.app = firebase.initializeApp({
+        apiKey: "AIzaSyBkcnCg_NSBxawmLRdyx4GykDCDcZcu_pw",
+        authDomain: "hma-testing-a38f0.firebaseapp.com",
+        projectId: "hma-testing-a38f0",
+        storageBucket: "hma-testing-a38f0.firebasestorage.app",
+        messagingSenderId: "749923980046",
+        appId: "1:749923980046:web:d62cb893d1a653e690bd5f",
+      });
+      FB.db = firebase.firestore();
+      FB.auth = firebase.auth();
+    }
+  } catch (e) { console.warn('Firebase init failed — test results unavailable:', e); }
+</script>
+<style>
+:root {
+  --teal:     #c8102e;   /* Hino Red — primary accent */
+  --teal-d:   #a00c24;
+  --teal-l:   #fff0f2;
+  --teal-b:   #f5a7b2;
+  --gray-50:  #f8f9fa;
+  --gray-100: #f1f3f5;
+  --gray-200: #dee2e6;
+  --gray-300: #ced4da;
+  --gray-400: #868e96;
+  --gray-500: #495057;
+  --gray-700: #343a40;
+  --gray-900: #212529;
+  --white:    #ffffff;
+  --radius:   8px;
+  --radius-lg:12px;
+  --shadow:   0 1px 4px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+  --pass:     #16a34a;
+  --pass-l:   #f0fdf4;
+  --pass-b:   #86efac;
+  --fail:     #c8102e;
+  --fail-l:   #fff0f2;
+  --pend:     #b45309;
+  --pend-l:   #fef3c7;
+}
+[data-theme="dark"] {
+  --teal:#e84060; --teal-d:#c8102e; --teal-l:#2a0a10; --teal-b:#7a1a28;
+  --gray-50:#0d0e10; --gray-100:#16181c; --gray-200:#24272e; --gray-300:#2f333b;
+  --gray-400:#6b7280; --gray-500:#9ca3af; --gray-700:#d1d5db; --gray-900:#f0f2f4;
+  --white:#11131a; --shadow:0 1px 4px rgba(0,0,0,.5);
+  --pass:#22c55e; --pass-l:#052010; --pass-b:#16532a; --fail:#e84060; --fail-l:#2a0a10;
+  --pend:#fbbf24; --pend-l:#2a1c04;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--gray-50); color: var(--gray-900); font-size: 14px; line-height: 1.5;
+}
+.topbar {
+  display: flex; align-items: center; gap: 14px; padding: 12px 22px;
+  background: var(--white); border-bottom: 1px solid var(--gray-200); position: sticky; top: 0; z-index: 50;
+}
+.brand { font-weight: 800; font-size: 18px; color: var(--teal); letter-spacing: .5px; }
+.topbar-title { font-weight: 600; color: var(--gray-700); font-size: 15px; }
+.topbar-spacer { flex: 1; }
+.tabs { display: flex; gap: 4px; padding: 0 22px; background: var(--white); border-bottom: 1px solid var(--gray-200); position: sticky; top: 53px; z-index: 40; overflow-x: auto; }
+.tab {
+  padding: 12px 18px; cursor: pointer; font-weight: 600; color: var(--gray-500);
+  border-bottom: 3px solid transparent; white-space: nowrap; user-select: none;
+}
+.tab:hover { color: var(--gray-900); }
+.tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 22px; }
+.card { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 20px; margin-bottom: 18px; }
+.card h2 { font-size: 16px; margin-bottom: 4px; }
+.card .sub { color: var(--gray-400); font-size: 13px; margin-bottom: 14px; }
+h1 { font-size: 20px; margin-bottom: 2px; }
+.page-sub { color: var(--gray-400); margin-bottom: 18px; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: var(--radius); font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid transparent; transition: .12s; }
+.btn-primary { background: var(--teal); color: #fff; }
+.btn-primary:hover { background: var(--teal-d); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-secondary { background: var(--gray-100); color: var(--gray-700); border-color: var(--gray-200); }
+.btn-secondary:hover { background: var(--gray-200); }
+.btn-ghost { background: transparent; color: var(--gray-500); }
+.btn-ghost:hover { background: var(--gray-100); }
+.btn-danger { background: transparent; color: var(--fail); border-color: var(--teal-b); }
+.btn-danger:hover { background: var(--fail-l); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* Form */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.field label { font-weight: 600; font-size: 12.5px; color: var(--gray-700); }
+.field input, .field select, .field textarea {
+  padding: 9px 11px; border: 1px solid var(--gray-300); border-radius: var(--radius);
+  background: var(--white); color: var(--gray-900); font-size: 13.5px; font-family: inherit;
+}
+.field textarea { resize: vertical; min-height: 70px; }
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-l); }
+.field input.err { border-color: var(--fail); background: var(--fail-l); }
+.hint { font-size: 11.5px; color: var(--gray-400); }
+
+/* Skill rows in job editor */
+.skill-row { display: grid; grid-template-columns: 1fr 110px 110px 40px; gap: 10px; align-items: center; padding: 6px 0; }
+.skill-row input, .skill-row select { padding: 7px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius); background: var(--white); color: var(--gray-900); font-size: 13px; }
+
+/* Table */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--gray-200); border-radius: var(--radius-lg); background: var(--white); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 11px 12px; background: var(--gray-100); color: var(--gray-500); font-weight: 700; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--gray-200); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--gray-50); }
+.name-cell { font-weight: 600; }
+td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius); background: var(--white); color: var(--gray-900); font-size: 12px; }
+
+/* Badges & chips */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.badge.pass { background: var(--pass-l); color: var(--pass); }
+.badge.fail { background: var(--fail-l); color: var(--fail); }
+.badge.pend { background: var(--pend-l); color: var(--pend); }
+.badge.na   { background: var(--gray-100); color: var(--gray-400); }
+.chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; margin: 2px 3px 2px 0; }
+.chip.hit  { background: var(--pass-l); color: var(--pass); border: 1px solid var(--pass-b); }
+.chip.miss { background: var(--gray-100); color: var(--gray-400); border: 1px dashed var(--gray-300); }
+.chip.miss.req { background: var(--fail-l); color: var(--fail); border: 1px dashed var(--teal-b); }
+
+/* Score bar */
+.score-wrap { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.score-num { font-weight: 800; font-size: 14px; width: 34px; text-align: right; }
+.score-track { flex: 1; height: 8px; background: var(--gray-100); border-radius: 999px; overflow: hidden; }
+.score-fill { height: 100%; border-radius: 999px; transition: width .4s; }
+.sc-hi  { background: var(--pass); }  .sc-hi-t  { color: var(--pass); }
+.sc-mid { background: var(--pend); }  .sc-mid-t { color: var(--pend); }
+.sc-lo  { background: var(--gray-400); } .sc-lo-t { color: var(--gray-400); }
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--gray-300); border-radius: var(--radius-lg); padding: 36px 20px;
+  text-align: center; color: var(--gray-400); cursor: pointer; transition: .15s; background: var(--white);
+}
+.dropzone:hover, .dropzone.drag { border-color: var(--teal); background: var(--teal-l); color: var(--teal); }
+.dropzone .dz-icon { font-size: 34px; margin-bottom: 8px; }
+.dropzone b { color: var(--gray-700); }
+.dropzone.drag b { color: var(--teal); }
+
+/* KPI metrics */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.kpi { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow); }
+.kpi-val { font-size: 26px; font-weight: 800; color: var(--gray-900); line-height: 1.1; }
+.kpi-val.accent { color: var(--teal); }
+.kpi-lbl { font-size: 12px; color: var(--gray-400); margin-top: 4px; font-weight: 600; }
+.kpi-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.chart-box { position: relative; height: 280px; }
+
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.toolbar input, .toolbar select { padding: 8px 11px; border: 1px solid var(--gray-300); border-radius: var(--radius); background: var(--white); color: var(--gray-900); font-size: 13px; }
+.search { flex: 1; min-width: 180px; }
+
+.empty { text-align: center; padding: 48px 20px; color: var(--gray-400); }
+
+/* Modal */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-start; justify-content: center; z-index: 100; overflow-y: auto; padding: 30px 16px; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--white); border-radius: var(--radius-lg); width: 100%; max-width: 760px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--gray-200); position: sticky; top: 0; background: var(--white); border-radius: var(--radius-lg) var(--radius-lg) 0 0; z-index: 5; }
+.modal-head h2 { font-size: 17px; }
+.modal-body { padding: 22px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--gray-200); }
+.x-btn { cursor: pointer; color: var(--gray-400); font-size: 22px; line-height: 1; background: none; border: none; }
+.x-btn:hover { color: var(--gray-900); }
+
+.section-title { font-weight: 700; font-size: 13px; color: var(--gray-500); text-transform: uppercase; letter-spacing: .4px; margin: 18px 0 8px; }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--gray-900); color: #fff; padding: 11px 20px; border-radius: var(--radius); font-weight: 600; font-size: 13px; z-index: 200; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+[data-theme="dark"] .toast { background: var(--gray-200); color: var(--gray-900); }
+
+/* Score breakdown */
+.break-row { display: grid; grid-template-columns: 170px 1fr 90px; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--gray-200); font-size: 13px; }
+.break-row:first-of-type { border-top: none; }
+.break-pts { text-align: right; font-weight: 700; }
+.resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
+.kv { font-size: 13px; }
+.kv td { border: none; padding: 4px 8px 4px 0; }
+.kv td:first-child { color: var(--gray-400); white-space: nowrap; }
+.warn-box { background: var(--pend-l); color: var(--pend); border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 12px; }
+
+/* View toggle (table / board) */
+.seg { display: inline-flex; border: 1px solid var(--gray-300); border-radius: var(--radius); overflow: hidden; }
+.seg button { padding: 7px 12px; font-size: 12.5px; font-weight: 600; background: var(--white); color: var(--gray-500); border: none; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--gray-300); }
+.seg button.active { background: var(--teal); color: #fff; }
+
+/* Kanban board */
+.kanban { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.kanban-col { flex: 0 0 240px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); display: flex; flex-direction: column; max-height: 72vh; }
+.kanban-col.drop-target { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal-l); }
+.kanban-col-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-weight: 700; font-size: 12.5px; border-bottom: 1px solid var(--gray-200); position: sticky; top: 0; background: var(--gray-100); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.kanban-col-head .cnt { background: var(--gray-200); color: var(--gray-500); border-radius: 999px; padding: 1px 8px; font-size: 11px; }
+.kanban-col-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 60px; }
+.kanban-card { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 10px; box-shadow: var(--shadow); cursor: grab; }
+.kanban-card:hover { border-color: var(--teal-b); }
+.kanban-card.dragging { opacity: .45; }
+.kanban-card .kc-name { font-weight: 700; font-size: 13px; margin-bottom: 5px; }
+.kanban-card .kc-meta { font-size: 11.5px; color: var(--gray-400); margin-bottom: 6px; }
+.kanban-card .kc-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; }
+.kanban-empty { color: var(--gray-400); font-size: 12px; text-align: center; padding: 14px 6px; }
+
+@media (max-width: 820px) {
+  .grid2, .grid3, .chart-grid { grid-template-columns: 1fr; }
+  .skill-row { grid-template-columns: 1fr 80px 90px 36px; }
+  .wrap { padding: 14px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand">HMA</span>
+  <span class="topbar-title">ATS — Applicant Tracking &amp; Resume Scanner</span>
+  <span class="topbar-spacer"></span>
+  <span class="hint" id="backupStatus"></span>
+  <button class="btn btn-secondary btn-sm" id="backupBtn">📁 Backup</button>
+  <button class="btn btn-ghost btn-sm" id="restoreBtn" title="กู้คืนข้อมูลจากไฟล์สำรอง JSON">↩ กู้คืน</button>
+  <input type="file" id="restoreInput" accept=".json" style="display:none">
+  <button class="btn btn-ghost btn-sm" id="themeBtn" title="Toggle theme">🌓 Theme</button>
+  <button class="btn btn-secondary btn-sm" id="seedBtn" title="โหลดข้อมูลตัวอย่าง">โหลดตัวอย่าง</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="scanner">📄 Resume Scanner</div>
+  <div class="tab" data-tab="candidates">👥 ผู้สมัคร</div>
+  <div class="tab" data-tab="jobs">💼 ตำแหน่งงาน</div>
+  <div class="tab" data-tab="dashboard">📊 Dashboard</div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ SCANNER TAB ============ -->
+  <div id="tab-scanner">
+    <h1>Resume Scanner</h1>
+    <p class="page-sub">อัปโหลด resume (PDF / DOCX / TXT) ระบบจะดึงข้อมูล จับคู่ทักษะกับตำแหน่งงาน และให้คะแนนอัตโนมัติ</p>
+
+    <div class="card">
+      <div class="grid2">
+        <div class="field">
+          <label>ตำแหน่งที่ต้องการคัดกรอง *</label>
+          <select id="scanJob"></select>
+          <span class="hint">เกณฑ์ทักษะ/น้ำหนักคะแนนกำหนดได้ที่แท็บ "ตำแหน่งงาน"</span>
+        </div>
+        <div class="field" style="justify-content:flex-end">
+          <div id="scanJobInfo" class="hint" style="padding-bottom:9px"></div>
+        </div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <div class="dz-icon">📄</div>
+        <div><b>ลากไฟล์ resume มาวางที่นี่</b> หรือคลิกเพื่อเลือกไฟล์</div>
+        <div class="hint" style="margin-top:6px">รองรับ .pdf .docx .txt — เลือกได้หลายไฟล์พร้อมกัน · ข้อมูลอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น server</div>
+        <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" style="display:none">
+      </div>
+    </div>
+
+    <div class="card" id="scanResultsCard" style="display:none">
+      <h2>ผลการสแกน</h2>
+      <p class="sub">ตรวจสอบข้อมูลที่ระบบดึงได้ก่อนกด "เพิ่มเป็นผู้สมัคร" — คลิก "รายละเอียด" เพื่อดูการคิดคะแนน</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>ไฟล์</th><th>ชื่อ</th><th>อีเมล</th><th>คะแนน Match</th><th>ทักษะที่พบ</th><th>สถานะ</th><th></th>
+          </tr></thead>
+          <tbody id="scanBody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:10px">
+        <button class="btn btn-primary" id="addAllBtn">＋ เพิ่มทั้งหมดเป็นผู้สมัคร</button>
+        <button class="btn btn-ghost" id="clearScanBtn">ล้างผลสแกน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CANDIDATES TAB ============ -->
+  <div id="tab-candidates" style="display:none">
+    <h1>ผู้สมัคร (Candidate Database)</h1>
+    <p class="page-sub">ผู้สมัครทั้งหมดพร้อมคะแนน match จัดอันดับ และสถานะใน pipeline</p>
+
+    <div class="toolbar">
+      <span class="seg" id="candViewToggle">
+        <button data-view="table" class="active">☰ ตาราง</button>
+        <button data-view="board">▦ บอร์ด</button>
+      </span>
+      <input class="search" id="candSearch" placeholder="🔍 ค้นหาชื่อ อีเมล หรือทักษะ…">
+      <select id="candJobFilter"><option value="">ทุกตำแหน่ง</option></select>
+      <select id="candStageFilter">
+        <option value="">ทุกสถานะ</option>
+        <option>Applied</option><option>Screening</option><option>Interview</option>
+        <option>Offer</option><option>Hired</option><option>Rejected</option>
+      </select>
+      <select id="candSort">
+        <option value="score">เรียงตามคะแนน ↓</option>
+        <option value="date">เรียงตามวันที่ ↓</option>
+        <option value="name">เรียงตามชื่อ A-Z</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" id="candExportBtn">⬇ Export CSV</button>
+      <button class="btn btn-primary btn-sm" id="candAddBtn">＋ เพิ่มด้วยตนเอง</button>
+    </div>
+
+    <div class="warn-box" id="retentionNote" style="display:none"></div>
+
+    <div class="tbl-wrap" id="candTableWrap">
+      <table id="candTable">
+        <thead><tr>
+          <th>#</th><th>ผู้สมัคร</th><th>ตำแหน่ง</th><th>คะแนน Match</th><th>ทักษะ</th><th>ประสบการณ์</th><th>สถานะ</th><th>วันที่</th><th></th>
+        </tr></thead>
+        <tbody id="candBody"></tbody>
+      </table>
+    </div>
+    <div class="kanban" id="candBoard" style="display:none"></div>
+    <div id="candEmpty" class="empty" style="display:none">
+      <div style="font-size:40px">👥</div>
+      ยังไม่มีผู้สมัคร — สแกน resume ที่แท็บ <b>Resume Scanner</b> หรือกด <b>＋ เพิ่มด้วยตนเอง</b>
+    </div>
+  </div>
+
+  <!-- ============ JOBS TAB ============ -->
+  <div id="tab-jobs" style="display:none">
+    <h1>ตำแหน่งงาน (Job Requisitions)</h1>
+    <p class="page-sub">กำหนดตำแหน่ง ทักษะที่ต้องการ และน้ำหนักคะแนน — เกณฑ์นี้ใช้คิดคะแนน match ตอนสแกน resume</p>
+
+    <div class="toolbar">
+      <span></span><span class="topbar-spacer"></span>
+      <button class="btn btn-primary btn-sm" id="jobAddBtn">＋ เพิ่มตำแหน่ง</button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table id="jobTable">
+        <thead><tr>
+          <th>ตำแหน่ง</th><th>แผนก</th><th>ทักษะที่ต้องการ</th><th>ประสบการณ์ขั้นต่ำ</th><th>ผู้สมัคร</th><th>สถานะ</th><th></th>
+        </tr></thead>
+        <tbody id="jobBody"></tbody>
+      </table>
+    </div>
+    <div id="jobEmpty" class="empty" style="display:none">
+      <div style="font-size:40px">💼</div>
+      ยังไม่มีตำแหน่งงาน — กด <b>＋ เพิ่มตำแหน่ง</b> หรือ <b>โหลดตัวอย่าง</b> ที่มุมขวาบน
+    </div>
+  </div>
+
+  <!-- ============ DASHBOARD TAB ============ -->
+  <div id="tab-dashboard" style="display:none">
+    <h1>Dashboard</h1>
+    <p class="page-sub">ภาพรวมผู้สมัคร คะแนน และ pipeline</p>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="chart-grid">
+      <div class="card">
+        <h2>การกระจายคะแนน Match</h2>
+        <p class="sub">จำนวนผู้สมัครในแต่ละช่วงคะแนน</p>
+        <div class="chart-box"><canvas id="chartScore"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>ผู้สมัครต่อตำแหน่ง</h2>
+        <p class="sub">ปริมาณผู้สมัครแยกตามตำแหน่งงาน</p>
+        <div class="chart-box"><canvas id="chartJobs"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Pipeline สถานะผู้สมัคร</h2>
+      <p class="sub">ผู้สมัครแยกตามสถานะปัจจุบัน</p>
+      <div class="chart-box" style="height:220px"><canvas id="chartStage"></canvas></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ JOB MODAL ============ -->
+<div class="modal-bg" id="jobModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="jobModalTitle">เพิ่มตำแหน่งงาน</h2>
+      <button class="x-btn" data-close="jobModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="j_id">
+      <div class="grid2">
+        <div class="field">
+          <label>ชื่อตำแหน่ง *</label>
+          <input id="j_title" placeholder="เช่น Sales Engineer">
+        </div>
+        <div class="field">
+          <label>แผนก</label>
+          <input id="j_dept" placeholder="เช่น Sales & Marketing">
+        </div>
+      </div>
+      <div class="grid3">
+        <div class="field">
+          <label>ประสบการณ์ขั้นต่ำ (ปี)</label>
+          <input id="j_minexp" type="number" min="0" max="40" value="0">
+        </div>
+        <div class="field">
+          <label>คีย์เวิร์ดวุฒิการศึกษา</label>
+          <input id="j_edu" placeholder="เช่น engineering, วิศวกรรม">
+          <span class="hint">คั่นด้วย , — เว้นว่างถ้าไม่ใช้คิดคะแนน</span>
+        </div>
+        <div class="field">
+          <label>สถานะ</label>
+          <select id="j_status"><option value="Open">Open</option><option value="Closed">Closed</option></select>
+        </div>
+      </div>
+
+      <div class="section-title">ทักษะที่ต้องการ (ใช้คิดคะแนน match)</div>
+      <p class="hint" style="margin-bottom:8px">ใส่คำพ้องคั่นด้วย <b>/</b> เช่น <code>JavaScript/JS/Node</code> — ระบบจะนับว่าพบทักษะถ้าเจอคำใดคำหนึ่ง</p>
+      <div class="skill-row" style="font-size:11.5px; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:.4px">
+        <span>ทักษะ / คำพ้อง</span><span>น้ำหนัก (1-5)</span><span>จำเป็น?</span><span></span>
+      </div>
+      <div id="skillRows"></div>
+      <button class="btn btn-secondary btn-sm" id="addSkillBtn" style="margin-top:8px">＋ เพิ่มทักษะ</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="jobModalBg">ยกเลิก</button>
+      <button class="btn btn-primary" id="jobSaveBtn">บันทึกตำแหน่ง</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MANUAL CANDIDATE MODAL ============ -->
+<div class="modal-bg" id="candModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>เพิ่มผู้สมัครด้วยตนเอง</h2>
+      <button class="x-btn" data-close="candModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="field"><label>ชื่อ-นามสกุล *</label><input id="c_name" placeholder="เช่น Somchai Jaidee"></div>
+        <div class="field"><label>ตำแหน่งที่สมัคร *</label><select id="c_job"></select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>อีเมล</label><input id="c_email" type="email" placeholder="name@example.com"></div>
+        <div class="field"><label>โทรศัพท์</label><input id="c_phone" placeholder="08x-xxx-xxxx"></div>
+      </div>
+      <div class="field">
+        <label>เนื้อหา resume (วางข้อความเพื่อให้ระบบคิดคะแนน)</label>
+        <textarea id="c_resume" rows="6" placeholder="วางข้อความ resume ที่นี่ — ระบบจะสแกนทักษะและคิดคะแนน match อัตโนมัติ"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="candModalBg">ยกเลิก</button>
+      <button class="btn btn-primary" id="candSaveBtn">บันทึกผู้สมัคร</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DETAIL MODAL ============ -->
+<div class="modal-bg" id="detailModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="detailTitle">รายละเอียดผู้สมัคร</h2>
+      <button class="x-btn" data-close="detailModalBg">&times;</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="detailModalBg">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   BLOCK 1 — PURE FUNCTIONS (parsing + scoring)
+   ไม่มี DOM dependency — ทดสอบแยกได้
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Text normalisation ── */
+function normText(raw) {
+  return String(raw || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[​‌‍﻿]/g, '')
+    .replace(/[   ]/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/* ── Contact extraction ── */
+function extractEmail(text) {
+  const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return m ? m[0].toLowerCase() : '';
+}
+
+function extractPhone(text) {
+  // Thai mobile/landline & international formats: 08x-xxx-xxxx, +66 8x..., 02-xxx-xxxx
+  const patterns = [
+    /\+66[\s-]?\d{1,2}[\s-]?\d{3,4}[\s-]?\d{4}/,
+    /0\d{1,2}[\s-]\d{3,4}[\s-]\d{4}/,
+    /(?:^|\D)(0\d{8,9})(?!\d)/,   // ต้องไม่มีเลขนำหน้า — กันจับท้ายเลขบัญชี/เลขบัตร
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return (m[1] || m[0]).trim();
+  }
+  return '';
+}
+
+function stripTitle(s) {
+  return String(s || '')
+    .replace(/^(?:mr|mrs|ms|miss|dr)\.?\s+/i, '')
+    .replace(/^(?:นางสาว|นาย|นาง|ดร)\.?\s*/, '')
+    .trim();
+}
+function extractName(text, email) {
+  // 1) explicit label (TH/EN)
+  const label = text.match(/(?:^|\n)\s*(?:name|ชื่อ(?:-นามสกุล|-สกุล|จริง)?)\s*[:：]\s*([^\n]{2,60})/i);
+  if (label) return stripTitle(label[1]);
+  // 2) first plausible line: 2-4 words, no digits/@, not a resume header
+  const headerWords = /resume|curriculum|vitae|^cv$|profile|ประวัติ|ใบสมัคร/i;
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 8);
+  for (const line of lines) {
+    if (headerWords.test(line)) continue;
+    if (/[@\d]/.test(line)) continue;
+    const cleaned = stripTitle(line);
+    const words = cleaned.split(/\s+/);
+    if (words.length >= 2 && words.length <= 4 && cleaned.length <= 60) return cleaned;
+  }
+  // 3) fallback: derive from email local part
+  if (email) {
+    const local = email.split('@')[0].replace(/[._\d]+/g, ' ').trim();
+    if (local) return local.replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return '';
+}
+
+/* ── Experience (years) ──
+   ใช้ค่ามากกว่าระหว่าง (ก) ตัวเลขปีที่ผู้สมัครระบุเอง — หาทั้งเอกสาร
+   (ข) ช่วงปีทำงานที่คำนวณได้ — หาเฉพาะ rangeText (ส่วนประสบการณ์) ถ้าส่งมา
+   เพื่อไม่ให้ปีในส่วนการศึกษาถูกนับเป็นปีทำงาน */
+const MONTH_RE = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|ม\\.?ค|ก\\.?พ|มี\\.?ค|เม\\.?ย|พ\\.?ค|มิ\\.?ย|ก\\.?ค|ส\\.?ค|ก\\.?ย|ต\\.?ค|พ\\.?ย|ธ\\.?ค|มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\\.?';
+function extractExperienceYears(text, nowYear, rangeText) {
+  nowYear = nowYear || new Date().getFullYear();
+  let stated = 0;
+  const stCtx = text.match(/(?:experience|ประสบการณ์)[^\n]{0,25}?(\d{1,2})\s*\+?\s*(?:years?|yrs?|ปี)/i);
+  if (stCtx) stated = parseInt(stCtx[1], 10);
+  // เลขนำหน้า ("7 years of sales experience") — สแกนทุกจุด ไม่ใช่แค่ match แรก
+  // ไม่งั้นข้อความอย่าง "TOEIC valid 2 years" ที่มาก่อนจะบังตัวจริง
+  for (const mm of text.matchAll(/(\d{1,2})\s*\+?\s*(?:years?|yrs?|ปี)[^\n]{0,25}(?:experience|ประสบการณ์)/gi)) {
+    stated = Math.max(stated, parseInt(mm[1], 10));
+  }
+
+  // year ranges: 2018-2022, 2019 – Present, Jan 2020 - Mar 2023, 2560-2564 (BE → -543)
+  let computed = 0;
+  const scanText = rangeText != null ? rangeText : text;
+  const toCE = y => (y >= 2400 ? y - 543 : y);
+  const rangeRe = new RegExp(
+    '(19\\d{2}|20\\d{2}|25\\d{2})\\s*(?:[–—-]|to|ถึง)\\s*(?:' + MONTH_RE + '\\s*)?' +
+    '(19\\d{2}|20\\d{2}|25\\d{2}|present|current|now|ปัจจุบัน)', 'gi');
+  let m;
+  const ranges = [];
+  while ((m = rangeRe.exec(scanText)) !== null) {
+    const a = toCE(parseInt(m[1], 10));
+    const b = /^\d/.test(m[2]) ? toCE(parseInt(m[2], 10)) : nowYear;
+    if (b >= a && a >= 1980 && b <= nowYear + 1) ranges.push([a, b]);
+  }
+  if (ranges.length) {
+    // merge overlapping ranges, then sum
+    ranges.sort((x, y) => x[0] - y[0]);
+    const merged = [ranges[0].slice()];
+    for (let i = 1; i < ranges.length; i++) {
+      const last = merged[merged.length - 1];
+      if (ranges[i][0] <= last[1]) last[1] = Math.max(last[1], ranges[i][1]);
+      else merged.push(ranges[i].slice());
+    }
+    // งานที่ระบุปีเดียว ("2021 - 2021") นับเป็น 1 ปี ไม่ใช่ 0
+    computed = merged.reduce((s, r) => s + Math.max(r[1] - r[0], 1), 0);
+  }
+  return Math.min(Math.max(stated, computed), 45);
+}
+
+/* ── Section segmentation ──
+   แยกว่า "ส่วนไหนคือประสบการณ์ทำงาน / การศึกษา / ทักษะ" — heading ต้องขึ้นต้นบรรทัด */
+const SECTION_DEFS = [
+  { key: 'experience', re: /^(?:work\s+)?(?:experience|employment(?:\s+history)?|work\s+history|professional\s+experience|career\s+history|ประสบการณ์|ประวัติการทำงาน)/i },
+  { key: 'education',  re: /^(?:education(?:al\s+background)?|academic|qualifications?$|การศึกษา|ประวัติการศึกษา|วุฒิการศึกษา)/i },
+  { key: 'skills',     re: /^(?:(?:technical|key|core)\s+)?(?:skills?|competenc(?:y|ies))|^(?:ทักษะ|ความสามารถ)/i },
+];
+function extractSections(text) {
+  const lines = String(text || '').split('\n');
+  const sections = { header: [] };
+  let cur = 'header';
+  for (const line of lines) {
+    const t = line.trim();
+    if (t && t.length <= 80) {
+      const def = SECTION_DEFS.find(d => d.re.test(t));
+      if (def) cur = def.key;
+    }
+    if (!sections[cur]) sections[cur] = [];
+    sections[cur].push(line);   // เก็บบรรทัด heading ไว้ด้วย — อาจมีข้อมูล เช่น "ประสบการณ์ 3 ปี"
+  }
+  const out = {};
+  for (const k in sections) {
+    const v = sections[k].join('\n').trim();
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
+/* ── Education ── */
+/* ตัวย่อวุฒิ ASCII ต้องมี \b กันจับในคำอื่น (เช่น "combat" มี "mba", "absconded" มี "bsc") */
+const EDU_LEVELS = [
+  { level: 'ปริญญาเอก / PhD',  re: /\bph\.?d\b|\bdoctor(?:ate|al)\b|ปริญญาเอก/i },
+  { level: 'ปริญญาโท / Master', re: /\bmaster(?:'s)?\b|\bm\.?b\.?a\b|\bm\.?eng\b|\bm\.?sc\b|\bm\.a\.(?=\s|$)|ปริญญาโท/i },
+  { level: 'ปริญญาตรี / Bachelor', re: /\bbachelor(?:'s)?\b|\bb\.?eng\b|\bb\.?sc\b|\bb\.?b\.?a\b|\bb\.a\.(?=\s|$)|ปริญญาตรี|วศ\.?บ|บธ\.?บ|วท\.?บ/i },
+  { level: 'ปวส. / Diploma', re: /\bdiploma\b|ปวส/i },
+  { level: 'ปวช. / Vocational', re: /vocational\s+cert|ปวช/i },
+];
+function extractEducation(text) {
+  for (const e of EDU_LEVELS) if (e.re.test(text)) return e.level;
+  return '';
+}
+
+/* ── Skill matching ──
+   skill = { name: "JavaScript/JS/Node", weight: 1-5, required: bool }
+   ASCII terms → word-boundary match, Thai/other → substring match */
+function skillSynonyms(name) {
+  return String(name || '').split('/').map(s => s.trim()).filter(Boolean);
+}
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function textHasTerm(lowText, term) {
+  const t = term.toLowerCase();
+  if (/^[\x00-\x7F]+$/.test(t)) {
+    // ไม่ใช้ lookbehind — Safari/iOS < 16.4 จะ throw ตอนสร้าง RegExp ทำให้สแกนพังทั้งระบบ
+    const re = new RegExp('(?:^|[^a-z0-9])' + escapeRe(t) + '(?:$|[^a-z0-9])', 'i');
+    return re.test(lowText);
+  }
+  return lowText.includes(t);
+}
+function matchSkills(text, skills) {
+  const low = String(text || '').toLowerCase();
+  const matched = [], missing = [];
+  (skills || []).forEach(sk => {
+    const hit = skillSynonyms(sk.name).some(term => textHasTerm(low, term));
+    (hit ? matched : missing).push(sk);
+  });
+  return { matched, missing };
+}
+
+/* ── Scoring ──
+   คะแนนเต็มถ่วงตามเกณฑ์ที่ตำแหน่งนั้นใช้จริง:
+     ทักษะ = 60 · ประสบการณ์ = 25 (ถ้ากำหนด minExp) · การศึกษา = 15 (ถ้ากำหนดคีย์เวิร์ด)
+   แสดง breakdown ทุกส่วนเพื่อความโปร่งใส */
+const SCORE_W = { skills: 60, exp: 25, edu: 15 };   // น้ำหนักคะแนนรวม — แก้ที่เดียวพอ
+function scoreCandidate(parsed, job) {
+  const breakdown = [];
+  let earned = 0, possible = 0;
+
+  const skills = job.skills || [];
+  const { matched, missing } = matchSkills(parsed.resumeText, skills);
+  if (skills.length) {
+    const totalW = skills.reduce((s, k) => s + (Number(k.weight) || 1), 0);
+    const gotW = matched.reduce((s, k) => s + (Number(k.weight) || 1), 0);
+    const pts = totalW ? (gotW / totalW) * SCORE_W.skills : 0;
+    earned += pts; possible += SCORE_W.skills;
+    breakdown.push({ label: 'ทักษะ (ถ่วงน้ำหนัก)', detail: `พบ ${matched.length}/${skills.length} ทักษะ (น้ำหนัก ${gotW}/${totalW})`, pts, max: SCORE_W.skills });
+  }
+
+  const minExp = Number(job.minExp) || 0;
+  if (minExp > 0) {
+    const ratio = Math.min((parsed.expYears || 0) / minExp, 1);
+    const pts = ratio * SCORE_W.exp;
+    earned += pts; possible += SCORE_W.exp;
+    breakdown.push({ label: 'ประสบการณ์', detail: `${parsed.expYears || 0} ปี / ต้องการ ${minExp} ปี`, pts, max: SCORE_W.exp });
+  }
+
+  const eduKeys = (job.eduKeywords || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (eduKeys.length) {
+    const low = String(parsed.resumeText || '').toLowerCase();
+    const hit = eduKeys.some(k => low.includes(k.toLowerCase()));
+    const pts = hit ? SCORE_W.edu : 0;
+    earned += pts; possible += SCORE_W.edu;
+    breakdown.push({ label: 'การศึกษา (คีย์เวิร์ด)', detail: hit ? 'พบคีย์เวิร์ดที่กำหนด' : 'ไม่พบคีย์เวิร์ด: ' + eduKeys.join(', '), pts, max: SCORE_W.edu });
+  }
+
+  const missingRequired = missing.filter(k => k.required);
+  const score = possible ? Math.round((earned / possible) * 100) : 0;
+  return {
+    score, breakdown,
+    matched: matched.map(k => k.name),
+    missing: missing.map(k => k.name),
+    missingRequired: missingRequired.map(k => k.name),
+  };
+}
+
+/* ── Full pipeline: raw text → parsed record ── */
+function parseResume(rawText) {
+  const text = normText(rawText);
+  const email = extractEmail(text);
+  const sections = extractSections(text);
+  const warnings = [];
+  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์อาจเป็นภาพสแกน (ไม่มี text layer)');
+  if (!email) warnings.push('ไม่พบอีเมลใน resume');
+  // ถ้าแยกส่วนประสบการณ์ได้ ให้คำนวณช่วงปีเฉพาะส่วนนั้น (กันปีการศึกษาปนเป็นปีทำงาน)
+  return {
+    resumeText: text,
+    sections,
+    email,
+    phone: extractPhone(text),
+    name: extractName(text, email),
+    expYears: extractExperienceYears(text, null, sections.experience != null ? sections.experience : text),
+    education: extractEducation(text),
+    warnings,
+  };
+}
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   BLOCK 2 — APP (storage, file extraction, UI)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Storage ── */
+const ATS_KEY = 'hma_ats_v1';
+function loadDB() {
+  try {
+    const d = JSON.parse(localStorage.getItem(ATS_KEY));
+    if (d && Array.isArray(d.jobs) && Array.isArray(d.candidates)) return d;
+  } catch (e) { /* corrupt → start fresh */ }
+  return { jobs: [], candidates: [] };
+}
+let DB = loadDB();
+function saveDB() {
+  try { localStorage.setItem(ATS_KEY, JSON.stringify(DB)); }
+  catch (e) { toast('⚠ บันทึกไม่สำเร็จ — พื้นที่จัดเก็บของ browser เต็ม ลอง Export CSV แล้วลบผู้สมัครเก่าออก'); }
+  scheduleBackup();   // สำรองลงไฟล์เสมอ — ยิ่งจำเป็นเมื่อ localStorage เต็ม
+}
+function uid(p) { return (p || 'x') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+const STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];
+const CLOSED_STAGES = ['Hired', 'Rejected'];
+const RETENTION_YEARS = 2;   // นโยบายเก็บข้อมูลผู้สมัคร — ดู docs/decisions/0004
+let charts = {};
+let scanResults = [];   // ผลสแกนชั่วคราว (ยังไม่บันทึก)
+
+/* ── Utils ── */
+function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return isNaN(d) ? s : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function scoreClass(n) { return n >= 70 ? 'hi' : n >= 40 ? 'mid' : 'lo'; }
+function scoreBar(n) {
+  const c = scoreClass(n);
+  return `<div class="score-wrap"><span class="score-num sc-${c}-t">${n}</span>
+    <div class="score-track"><div class="score-fill sc-${c}" style="width:${n}%"></div></div></div>`;
+}
+function jobById(id) { return DB.jobs.find(j => j.id === id); }
+
+/* ── ผลสอบจาก hma-testing-system (Firestore, read-only) — decision 0003 ──
+   join ด้วยอีเมลผู้สมัคร · ต้อง sign-in ด้วยบัญชี admin เดียวกับระบบสอบ 1 ครั้ง
+   (session แชร์ข้ามหน้าใน origin เดียวกันอัตโนมัติ) */
+let currentDetail = null;   // record ที่ modal รายละเอียดเปิดอยู่ — ไว้ refresh ส่วนผลสอบ
+
+const TEST_LABELS = { IQ: 'IQ', EQ: 'EQ', AQ: 'AQ', ENGLISH: 'English', EXCEL: 'Excel', LEADER: 'Leadership', PM: 'PM' };
+
+function matchTestResults(email, records) {
+  if (!email) return [];
+  const low = String(email).trim().toLowerCase();
+  return (records || [])
+    .filter(r => String(r.email || '').trim().toLowerCase() === low)
+    .sort((a, b) => (b._ts || 0) - (a._ts || 0));
+}
+
+function examResultHTML(rec) {
+  // สแกน key รูปแบบ {CODE}_score แบบ generic — ทนต่อชุดสอบที่เพิ่มใหม่ในอนาคต
+  const chips = Object.keys(rec)
+    .filter(k => /^[A-Z]+_score$/.test(k))
+    .map(k => {
+      const code = k.replace('_score', '');
+      const outcome = String(rec[code + '_outcome'] || '');
+      // เช็ค fail ก่อน — "ไม่ผ่าน" มี "ผ่าน" เป็น substring
+      const fail = /fail|ไม่ผ่าน/i.test(outcome);
+      const pass = !fail && /pass|ผ่าน/i.test(outcome);
+      const cls = pass ? 'hit' : fail ? 'miss req' : 'miss';
+      const total = rec[code + '_total'] !== '' && rec[code + '_total'] != null ? '/' + rec[code + '_total'] : '';
+      return `<span class="chip ${cls}">${esc(TEST_LABELS[code] || code)}: ${esc(String(rec[k]))}${esc(String(total))}${pass ? ' ✓' : fail ? ' ✗' : ''}</span>`;
+    }).join('');
+  return `<div style="padding:8px 0; border-top:1px dashed var(--gray-200)">
+    <div class="hint" style="margin-bottom:4px">${esc(rec.datetime || '')}${rec.position ? ' · ' + esc(rec.position) : ''}${rec.name ? ' · ' + esc(rec.name) : ''}</div>
+    ${chips || '<span class="hint">ไม่มีคะแนนรายชุด</span>'}</div>`;
+}
+
+function cloudSectionHTML(r) {
+  const head = '<div class="section-title">☁ ผลสอบจากระบบ HMA Testing</div>';
+  if (!FB.db) return head + '<div class="hint">โหลด Firebase ไม่ได้ (ออฟไลน์ หรือถูก ad-blocker บล็อก) — แสดงผลสอบไม่ได้</div>';
+  if (!FB.user) {
+    return head + `<div class="hint" style="margin-bottom:8px">ล็อกอินด้วยบัญชี admin เดียวกับระบบสอบ เพื่อดึงผลสอบ (อ่านอย่างเดียว)</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <input id="fb_email" type="email" placeholder="admin email" style="padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900)">
+        <input id="fb_pass" type="password" placeholder="รหัสผ่าน" style="padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900)">
+        <button class="btn btn-secondary btn-sm" onclick="cloudLogin()">เข้าสู่ระบบ</button>
+      </div><div class="hint" id="fb_login_err" style="color:var(--fail); margin-top:6px"></div>`;
+  }
+  if (FB.error) return head + `<div class="hint" style="color:var(--fail)">ดึงผลสอบไม่สำเร็จ: ${esc(FB.error)}</div>
+    <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="fetchExamRecords(true)">ลองใหม่</button>`;
+  if (!FB.records) { fetchExamRecords(); return head + '<div class="hint">⏳ กำลังดึงผลสอบจาก cloud…</div>'; }
+  const foot = `<div class="hint" style="margin-top:8px">เชื่อมต่อเป็น ${esc(FB.user.email || '')} · ${FB.records.length} record · <a href="#" onclick="cloudLogout(); return false" style="color:var(--gray-400)">ออกจากระบบ cloud</a></div>`;
+  if (!r.email) return head + '<div class="hint">ผู้สมัครไม่มีอีเมล — จับคู่ผลสอบไม่ได้ (ระบบ match ด้วยอีเมล)</div>' + foot;
+  const matches = matchTestResults(r.email, FB.records);
+  if (!matches.length) return head + `<div class="hint">ไม่พบผลสอบของ ${esc(r.email)} ในระบบสอบ</div>` + foot;
+  return head + matches.slice(0, 5).map(examResultHTML).join('') +
+    (matches.length > 5 ? `<div class="hint">…และอีก ${matches.length - 5} ครั้ง</div>` : '') + foot;
+}
+
+function refreshCloudSection() {
+  const el = document.getElementById('cloudSection');
+  if (el && currentDetail && document.getElementById('detailModalBg').classList.contains('open')) {
+    el.innerHTML = cloudSectionHTML(currentDetail);
+  }
+}
+async function fetchExamRecords(force) {
+  if (!FB.db || !FB.user || FB.fetching) return;
+  if (FB.records && !force) return;
+  FB.fetching = true; FB.error = null;
+  try {
+    const qs = await FB.db.collection('exam_records').limit(5000).get();
+    FB.records = qs.docs.map(d => { const { createdAt, ...rest } = d.data(); return rest; });
+  } catch (e) {
+    FB.error = e.code === 'permission-denied'
+      ? 'บัญชีนี้ไม่มีสิทธิ์อ่าน (ตรวจ Firestore Rules)' : (e.code || e.message);
+    FB.records = null;
+  } finally {
+    FB.fetching = false;
+    refreshCloudSection();
+  }
+}
+async function cloudLogin() {
+  const email = document.getElementById('fb_email').value.trim();
+  const pass = document.getElementById('fb_pass').value;
+  const err = document.getElementById('fb_login_err');
+  if (!email || !pass) { err.textContent = 'กรอกอีเมลและรหัสผ่าน'; return; }
+  err.textContent = '⏳ กำลังเข้าสู่ระบบ…';
+  try {
+    await FB.auth.signInWithEmailAndPassword(email, pass);
+    // onAuthStateChanged จะ refresh ส่วนผลสอบเอง
+  } catch (e) {
+    err.textContent = 'เข้าสู่ระบบไม่สำเร็จ: ' + (e.code === 'auth/invalid-credential' ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : (e.code || e.message));
+  }
+}
+function cloudLogout() {
+  if (FB.auth) FB.auth.signOut();
+  FB.records = null; FB.error = null;
+}
+if (FB.auth) {
+  FB.auth.onAuthStateChanged(user => {
+    FB.user = user || null;
+    if (user) fetchExamRecords();
+    else { FB.records = null; FB.error = null; }
+    refreshCloudSection();
+  });
+}
+
+/* ── Auto-backup ลงไฟล์ (File System Access API → OneDrive) — decision 0002 ──
+   เขียน DB ทั้งก้อนลงไฟล์ทุกครั้งที่ข้อมูลเปลี่ยน (debounce 1.2s)
+   handle เก็บใน IndexedDB ข้าม session — ต้องกดอนุญาต 1 ครั้งต่อ session
+   browser ที่ไม่มี FSA → ปุ่มดาวน์โหลด JSON แบบ manual แทน */
+const FSA_OK = 'showSaveFilePicker' in window;
+let backupHandle = null;
+let backupTimer = null;
+let lastBackupAt = null;
+
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('hma_ats_meta', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const rq = db.transaction('kv').objectStore('kv').get(key);
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+function backupPayload() {
+  return JSON.stringify({ app: 'hma-ats', version: 1, savedAt: new Date().toISOString(),
+    jobs: DB.jobs, candidates: DB.candidates });
+}
+function renderBackupStatus(state) {
+  const st = document.getElementById('backupStatus');
+  const btn = document.getElementById('backupBtn');
+  const map = {
+    off:        ['⚠ ยังไม่ได้ตั้งค่า backup', '📁 ตั้งค่า Backup'],
+    'need-perm':['🔒 backup ยังไม่เปิดสำหรับ session นี้', '🔓 เปิด Backup'],
+    ok:         [`✓ สำรองล่าสุด ${lastBackupAt ? lastBackupAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`, '📁 Backup'],
+    error:      ['⚠ เขียนไฟล์สำรองไม่สำเร็จ', '📁 Backup'],
+    manual:     ['browser นี้ไม่รองรับ backup อัตโนมัติ', '⬇ สำรอง (JSON)'],
+  };
+  const [s, b] = map[state] || map.off;
+  st.textContent = s; btn.textContent = b;
+  btn.dataset.state = state;
+}
+async function writeBackup() {
+  if (!backupHandle) return;
+  try {
+    const w = await backupHandle.createWritable();
+    await w.write(backupPayload());
+    await w.close();
+    lastBackupAt = new Date();
+    renderBackupStatus('ok');
+  } catch (e) { renderBackupStatus(e.name === 'NotAllowedError' ? 'need-perm' : 'error'); }
+}
+function scheduleBackup() {
+  if (!backupHandle) return;
+  clearTimeout(backupTimer);
+  backupTimer = setTimeout(writeBackup, 1200);
+}
+function downloadBackup() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([backupPayload()], { type: 'application/json' }));
+  a.download = `hma-ats-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  toast('ดาวน์โหลดไฟล์สำรองแล้ว — เก็บไว้ใน OneDrive');
+}
+async function setupBackup() {
+  try {
+    backupHandle = await window.showSaveFilePicker({
+      suggestedName: 'hma-ats-backup.json',
+      types: [{ description: 'HMA ATS backup', accept: { 'application/json': ['.json'] } }],
+    });
+    await idbSet('backupHandle', backupHandle);
+    await writeBackup();
+    toast('เปิดการสำรองอัตโนมัติแล้ว — แนะนำให้ไฟล์อยู่ในโฟลเดอร์ OneDrive');
+  } catch (e) { /* ผู้ใช้กดยกเลิก picker */ }
+}
+async function onBackupClick() {
+  if (!FSA_OK) { downloadBackup(); return; }
+  if (!backupHandle) { await setupBackup(); return; }
+  const q = await backupHandle.queryPermission({ mode: 'readwrite' });
+  if (q !== 'granted') {
+    const p = await backupHandle.requestPermission({ mode: 'readwrite' });
+    if (p !== 'granted') { renderBackupStatus('need-perm'); return; }
+  }
+  await writeBackup();
+  toast('สำรองข้อมูลแล้ว');
+}
+async function initBackup() {
+  if (!FSA_OK) { renderBackupStatus('manual'); return; }
+  try { backupHandle = (await idbGet('backupHandle')) || null; } catch (e) { backupHandle = null; }
+  if (!backupHandle) { renderBackupStatus('off'); return; }
+  try {
+    const q = await backupHandle.queryPermission({ mode: 'readwrite' });
+    if (q === 'granted') { renderBackupStatus('ok'); writeBackup(); }
+    else renderBackupStatus('need-perm');   // รอ user gesture 1 คลิก — ข้อตกลง decision 0002
+  } catch (e) { renderBackupStatus('error'); }
+}
+
+/* ── Restore จากไฟล์สำรอง ── */
+function applyRestore(data) {
+  if (!data || !Array.isArray(data.jobs) || !Array.isArray(data.candidates)) {
+    throw new Error('รูปแบบไฟล์ไม่ถูกต้อง — ต้องเป็นไฟล์สำรองของ HMA ATS');
+  }
+  if (!confirm(`กู้คืนจากไฟล์สำรอง?\nตำแหน่ง ${data.jobs.length} · ผู้สมัคร ${data.candidates.length}` +
+    (data.savedAt ? `\nสำรองเมื่อ ${new Date(data.savedAt).toLocaleString('th-TH')}` : '') +
+    `\n\nข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด`)) return false;
+  DB = { jobs: data.jobs, candidates: data.candidates };
+  saveDB(); renderAll();
+  return true;
+}
+async function restoreFromFile(file) {
+  try {
+    if (applyRestore(JSON.parse(await file.text()))) toast('กู้คืนข้อมูลแล้ว');
+  } catch (e) { toast('กู้คืนไม่สำเร็จ: ' + e.message); }
+}
+
+/* ── Retention (PDPA) — decision 0004: แจ้งเตือนอย่างเดียว ไม่ลบอัตโนมัติ ── */
+function overdueCandidates() {
+  const cutoff = Date.now() - RETENTION_YEARS * 365.25 * 86400000;
+  return DB.candidates.filter(c => {
+    if (!CLOSED_STAGES.includes(c.stage)) return false;
+    const t = new Date(c.closedAt || c.addedAt).getTime();   // record เก่าไม่มี closedAt → ใช้วันที่เพิ่ม
+    return !isNaN(t) && t < cutoff;
+  });
+}
+function renderRetentionNote() {
+  const el = document.getElementById('retentionNote');
+  const n = overdueCandidates().length;
+  el.style.display = n ? '' : 'none';
+  if (n) el.textContent = `⚠ มีผู้สมัคร ${n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด ${RETENTION_YEARS} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)`;
+}
+
+/* ── File text extraction ── */
+async function extractFileText(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.pdf')) {
+    if (!window.pdfjsLib) throw new Error('pdf.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const buf = await file.arrayBuffer();
+    // isEvalSupported:false — กัน PDF ที่ฝัง code (CVE-2024-4367) เพราะไฟล์มาจากผู้สมัครภายนอก
+    const pdf = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise;
+    let out = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      // ใช้พิกัด Y (transform[5]) แยกบรรทัดจริง — ไม่งั้นทั้งหน้าจะกลายเป็นบรรทัดเดียว
+      let lastY = null;
+      for (const it of tc.items) {
+        const y = it.transform ? it.transform[5] : null;
+        if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) out += '\n';
+        else if (out && !out.endsWith('\n')) out += ' ';
+        out += it.str;
+        if (y !== null) lastY = y;
+      }
+      out += '\n';
+    }
+    return out;
+  }
+  if (name.endsWith('.docx')) {
+    if (!window.mammoth) throw new Error('mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
+    const buf = await file.arrayBuffer();
+    const res = await mammoth.extractRawText({ arrayBuffer: buf });
+    return res.value;
+  }
+  if (name.endsWith('.txt')) {
+    return await file.text();
+  }
+  throw new Error('รองรับเฉพาะ .pdf .docx .txt');
+}
+
+/* ── Scan flow ── */
+async function handleFiles(fileList) {
+  const jobId = document.getElementById('scanJob').value;
+  const job = jobById(jobId);
+  if (!job) { toast('กรุณาเลือกตำแหน่งงานก่อนสแกน — เพิ่มได้ที่แท็บ "ตำแหน่งงาน"'); return; }
+
+  const files = Array.from(fileList);
+  if (!files.length) return;
+  toast(`กำลังสแกน ${files.length} ไฟล์…`);
+
+  for (const f of files) {
+    const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing' };
+    scanResults.push(row);
+    renderScanTable();
+    try {
+      const raw = await extractFileText(f);
+      const parsed = parseResume(raw);
+      const scored = scoreCandidate(parsed, job);
+      Object.assign(row, parsed, scored, { status: 'ok' });
+      // dedupe warning — เทียบทั้งฐานผู้สมัครและไฟล์อื่นใน batch เดียวกัน
+      const dup = parsed.email && (DB.candidates.some(c => c.email === parsed.email) ||
+        scanResults.some(x => x !== row && x.email === parsed.email));
+      if (dup) {
+        row.warnings = [...(row.warnings || []), 'อีเมลนี้มีอยู่ในระบบแล้ว (อาจซ้ำ)'];
+      }
+    } catch (err) {
+      row.status = 'error';
+      row.error = err.message || String(err);
+    }
+    renderScanTable();
+  }
+  toast('สแกนเสร็จแล้ว — ตรวจสอบผลก่อนเพิ่มเป็นผู้สมัคร');
+}
+
+function renderScanTable() {
+  const card = document.getElementById('scanResultsCard');
+  card.style.display = scanResults.length ? '' : 'none';
+  const body = document.getElementById('scanBody');
+  body.innerHTML = scanResults.map(r => {
+    if (r.status === 'processing') {
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="5" style="color:var(--gray-400)">⏳ กำลังประมวลผล…</td><td></td></tr>`;
+    }
+    if (r.status === 'error') {
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="5"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
+        <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button></td></tr>`;
+    }
+    const warn = (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
+    const reqMiss = r.missingRequired.length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น: ${esc(r.missingRequired.join(', '))}">ขาดทักษะจำเป็น</span>` : '';
+    const added = r.added ? `<span class="badge pass">✓ เพิ่มแล้ว</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">＋ เพิ่ม</button>`;
+    return `<tr>
+      <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis" title="${esc(r.fileName)}">${esc(r.fileName)}</td>
+      <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">ไม่พบชื่อ</span>'}</td>
+      <td>${esc(r.email) || '—'}</td>
+      <td>${scoreBar(r.score)}</td>
+      <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
+      <td>${warn || '<span class="badge pass">OK</span>'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="showScanDetail('${r.id}')">รายละเอียด</button>
+        ${added}
+        <button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function removeScan(id) { scanResults = scanResults.filter(r => r.id !== id); renderScanTable(); }
+function clearScan() { scanResults = []; renderScanTable(); }
+
+/* constructor เดียวสำหรับ record ผู้สมัครทุกช่องทาง (scan / manual / seed) — กัน schema เพี้ยนต่างช่องทาง
+   หมายเหตุ: ไม่เก็บ sections ลง record — คำนวณใหม่จาก resumeText ตอนเปิดดูรายละเอียด
+   (ถ้าเก็บจะเท่ากับเก็บข้อความ resume ซ้ำ 2 เท่าใน localStorage ซึ่งมี quota ~5MB) */
+function makeCandidate(parsed, scored, extras) {
+  return Object.assign({
+    id: uid('c'),
+    name: parsed.name || '(ไม่พบชื่อ — แก้ไขภายหลัง)',
+    email: parsed.email || '', phone: parsed.phone || '',
+    jobId: '', source: 'scan', fileName: '',
+    resumeText: parsed.resumeText || '',
+    expYears: parsed.expYears || 0, education: parsed.education || '',
+    warnings: parsed.warnings || [],
+    score: scored.score, breakdown: scored.breakdown,
+    matched: scored.matched, missing: scored.missing, missingRequired: scored.missingRequired,
+    stage: 'Applied', addedAt: new Date().toISOString(),
+  }, extras || {});
+}
+function scanToCandidate(r) {
+  return makeCandidate(r, r, { jobId: r.jobId, fileName: r.fileName });
+}
+function addScanToCandidates(id) {
+  const r = scanResults.find(x => x.id === id);
+  if (!r || r.status !== 'ok' || r.added) return;
+  if (!jobById(r.jobId)) { toast('ตำแหน่งของรายการนี้ถูกลบไปแล้ว — กรุณาสแกนใหม่'); return; }
+  DB.candidates.push(scanToCandidate(r));
+  r.added = true;
+  saveDB(); renderAll();
+  toast('เพิ่มผู้สมัครแล้ว');
+}
+function addAllScans() {
+  let n = 0;
+  scanResults.forEach(r => {
+    if (r.status === 'ok' && !r.added && jobById(r.jobId)) {
+      DB.candidates.push(scanToCandidate(r)); r.added = true; n++;
+    }
+  });
+  if (!n) { toast('ไม่มีรายการใหม่ให้เพิ่ม'); return; }
+  saveDB(); renderAll();
+  toast(`เพิ่มผู้สมัคร ${n} คนแล้ว`);
+}
+
+/* ── Detail modal (scan result or saved candidate) ── */
+function detailHTML(r) {
+  const job = jobById(r.jobId);
+  const warn = (r.warnings && r.warnings.length)
+    ? `<div class="warn-box">⚠ ${r.warnings.map(esc).join('<br>⚠ ')}</div>` : '';
+  const chips = [
+    ...r.matched.map(s => `<span class="chip hit">✓ ${esc(s)}</span>`),
+    ...r.missing.map(s => `<span class="chip miss ${r.missingRequired.includes(s) ? 'req' : ''}">${r.missingRequired.includes(s) ? '✗ ' : ''}${esc(s)}</span>`),
+  ].join('');
+  const rows = (r.breakdown || []).map(b => `
+    <div class="break-row">
+      <b>${esc(b.label)}</b>
+      <span style="color:var(--gray-500)">${esc(b.detail)}</span>
+      <span class="break-pts">${b.pts.toFixed(1)} / ${b.max}</span>
+    </div>`).join('') || '<div style="color:var(--gray-400)">ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน</div>';
+  return `
+    ${warn}
+    <div class="grid2">
+      <div><div class="section-title" style="margin-top:0">ข้อมูลที่ดึงได้</div>
+        <table class="kv">${[
+          ['ชื่อ', `<span class="name-cell">${esc(r.name) || '—'}</span>`],
+          ['อีเมล', esc(r.email) || '—'],
+          ['โทร', esc(r.phone) || '—'],
+          ['ประสบการณ์', `${r.expYears || 0} ปี (ประมาณจาก resume)`],
+          ['การศึกษา', esc(r.education) || '—'],
+          ['ตำแหน่ง', esc(job ? job.title : '—')],
+        ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>
+      </div>
+      <div><div class="section-title" style="margin-top:0">คะแนน Match — ${r.score}/100</div>${rows}</div>
+    </div>
+    <div class="section-title">ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div>
+    <div>${chips || '<span style="color:var(--gray-400)">ตำแหน่งนี้ไม่ได้กำหนดทักษะ</span>'}</div>
+    <div id="cloudSection">${cloudSectionHTML(r)}</div>
+    ${sectionsHTML(r.sections || extractSections(r.resumeText || ''))}
+    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด)</div>
+    <div class="resume-pre">${esc(r.resumeText || '(ว่าง)')}</div>`;
+}
+function sectionsHTML(sections) {
+  if (!sections) return '';
+  const labels = { experience: '🧑‍💼 ส่วนประสบการณ์ทำงาน', education: '🎓 ส่วนการศึกษา', skills: '🛠 ส่วนทักษะ' };
+  const out = ['experience', 'education', 'skills']
+    .filter(k => sections[k])
+    .map(k => `<div class="section-title">${labels[k]} <span style="font-weight:500; text-transform:none; letter-spacing:0">(ระบบระบุอัตโนมัติ)</span></div>
+      <div class="resume-pre" style="max-height:140px">${esc(sections[k])}</div>`)
+    .join('');
+  return out;
+}
+function showScanDetail(id) {
+  const r = scanResults.find(x => x.id === id);
+  if (!r) return;
+  currentDetail = r;
+  document.getElementById('detailTitle').textContent = 'ผลสแกน — ' + (r.name || r.fileName);
+  document.getElementById('detailBody').innerHTML = detailHTML(r);
+  document.getElementById('detailModalBg').classList.add('open');
+}
+function showCandDetail(id) {
+  const c = DB.candidates.find(x => x.id === id);
+  if (!c) return;
+  currentDetail = c;
+  document.getElementById('detailTitle').textContent = c.name;
+  document.getElementById('detailBody').innerHTML = detailHTML(c);
+  document.getElementById('detailModalBg').classList.add('open');
+}
+
+/* ── Jobs UI ── */
+function renderJobSelects() {
+  const open = DB.jobs.filter(j => j.status === 'Open');
+  const opts = open.map(j => `<option value="${j.id}">${esc(j.title)}${j.dept ? ' — ' + esc(j.dept) : ''}</option>`).join('');
+  const scanSel = document.getElementById('scanJob');
+  const cur = scanSel.value;
+  scanSel.innerHTML = open.length ? opts : '<option value="">— ยังไม่มีตำแหน่งเปิดรับ —</option>';
+  if (open.some(j => j.id === cur)) scanSel.value = cur;
+  updateScanJobInfo();
+
+  const candSel = document.getElementById('c_job');
+  candSel.innerHTML = open.length ? opts : '<option value="">— ยังไม่มีตำแหน่งเปิดรับ —</option>';
+
+  const filt = document.getElementById('candJobFilter');
+  const fcur = filt.value;
+  filt.innerHTML = '<option value="">ทุกตำแหน่ง</option>' + DB.jobs.map(j => `<option value="${j.id}">${esc(j.title)}</option>`).join('');
+  filt.value = fcur;
+  if (filt.value !== fcur) filt.value = '';   // ตำแหน่งที่ filter อยู่ถูกลบไปแล้ว → กลับเป็น "ทุกตำแหน่ง"
+}
+function updateScanJobInfo() {
+  const j = jobById(document.getElementById('scanJob').value);
+  const el = document.getElementById('scanJobInfo');
+  if (!j) { el.textContent = ''; return; }
+  const parts = [`ทักษะ ${j.skills.length} รายการ`];
+  if (Number(j.minExp) > 0) parts.push(`ประสบการณ์ ≥ ${j.minExp} ปี`);
+  if ((j.eduKeywords || '').trim()) parts.push('มีเกณฑ์การศึกษา');
+  el.textContent = 'เกณฑ์: ' + parts.join(' · ');
+}
+
+function renderJobs() {
+  const body = document.getElementById('jobBody');
+  document.getElementById('jobEmpty').style.display = DB.jobs.length ? 'none' : 'block';
+  document.getElementById('jobTable').style.display = DB.jobs.length ? '' : 'none';
+  body.innerHTML = DB.jobs.map(j => {
+    const nCand = DB.candidates.filter(c => c.jobId === j.id).length;
+    const skills = j.skills.map(s => {
+      const nm = skillSynonyms(s.name)[0] || s.name;
+      return `<span class="chip ${s.required ? 'hit' : 'miss'}" title="น้ำหนัก ${s.weight}${s.required ? ' · จำเป็น' : ''}">${esc(nm)}${s.required ? ' *' : ''}</span>`;
+    }).join('');
+    return `<tr>
+      <td class="name-cell">${esc(j.title)}</td>
+      <td>${esc(j.dept) || '—'}</td>
+      <td style="max-width:320px">${skills || '<span style="color:var(--gray-400)">—</span>'}</td>
+      <td>${Number(j.minExp) > 0 ? j.minExp + ' ปี' : '—'}</td>
+      <td>${nCand}</td>
+      <td><span class="badge ${j.status === 'Open' ? 'pass' : 'na'}">${j.status}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="editJob('${j.id}')">แก้ไข</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteJob('${j.id}')">ลบ</button>
+      </td>
+    </tr>`;
+  }).join('');
+  renderJobSelects();
+}
+
+function skillRowHTML(sk) {
+  sk = sk || { name: '', weight: 3, required: false };
+  return `<div class="skill-row">
+    <input class="sk-name" placeholder="เช่น Excel/Microsoft Excel" value="${esc(sk.name)}">
+    <select class="sk-weight">${[1,2,3,4,5].map(w => `<option value="${w}" ${Number(sk.weight) === w ? 'selected' : ''}>${w}</option>`).join('')}</select>
+    <select class="sk-req"><option value="0" ${!sk.required ? 'selected' : ''}>ไม่</option><option value="1" ${sk.required ? 'selected' : ''}>จำเป็น</option></select>
+    <button class="x-btn" onclick="this.parentElement.remove()" title="ลบทักษะ">&times;</button>
+  </div>`;
+}
+function openJobModal(j) {
+  document.getElementById('jobModalTitle').textContent = j ? 'แก้ไขตำแหน่งงาน' : 'เพิ่มตำแหน่งงาน';
+  document.getElementById('j_id').value = j ? j.id : '';
+  document.getElementById('j_title').value = j ? j.title : '';
+  document.getElementById('j_dept').value = j ? j.dept : '';
+  document.getElementById('j_minexp').value = j ? j.minExp : 0;
+  document.getElementById('j_edu').value = j ? (j.eduKeywords || '') : '';
+  document.getElementById('j_status').value = j ? j.status : 'Open';
+  const rows = document.getElementById('skillRows');
+  rows.innerHTML = (j && j.skills.length ? j.skills : [null, null, null]).map(skillRowHTML).join('');
+  document.getElementById('jobModalBg').classList.add('open');
+  document.getElementById('j_title').focus();
+}
+function saveJob() {
+  const title = document.getElementById('j_title').value.trim();
+  const titleEl = document.getElementById('j_title');
+  if (!title) { titleEl.classList.add('err'); toast('กรุณาใส่ชื่อตำแหน่ง'); return; }
+  titleEl.classList.remove('err');
+
+  const skills = [];
+  document.querySelectorAll('#skillRows .skill-row').forEach(row => {
+    const name = row.querySelector('.sk-name').value.trim();
+    if (!name) return;
+    skills.push({
+      name,
+      weight: Number(row.querySelector('.sk-weight').value) || 3,
+      required: row.querySelector('.sk-req').value === '1',
+    });
+  });
+
+  const id = document.getElementById('j_id').value;
+  const rec = {
+    id: id || uid('j'), title,
+    dept: document.getElementById('j_dept').value.trim(),
+    minExp: Math.max(0, Number(document.getElementById('j_minexp').value) || 0),
+    eduKeywords: document.getElementById('j_edu').value.trim(),
+    status: document.getElementById('j_status').value,
+    skills,
+  };
+  const i = id ? DB.jobs.findIndex(j => j.id === id) : -1;
+  if (i >= 0) {
+    DB.jobs[i] = rec;
+    // เกณฑ์เปลี่ยน → คิดคะแนนผู้สมัครและผลสแกนที่ค้างอยู่ของตำแหน่งนี้ใหม่ทั้งหมด
+    rescoreJob(rec);
+  } else {
+    DB.jobs.push(rec);
+  }
+  saveDB();
+  document.getElementById('jobModalBg').classList.remove('open');
+  renderAll();
+  toast(i >= 0 ? 'อัปเดตตำแหน่ง + คิดคะแนนผู้สมัครใหม่แล้ว' : 'เพิ่มตำแหน่งแล้ว');
+}
+function rescoreJob(job) {
+  DB.candidates.forEach(c => {
+    if (c.jobId !== job.id) return;
+    Object.assign(c, scoreCandidate(c, job));
+  });
+  // ผลสแกนที่ยังไม่กดเพิ่ม ต้องสะท้อนเกณฑ์ใหม่ด้วย ไม่งั้นกด "เพิ่ม" แล้วได้คะแนนเกณฑ์เก่า
+  scanResults.forEach(r => {
+    if (r.jobId === job.id && r.status === 'ok' && !r.added) Object.assign(r, scoreCandidate(r, job));
+  });
+}
+function editJob(id) { openJobModal(jobById(id)); }
+function deleteJob(id) {
+  const j = jobById(id);
+  if (!j) return;
+  const n = DB.candidates.filter(c => c.jobId === id).length;
+  if (!confirm(`ลบตำแหน่ง "${j.title}"?` + (n ? `\nผู้สมัคร ${n} คนของตำแหน่งนี้จะถูกลบด้วย` : ''))) return;
+  DB.jobs = DB.jobs.filter(x => x.id !== id);
+  DB.candidates = DB.candidates.filter(c => c.jobId !== id);
+  scanResults = scanResults.filter(r => r.jobId !== id);   // กันกด "เพิ่ม" จากผลสแกนของตำแหน่งที่ลบไปแล้ว
+  saveDB(); renderAll();
+  toast('ลบตำแหน่งแล้ว');
+}
+
+/* ── Candidates UI ── */
+let candView = localStorage.getItem('hma_ats_candview') || 'table';
+
+/* กรอง+เรียงผู้สมัครตาม toolbar — applyStage=false สำหรับบอร์ด (stage คือคอลัมน์อยู่แล้ว) */
+function filteredCandidates(applyStage) {
+  const q = document.getElementById('candSearch').value.toLowerCase();
+  const fj = document.getElementById('candJobFilter').value;
+  const fs = document.getElementById('candStageFilter').value;
+  const sort = document.getElementById('candSort').value;
+
+  let rows = DB.candidates.filter(c => {
+    if (fj && c.jobId !== fj) return false;
+    if (applyStage && fs && c.stage !== fs) return false;
+    if (q) {
+      const hay = `${c.name} ${c.email} ${(c.matched || []).join(' ')}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (sort === 'score') rows.sort((a, b) => b.score - a.score);
+  else if (sort === 'date') rows.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+  else rows.sort((a, b) => a.name.localeCompare(b.name));
+  return rows;
+}
+
+function renderCandidates() {
+  const board = candView === 'board';
+  document.getElementById('candEmpty').style.display = DB.candidates.length ? 'none' : 'block';
+  document.getElementById('candTableWrap').style.display = (!board && DB.candidates.length) ? '' : 'none';
+  document.getElementById('candBoard').style.display = (board && DB.candidates.length) ? '' : 'none';
+  // stage filter ไม่มีความหมายในบอร์ด (คอลัมน์ = stage) → ปิดไว้กันสับสน
+  document.getElementById('candStageFilter').style.display = board ? 'none' : '';
+  renderRetentionNote();
+  if (board) renderCandBoard(); else renderCandTable();
+}
+
+function renderCandTable() {
+  const rows = filteredCandidates(true);
+  document.getElementById('candBody').innerHTML = rows.map((c, i) => {
+    const job = jobById(c.jobId);
+    const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="ขาด: ${esc(c.missingRequired.join(', '))}">!</span>` : '';
+    return `<tr>
+      <td style="color:var(--gray-400)">${i + 1}</td>
+      <td class="name-cell">${esc(c.name)}<div class="hint">${esc(c.email) || ''}</div></td>
+      <td>${esc(job ? job.title : '—')}</td>
+      <td>${scoreBar(c.score)}</td>
+      <td>${(c.matched || []).length}/${(c.matched || []).length + (c.missing || []).length}${reqMiss}</td>
+      <td>${c.expYears || 0} ปี</td>
+      <td><select class="inline" onchange="setStage('${c.id}', this.value)">
+        ${STAGES.map(s => `<option ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('')}
+      </select></td>
+      <td>${fmtDate(c.addedAt)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="showCandDetail('${c.id}')">ดู</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCand('${c.id}')">ลบ</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── Kanban board (แรงบันดาลใจจาก Manatal pipeline) — drag การ์ดเปลี่ยน stage ── */
+function candCardHTML(c) {
+  const job = jobById(c.jobId);
+  const cls = scoreClass(c.score);
+  const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น">!</span>` : '';
+  return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
+    <div class="kc-name">${esc(c.name)}${reqMiss}</div>
+    <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
+    <div class="kc-foot">${scoreBar(c.score)}
+      <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
+    </div>
+  </div>`;
+}
+function renderCandBoard() {
+  const rows = filteredCandidates(false);
+  const byStage = {};
+  STAGES.forEach(s => byStage[s] = []);
+  rows.forEach(c => { (byStage[c.stage] || (byStage[c.stage] = [])).push(c); });
+  document.getElementById('candBoard').innerHTML = STAGES.map(s => `
+    <div class="kanban-col" data-stage="${s}"
+         ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="dropCand(event,'${s}')">
+      <div class="kanban-col-head"><span>${s}</span><span class="cnt">${byStage[s].length}</span></div>
+      <div class="kanban-col-body">
+        ${byStage[s].map(candCardHTML).join('') || '<div class="kanban-empty">— ว่าง —</div>'}
+      </div>
+    </div>`).join('');
+}
+let draggingCandId = null;
+function dragCand(ev, id) {
+  draggingCandId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', id);   // Firefox ต้องมี data ถึงจะเริ่ม drag
+  ev.currentTarget.classList.add('dragging');
+}
+function dragCandEnd(ev) { ev.currentTarget.classList.remove('dragging'); }
+function allowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drop-target'); }
+function dragLeave(ev) { if (ev.currentTarget === ev.target) ev.currentTarget.classList.remove('drop-target'); }
+function dropCand(ev, stage) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drop-target');
+  const id = draggingCandId || ev.dataTransfer.getData('text/plain');
+  draggingCandId = null;
+  const c = DB.candidates.find(x => x.id === id);
+  if (c && c.stage !== stage) setStage(id, stage);   // setStage → saveDB + renderAll (บอร์ดวาดใหม่)
+}
+function setCandView(v) {
+  candView = v;
+  localStorage.setItem('hma_ats_candview', v);
+  document.querySelectorAll('#candViewToggle button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  renderCandidates();
+}
+function setStage(id, stage) {
+  const c = DB.candidates.find(x => x.id === id);
+  if (!c) return;
+  c.stage = stage;
+  // จุดเริ่มนับ retention 2 ปี (decision 0004) คือวันที่เคสปิด
+  if (CLOSED_STAGES.includes(stage)) { if (!c.closedAt) c.closedAt = new Date().toISOString(); }
+  else delete c.closedAt;
+  saveDB(); renderAll();   // ต้อง render ตารางด้วย — filter/sort ตามสถานะจะได้ตรงกับข้อมูลจริง
+  toast(`${c.name} → ${stage}`);
+}
+function deleteCand(id) {
+  const c = DB.candidates.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`ลบผู้สมัคร "${c.name}"?`)) return;
+  DB.candidates = DB.candidates.filter(x => x.id !== id);
+  saveDB(); renderAll();
+  toast('ลบผู้สมัครแล้ว');
+}
+function saveManualCand() {
+  const name = document.getElementById('c_name').value.trim();
+  const jobId = document.getElementById('c_job').value;
+  const nameEl = document.getElementById('c_name');
+  if (!name) { nameEl.classList.add('err'); toast('กรุณาใส่ชื่อผู้สมัคร'); return; }
+  nameEl.classList.remove('err');
+  const job = jobById(jobId);
+  if (!job) { toast('กรุณาเลือกตำแหน่ง — เพิ่มตำแหน่งก่อนที่แท็บ "ตำแหน่งงาน"'); return; }
+
+  const parsed = parseResume(document.getElementById('c_resume').value);
+  const scored = scoreCandidate(parsed, job);
+  const typedEmail = document.getElementById('c_email').value.trim().toLowerCase();
+  const typedPhone = document.getElementById('c_phone').value.trim();
+  let warns = parsed.resumeText ? parsed.warnings.slice() : ['ไม่มีข้อความ resume — คะแนนเป็น 0'];
+  if (typedEmail) warns = warns.filter(w => !w.includes('ไม่พบอีเมล'));
+  // ค่าที่ HR พิมพ์เองต้องชนะค่าที่ระบบเดาจากข้อความ resume เสมอ
+  DB.candidates.push(makeCandidate(parsed, scored, {
+    name,
+    email: typedEmail || parsed.email,
+    phone: typedPhone || parsed.phone,
+    jobId, source: 'manual', warnings: warns,
+  }));
+  saveDB();
+  document.getElementById('candModalBg').classList.remove('open');
+  ['c_name', 'c_email', 'c_phone', 'c_resume'].forEach(id => document.getElementById(id).value = '');
+  renderAll();
+  toast('เพิ่มผู้สมัครแล้ว');
+}
+
+/* ── Export CSV ── */
+function csvCell(v) {
+  let s = String(v == null ? '' : v);
+  // ข้อมูลมาจาก resume ของผู้สมัครภายนอก — กัน formula injection (=, +, -, @) เวลาเปิดใน Excel
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+function exportCSV() {
+  if (!DB.candidates.length) { toast('ไม่มีข้อมูลให้ export'); return; }
+  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
+  const rows = [head];
+  DB.candidates.forEach(c => {
+    const job = jobById(c.jobId);
+    rows.push([c.name, c.email, c.phone, job ? job.title : '', c.score,
+      (c.matched || []).join('; '), (c.missing || []).join('; '),
+      c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)]);
+  });
+  const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `hma-ats-candidates-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  toast('Export CSV แล้ว');
+}
+
+/* ── Dashboard ── */
+function chartColors() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    grid: dark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)',
+    text: dark ? '#9ca3af' : '#495057',
+    red: '#c8102e', redL: 'rgba(200,16,46,.75)',
+  };
+}
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+function barOpts(cc, horizontal) {
+  const cat = { grid: { display: false } };
+  const val = { beginAtZero: true, grid: { color: cc.grid }, ticks: { precision: 0 } };
+  return Object.assign(horizontal ? { indexAxis: 'y' } : {}, {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: horizontal ? { y: cat, x: val } : { x: cat, y: val },
+  });
+}
+
+function renderDashboard() {
+  const cs = DB.candidates;
+  const avgScore = cs.length ? Math.round(cs.reduce((s, c) => s + c.score, 0) / cs.length) : 0;
+  const hi = cs.filter(c => c.score >= 70).length;
+  const hired = cs.filter(c => c.stage === 'Hired').length;
+  const kpis = [
+    { val: cs.length, lbl: 'ผู้สมัครทั้งหมด', sub: 'ทุกตำแหน่ง' },
+    { val: DB.jobs.filter(j => j.status === 'Open').length, lbl: 'ตำแหน่งเปิดรับ', sub: `จากทั้งหมด ${DB.jobs.length}` },
+    { val: avgScore, lbl: 'คะแนน Match เฉลี่ย', sub: 'จาก 100', accent: true },
+    { val: hi, lbl: 'ผู้สมัครคะแนน ≥ 70', sub: cs.length ? Math.round(hi / cs.length * 100) + '% ของทั้งหมด' : '—', accent: true },
+    { val: cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length, lbl: 'อยู่ระหว่างคัดเลือก', sub: 'active pipeline' },
+    { val: hired, lbl: 'รับเข้าทำงาน', sub: cs.length ? Math.round(hired / cs.length * 100) + '% conversion' : '—' },
+  ];
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
+    <div class="kpi"><div class="kpi-val ${k.accent ? 'accent' : ''}">${k.val}</div>
+    <div class="kpi-lbl">${k.lbl}</div><div class="kpi-sub">${k.sub || ''}</div></div>`).join('');
+  renderCharts();
+}
+
+function renderCharts() {
+  if (!window.Chart) return;
+  const cc = chartColors();
+  Chart.defaults.color = cc.text;
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+  // score distribution
+  const bins = [0, 0, 0, 0, 0]; // 0-19,20-39,40-59,60-79,80-100
+  DB.candidates.forEach(c => bins[Math.min(Math.floor(c.score / 20), 4)]++);
+  destroyChart('chartScore');
+  charts.chartScore = new Chart(document.getElementById('chartScore'), {
+    type: 'bar',
+    data: { labels: ['0-19', '20-39', '40-59', '60-79', '80-100'], datasets: [{ data: bins, backgroundColor: ['#868e96', '#868e96', '#b45309', '#16a34a', '#16a34a'].map(c => c + 'bb'), borderRadius: 5 }] },
+    options: barOpts(cc)
+  });
+
+  // per job
+  destroyChart('chartJobs');
+  const jm = DB.jobs.map(j => ({ t: j.title, n: DB.candidates.filter(c => c.jobId === j.id).length }));
+  charts.chartJobs = new Chart(document.getElementById('chartJobs'), {
+    type: 'bar',
+    data: { labels: jm.map(x => x.t), datasets: [{ data: jm.map(x => x.n), backgroundColor: cc.redL, borderRadius: 5 }] },
+    options: barOpts(cc)
+  });
+
+  // stage pipeline
+  destroyChart('chartStage');
+  const sm = STAGES.map(s => DB.candidates.filter(c => c.stage === s).length);
+  const scolors = { Applied: '#868e96', Screening: '#b45309', Interview: '#1d4ed8', Offer: '#7c3aed', Hired: '#16a34a', Rejected: '#c8102e' };
+  charts.chartStage = new Chart(document.getElementById('chartStage'), {
+    type: 'bar',
+    data: { labels: STAGES, datasets: [{ data: sm, backgroundColor: STAGES.map(s => scolors[s] + 'bb'), borderRadius: 5 }] },
+    options: barOpts(cc, true)
+  });
+}
+
+/* ── Sample data ── */
+function seed() {
+  if ((DB.jobs.length || DB.candidates.length) && !confirm('จะเพิ่มข้อมูลตัวอย่างลงในข้อมูลปัจจุบัน ดำเนินการต่อ?')) return;
+  const j1 = { id: uid('j'), title: 'Sales Engineer', dept: 'Sales & Marketing', minExp: 2, eduKeywords: 'engineering, วิศวกรรม', status: 'Open',
+    skills: [
+      { name: 'Sales/ขาย', weight: 5, required: true },
+      { name: 'Negotiation/เจรจาต่อรอง', weight: 4, required: false },
+      { name: 'Excel/Microsoft Excel', weight: 3, required: false },
+      { name: 'CRM/Salesforce', weight: 3, required: false },
+      { name: 'English/ภาษาอังกฤษ', weight: 4, required: true },
+    ] };
+  const j2 = { id: uid('j'), title: 'HR Officer', dept: 'Human Resources', minExp: 1, eduKeywords: '', status: 'Open',
+    skills: [
+      { name: 'Recruitment/สรรหา', weight: 5, required: true },
+      { name: 'Payroll/เงินเดือน', weight: 3, required: false },
+      { name: 'Labor Law/กฎหมายแรงงาน', weight: 4, required: false },
+      { name: 'Excel/Microsoft Excel', weight: 3, required: false },
+    ] };
+  DB.jobs.push(j1, j2);
+
+  const samples = [
+    { job: j1, name: 'Nattaya Srisuk', text: `Nattaya Srisuk\nEmail: nattaya.s@example.com\nTel: 081-234-5678\n\nEXPERIENCE — 4 years in industrial sales\n2021 - Present  Senior Sales Executive, ABC Motors\n- Negotiation with fleet customers, managed CRM (Salesforce)\n- Prepared quotations in Microsoft Excel\n\nEDUCATION\nB.Eng Industrial Engineering, Chulalongkorn University\nBusiness English proficiency (TOEIC 850)` },
+    { job: j1, name: 'Kittipong Wattana', text: `Kittipong Wattana\nkittipong.w@example.com\n089-876-5432\n\nประสบการณ์ 1 ปี — พนักงานขายหน้าร้าน\n2024 - ปัจจุบัน ร้านอะไหล่ยนต์\n- งานขายและบริการลูกค้า\n\nการศึกษา: ปวส. เครื่องกล` },
+    { job: j2, name: 'Ploy Boonmee', text: `Ploy Boonmee\nploy.b@example.com\n02-123-4567\n\nHR OFFICER — 3 years experience\n2022 - Present  HR Generalist, XYZ Co.\n- Recruitment end-to-end, onboarding\n- Payroll processing, labor law compliance\n- Advanced Excel (VLOOKUP, Pivot)\n\nEDUCATION: BBA Human Resource Management, Thammasat University` },
+  ];
+  samples.forEach(s => {
+    const parsed = parseResume(s.text);
+    const scored = scoreCandidate(parsed, s.job);
+    DB.candidates.push(makeCandidate(parsed, scored, {
+      name: parsed.name || s.name, jobId: s.job.id,
+      fileName: s.name.toLowerCase().replace(/\s+/g, '-') + '.txt',
+    }));
+  });
+  saveDB(); renderAll();
+  toast('โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 3 ผู้สมัคร');
+}
+
+/* ── Orchestration & events ── */
+function renderAll() { renderJobs(); renderCandidates(); renderDashboard(); renderScanTable(); }
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  ['scanner', 'candidates', 'jobs', 'dashboard'].forEach(id => {
+    document.getElementById('tab-' + id).style.display = id === t.dataset.tab ? '' : 'none';
+  });
+  if (t.dataset.tab === 'dashboard') renderDashboard();
+}));
+
+// dropzone
+const dz = document.getElementById('dropzone');
+const fi = document.getElementById('fileInput');
+dz.addEventListener('click', () => fi.click());
+fi.addEventListener('change', () => { handleFiles(fi.files); fi.value = ''; });
+['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+dz.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+document.getElementById('scanJob').addEventListener('change', updateScanJobInfo);
+document.getElementById('backupBtn').addEventListener('click', onBackupClick);
+document.getElementById('restoreBtn').addEventListener('click', () => document.getElementById('restoreInput').click());
+document.getElementById('restoreInput').addEventListener('change', e => {
+  if (e.target.files[0]) restoreFromFile(e.target.files[0]);
+  e.target.value = '';
+});
+document.getElementById('addAllBtn').addEventListener('click', addAllScans);
+document.getElementById('clearScanBtn').addEventListener('click', clearScan);
+document.getElementById('seedBtn').addEventListener('click', seed);
+
+document.getElementById('jobAddBtn').addEventListener('click', () => openJobModal(null));
+document.getElementById('addSkillBtn').addEventListener('click', () => {
+  document.getElementById('skillRows').insertAdjacentHTML('beforeend', skillRowHTML());
+});
+document.getElementById('jobSaveBtn').addEventListener('click', saveJob);
+
+document.getElementById('candAddBtn').addEventListener('click', () => document.getElementById('candModalBg').classList.add('open'));
+document.getElementById('candSaveBtn').addEventListener('click', saveManualCand);
+document.getElementById('candExportBtn').addEventListener('click', exportCSV);
+['candSearch', 'candJobFilter', 'candStageFilter', 'candSort'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', renderCandidates);
+});
+document.querySelectorAll('#candViewToggle button').forEach(b =>
+  b.addEventListener('click', () => setCandView(b.dataset.view)));
+
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => {
+  document.getElementById(b.dataset.close).classList.remove('open');
+}));
+document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', e => {
+  if (e.target === bg) bg.classList.remove('open');
+}));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+});
+
+// theme
+const themeBtn = document.getElementById('themeBtn');
+function applyTheme(t) { document.documentElement.setAttribute('data-theme', t); localStorage.setItem('hma_theme', t); }
+themeBtn.addEventListener('click', () => {
+  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  renderCharts();
+});
+applyTheme(localStorage.getItem('hma_theme') || 'light');
+
+setCandView(candView);   // ตั้ง active ปุ่ม toggle ตามค่าที่บันทึกไว้
+renderAll();
+initBackup();
+</script>
+</body>
+</html>
