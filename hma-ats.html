@@ -370,6 +370,11 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
     <h1>Dashboard</h1>
     <p class="page-sub">ภาพรวมผู้สมัคร คะแนน และ pipeline</p>
 
+    <div class="toolbar">
+      <span class="topbar-spacer"></span>
+      <button class="btn btn-secondary btn-sm" id="dashExportBtn">⬇ Export CSV (สรุป)</button>
+    </div>
+
     <div class="kpi-grid" id="kpiGrid"></div>
 
     <div class="chart-grid">
@@ -498,6 +503,30 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
     <div class="modal-body" id="detailBody"></div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="detailModalBg">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EMAIL DRAFT MODAL ============ -->
+<div class="modal-bg" id="emailModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>✉ ร่างอีเมลถึงผู้สมัคร</h2>
+      <button class="x-btn" data-close="emailModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="warn-box">ℹ️ ระบบเตรียม<b>ร่าง</b>ให้เท่านั้น — ตรวจทานแล้วกด "เปิดในโปรแกรมอีเมล" เพื่อส่งด้วยตัวคุณเอง (ระบบไม่ส่งอีเมลแทน)</div>
+      <div class="grid2">
+        <div class="field"><label>ถึง (อีเมล)</label><input id="em_to" placeholder="name@example.com"></div>
+        <div class="field"><label>เทมเพลตตามสถานะ</label><select id="em_stage"></select></div>
+      </div>
+      <div class="field"><label>หัวข้อ</label><input id="em_subject"></div>
+      <div class="field"><label>ข้อความ</label><textarea id="em_body" rows="13"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="emailModalBg">ปิด</button>
+      <button class="btn btn-secondary" id="em_copy">📋 คัดลอกข้อความ</button>
+      <button class="btn btn-primary" id="em_open">เปิดในโปรแกรมอีเมล (ยังไม่ส่ง)</button>
     </div>
   </div>
 </div>
@@ -1301,6 +1330,7 @@ function detailHTML(r) {
     <div class="section-title">ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div>
     <div>${chips || '<span style="color:var(--gray-400)">ตำแหน่งนี้ไม่ได้กำหนดทักษะ</span>'}</div>
     ${jobRefHTML(job)}
+    ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">✉ ร่างอีเมลถึงผู้สมัคร</button></div>` : ''}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
     ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
     <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
@@ -1553,6 +1583,7 @@ function renderCandTable() {
       <td>${fmtDate(c.addedAt)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick="showCandDetail('${c.id}')">ดู</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEmailDraft('${c.id}')" title="ร่างอีเมล">✉</button>
         <button class="btn btn-danger btn-sm" onclick="deleteCand('${c.id}')">ลบ</button>
       </td>
     </tr>`;
@@ -1729,6 +1760,89 @@ function exportJobsCSV() {
   toast('Export ตำแหน่งงานแล้ว');
 }
 
+function exportDashboardCSV() {
+  const cs = DB.candidates;
+  if (!cs.length && !DB.jobs.length) { toast('ไม่มีข้อมูลให้ export'); return; }
+  const avg = cs.length ? Math.round(cs.reduce((s, c) => s + c.score, 0) / cs.length) : 0;
+  const rows = [
+    ['HMA ATS — Dashboard Summary', today()], [],
+    ['KPI', 'Value'],
+    ['ผู้สมัครทั้งหมด', cs.length],
+    ['ตำแหน่งเปิดรับ', DB.jobs.filter(j => j.status === 'Open').length],
+    ['ตำแหน่งทั้งหมด', DB.jobs.length],
+    ['คะแนน Match เฉลี่ย', avg],
+    ['ผู้สมัครคะแนน >= 70', cs.filter(c => c.score >= 70).length],
+    ['อยู่ระหว่างคัดเลือก', cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length],
+    ['รับเข้าทำงาน (Hired)', cs.filter(c => c.stage === 'Hired').length],
+    [],
+    ['ตำแหน่งงาน', 'จำนวนผู้สมัคร', 'คะแนนเฉลี่ย', 'รับเข้าทำงาน'],
+  ];
+  DB.jobs.forEach(j => {
+    const list = cs.filter(c => c.jobId === j.id);
+    const a = list.length ? Math.round(list.reduce((s, c) => s + c.score, 0) / list.length) : 0;
+    rows.push([j.title, list.length, a, list.filter(c => c.stage === 'Hired').length]);
+  });
+  rows.push([], ['สถานะ Pipeline', 'จำนวน']);
+  STAGES.forEach(s => rows.push([s, cs.filter(c => c.stage === s).length]));
+  downloadCSV(rows, `hma-ats-dashboard-${today()}.csv`);
+  toast('Export Dashboard แล้ว');
+}
+
+/* ── ร่างอีเมลถึงผู้สมัคร ตามสถานะ (เตรียมร่างเท่านั้น ไม่ส่งแทนผู้ใช้) ── */
+const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
+const EMAIL_TEMPLATES = {
+  Applied: {
+    subject: 'ยืนยันการรับสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจสมัครงานตำแหน่ง {position} กับ {company}\nเราได้รับใบสมัครของคุณเรียบร้อยแล้ว และอยู่ระหว่างการพิจารณาคุณสมบัติเบื้องต้น\nหากใบสมัครของคุณผ่านการคัดเลือก ทีมงานฝ่ายบุคคลจะติดต่อกลับโดยเร็วที่สุด\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
+  },
+  Screening: {
+    subject: 'อัปเดตสถานะใบสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณสำหรับความสนใจในตำแหน่ง {position}\nขณะนี้ใบสมัครของคุณอยู่ระหว่างการคัดกรองโดยทีมงาน หากต้องการข้อมูลหรือเอกสารเพิ่มเติม เราจะติดต่อกลับไป\nขอบคุณสำหรับความอดทนรอ\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
+  },
+  Interview: {
+    subject: 'เชิญเข้ารับการสัมภาษณ์ตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nยินดีแจ้งว่าใบสมัครของคุณผ่านการคัดเลือกเบื้องต้น {company} ขอเชิญคุณเข้ารับการสัมภาษณ์ตำแหน่ง {position} ตามรายละเอียดดังนี้\n\nวันที่: [ระบุวันที่]\nเวลา: [ระบุเวลา]\nรูปแบบ/สถานที่: [เช่น ณ สำนักงานใหญ่ หรือผ่านวิดีโอคอล]\n\nกรุณาตอบกลับอีเมลนี้เพื่อยืนยันการเข้าสัมภาษณ์ หรือแจ้งหากต้องการปรับเปลี่ยนวันเวลา\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
+  },
+  Offer: {
+    subject: 'ข้อเสนอการจ้างงานตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nยินดีเป็นอย่างยิ่งที่จะแจ้งว่า {company} ประสงค์เสนอตำแหน่ง {position} ให้กับคุณ\nรายละเอียดข้อเสนอ (เงินเดือน สวัสดิการ และวันเริ่มงาน) จะแจ้งในลำดับถัดไป หรือแนบมาในเอกสารประกอบ\nกรุณาตอบกลับเพื่อยืนยันหรือสอบถามรายละเอียดเพิ่มเติมภายใน [ระบุวันที่]\n\nขอแสดงความยินดีอีกครั้ง และหวังเป็นอย่างยิ่งว่าจะได้ร่วมงานกัน\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
+  },
+  Hired: {
+    subject: 'ยินดีต้อนรับสู่ {company} — ตำแหน่ง {position}',
+    body: `เรียน คุณ{name}\n\nยินดีต้อนรับสู่ครอบครัว {company}! เรารู้สึกยินดีที่คุณตอบรับตำแหน่ง {position}\nฝ่ายบุคคลจะติดต่อคุณเพื่อแจ้งรายละเอียดการเริ่มงาน เอกสารที่ต้องเตรียม และกำหนดการปฐมนิเทศ\nหากมีคำถามใด ๆ สามารถติดต่อกลับได้ที่อีเมลนี้\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
+  },
+  Rejected: {
+    subject: 'ผลการพิจารณาใบสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจและสละเวลาสมัครตำแหน่ง {position} กับ {company}\nหลังจากพิจารณาอย่างรอบคอบแล้ว ในครั้งนี้เรายังไม่สามารถเสนอตำแหน่งดังกล่าวให้กับคุณได้\nเราประทับใจในคุณสมบัติของคุณ และจะเก็บข้อมูลไว้พิจารณาสำหรับตำแหน่งที่เหมาะสมในอนาคต (ตามระยะเวลาที่นโยบายกำหนด)\nขอให้คุณประสบความสำเร็จในการสมัครงานครั้งต่อไป\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
+  },
+};
+let emailCandId = null;
+function emailDraft(c, stage) {
+  const job = jobById(c.jobId);
+  const t = EMAIL_TEMPLATES[stage || c.stage] || EMAIL_TEMPLATES.Applied;
+  const fill = s => s.replace(/\{name\}/g, c.name || '')
+    .replace(/\{position\}/g, job ? job.title : 'ที่ท่านสมัคร')
+    .replace(/\{company\}/g, EMAIL_COMPANY);
+  return { to: c.email || '', subject: fill(t.subject), body: fill(t.body) };
+}
+function fillEmailDraft(c, stage) {
+  const d = emailDraft(c, stage);
+  document.getElementById('em_subject').value = d.subject;
+  document.getElementById('em_body').value = d.body;
+}
+function openEmailDraft(id) {
+  const c = DB.candidates.find(x => x.id === id);
+  if (!c) return;
+  emailCandId = id;
+  const sel = document.getElementById('em_stage');
+  sel.innerHTML = STAGES.map(s => `<option ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('');
+  document.getElementById('em_to').value = c.email || '';
+  fillEmailDraft(c, c.stage);
+  document.getElementById('detailModalBg').classList.remove('open');   // ปิด detail ถ้าเปิดอยู่
+  document.getElementById('emailModalBg').classList.add('open');
+  if (!c.email) toast('ผู้สมัครไม่มีอีเมล — กรอกช่อง "ถึง" ก่อนส่ง');
+}
+
 /* ── Dashboard ── */
 function chartColors() {
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -1884,6 +1998,22 @@ document.getElementById('jobSaveBtn').addEventListener('click', saveJob);
 document.getElementById('candAddBtn').addEventListener('click', () => document.getElementById('candModalBg').classList.add('open'));
 document.getElementById('candSaveBtn').addEventListener('click', saveManualCand);
 document.getElementById('candExportBtn').addEventListener('click', exportCSV);
+document.getElementById('dashExportBtn').addEventListener('click', exportDashboardCSV);
+document.getElementById('em_stage').addEventListener('change', () => {
+  const c = DB.candidates.find(x => x.id === emailCandId);
+  if (c) fillEmailDraft(c, document.getElementById('em_stage').value);
+});
+document.getElementById('em_copy').addEventListener('click', async () => {
+  const text = 'หัวข้อ: ' + document.getElementById('em_subject').value + '\n\n' + document.getElementById('em_body').value;
+  try { await navigator.clipboard.writeText(text); toast('คัดลอกข้อความแล้ว'); }
+  catch (e) { toast('คัดลอกไม่สำเร็จ — เลือกข้อความในช่องแล้วกด Ctrl+C'); }
+});
+document.getElementById('em_open').addEventListener('click', () => {
+  const to = document.getElementById('em_to').value.trim();
+  const sub = encodeURIComponent(document.getElementById('em_subject').value);
+  const body = encodeURIComponent(document.getElementById('em_body').value);
+  window.location.href = `mailto:${to}?subject=${sub}&body=${body}`;   // เปิด mail client — ผู้ใช้กดส่งเอง
+});
 ['candSearch', 'candJobFilter', 'candStageFilter', 'candSort'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', renderCandidates);
