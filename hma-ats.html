@@ -205,6 +205,8 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px; padding: 0 1px; font-weight: 600; }
 .tpl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--gray-200); }
 .tpl-row:first-child { border-top: none; }
+.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; min-width: 18px; border-radius: 50%; border: 1px solid var(--gray-300); background: var(--white); color: var(--gray-500); font-weight: 800; font-size: 11px; line-height: 1; cursor: pointer; padding: 0; }
+.info-btn:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-l); }
 
 /* View toggle (table / board) */
 .seg { display: inline-flex; border: 1px solid var(--gray-300); border-radius: var(--radius); overflow: hidden; }
@@ -580,6 +582,20 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
   </div>
 </div>
 
+<!-- ============ SCORE BREAKDOWN MODAL ============ -->
+<div class="modal-bg" id="scoreModalBg">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h2 id="scoreInfoTitle">ที่มาของคะแนน</h2>
+      <button class="x-btn" data-close="scoreModalBg">&times;</button>
+    </div>
+    <div class="modal-body" id="scoreInfoBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="scoreModalBg">ปิด</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -941,6 +957,48 @@ function scoreBar(n) {
   return `<div class="score-wrap"><span class="score-num sc-${c}-t">${n}</span>
     <div class="score-track"><div class="score-fill sc-${c}" style="width:${n}%"></div></div></div>`;
 }
+/* คะแนน + ปุ่ม ! อธิบายที่มาของคะแนน (ใช้ทั้งตาราง/บอร์ด/ผลสแกน) */
+function scoreCell(id, score) {
+  return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(score)}<button class="info-btn" onclick="event.stopPropagation();showScoreInfo('${id}')" title="ที่มาของคะแนน — คลิกดูรายละเอียด">!</button></div>`;
+}
+function findRecord(id) {
+  return DB.candidates.find(x => x.id === id) || (typeof scanResults !== 'undefined' ? scanResults.find(x => x.id === id) : null) || null;
+}
+function scoreBreakdownHTML(r) {
+  const bd = r.breakdown || [];
+  const earned = bd.reduce((s, b) => s + b.pts, 0);
+  const max = bd.reduce((s, b) => s + b.max, 0);
+  const rows = bd.map(b => {
+    const pctv = b.max ? Math.round(b.pts / b.max * 100) : 0;
+    const cls = scoreClass(pctv);
+    return `<div class="break-row">
+      <b>${esc(b.label)}</b>
+      <div>
+        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(b.detail)}</div>
+        <div class="score-track"><div class="score-fill sc-${cls}" style="width:${pctv}%"></div></div>
+      </div>
+      <span class="break-pts">${b.pts.toFixed(1)} / ${b.max}</span>
+    </div>`;
+  }).join('') || '<div class="hint">ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน จึงยังคิดคะแนนไม่ได้</div>';
+  const matched = r.matched || [], missing = r.missing || [], missReq = r.missingRequired || [];
+  const chips = [
+    ...matched.map(s => `<span class="chip hit">✓ ${esc(s)}</span>`),
+    ...missing.map(s => `<span class="chip miss ${missReq.includes(s) ? 'req' : ''}">${missReq.includes(s) ? '✗ ' : ''}${esc(s)}</span>`),
+  ].join('');
+  return `
+    <div style="font-size:16px; font-weight:800; margin-bottom:4px">คะแนนรวม ${r.score}/100</div>
+    <p class="hint" style="margin-bottom:12px">แต่ละส่วนคิดจากเกณฑ์ที่ตำแหน่งนี้กำหนดจริง แล้วปรับเป็นสัดส่วนเต็ม 100 — น้ำหนักเต็ม: <b>ทักษะ 60 · ประสบการณ์ 25 · การศึกษา 15</b> (ส่วนที่ตำแหน่งไม่ได้กำหนด จะไม่ถูกนำมาคิด)</p>
+    ${rows}
+    ${bd.length ? `<div style="margin-top:10px; text-align:right; font-weight:700">รวมได้ ${earned.toFixed(1)} / ${max} คะแนนเต็มที่ใช้ → คิดเป็น ${r.score}/100</div>` : ''}
+    ${(matched.length + missing.length) ? `<div class="section-title">ทักษะที่ตรวจ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div><div>${chips}</div>` : ''}`;
+}
+function showScoreInfo(id) {
+  const r = findRecord(id);
+  if (!r) return;
+  document.getElementById('scoreInfoTitle').textContent = 'ที่มาของคะแนน — ' + (r.name || r.fileName || '');
+  document.getElementById('scoreInfoBody').innerHTML = scoreBreakdownHTML(r);
+  document.getElementById('scoreModalBg').classList.add('open');
+}
 function jobById(id) { return DB.jobs.find(j => j.id === id); }
 
 /* ── ผลสอบจาก hma-testing-system (Firestore, read-only) — decision 0003 ──
@@ -1281,7 +1339,7 @@ function renderScanTable() {
       <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis" title="${esc(r.fileName)}">${esc(r.fileName)}</td>
       <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">ไม่พบชื่อ</span>'}</td>
       <td>${esc(r.email) || '—'}</td>
-      <td>${scoreBar(r.score)}</td>
+      <td>${scoreCell(r.id, r.score)}</td>
       <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
       <td>${warn || '<span class="badge pass">OK</span>'}</td>
       <td style="white-space:nowrap">
@@ -1650,7 +1708,7 @@ function renderCandTable() {
       <td style="color:var(--gray-400)">${i + 1}</td>
       <td class="name-cell">${esc(c.name)}<div class="hint">${esc(c.email) || ''}</div></td>
       <td>${esc(job ? job.title : '—')}</td>
-      <td>${scoreBar(c.score)}</td>
+      <td>${scoreCell(c.id, c.score)}</td>
       <td>${(c.matched || []).length}/${(c.matched || []).length + (c.missing || []).length}${reqMiss}</td>
       <td>${c.expYears || 0} ปี</td>
       <td><select class="inline" onchange="setStage('${c.id}', this.value)">
@@ -1674,7 +1732,7 @@ function candCardHTML(c) {
   return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
     <div class="kc-name">${esc(c.name)}${reqMiss}</div>
     <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
-    <div class="kc-foot">${scoreBar(c.score)}
+    <div class="kc-foot">${scoreCell(c.id, c.score)}
       <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
     </div>
   </div>`;
