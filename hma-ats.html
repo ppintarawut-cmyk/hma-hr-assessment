@@ -346,6 +346,7 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 
     <div class="toolbar">
       <span></span><span class="topbar-spacer"></span>
+      <button class="btn btn-secondary btn-sm" id="jobExportBtn">⬇ Export CSV</button>
       <button class="btn btn-primary btn-sm" id="jobAddBtn">＋ เพิ่มตำแหน่ง</button>
     </div>
 
@@ -1541,23 +1542,69 @@ function csvCell(v) {
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return '"' + s.replace(/"/g, '""') + '"';
 }
-function exportCSV() {
-  if (!DB.candidates.length) { toast('ไม่มีข้อมูลให้ export'); return; }
-  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
-  const rows = [head];
-  DB.candidates.forEach(c => {
-    const job = jobById(c.jobId);
-    rows.push([c.name, c.email, c.phone, job ? job.title : '', c.score,
-      (c.matched || []).join('; '), (c.missing || []).join('; '),
-      c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)]);
-  });
+function downloadCSV(rows, filename) {
   const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });   // BOM ให้ Excel อ่านไทยถูก
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `hma-ats-candidates-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = filename;
   a.click();
-  toast('Export CSV แล้ว');
+}
+function today() { return new Date().toISOString().slice(0, 10); }
+
+/* รหัสชุดสอบทั้งหมดที่พบใน records (dynamic — ทนต่อชุดสอบใหม่) เรียงตาม TEST_LABELS ก่อน */
+function examCodesInRecords() {
+  const seen = new Set();
+  (FB.records || []).forEach(r => Object.keys(r).forEach(k => {
+    const m = k.match(/^([A-Z]+)_score$/);
+    if (m) seen.add(m[1]);
+  }));
+  const known = Object.keys(TEST_LABELS).filter(c => seen.has(c));
+  const extra = [...seen].filter(c => !TEST_LABELS[c]);
+  return [...known, ...extra];
+}
+
+async function exportCSV() {
+  // export เฉพาะผู้สมัครที่ตรงกับ filter/ค้นหาที่เปิดอยู่ (board ไม่ใช้ stage filter)
+  const rows0 = filteredCandidates(candView !== 'board');
+  if (!rows0.length) {
+    toast(DB.candidates.length ? 'ไม่มีผู้สมัครตรงกับตัวกรองที่เลือก' : 'ไม่มีข้อมูลให้ export');
+    return;
+  }
+  // ดึงผลสอบมารวมถ้า login cloud ไว้แล้ว (fetch ครั้งเดียวถ้ายังไม่มี)
+  if (FB.db && FB.user && !FB.records) { try { await fetchExamRecords(); } catch (e) { /* ปล่อยผ่าน */ } }
+  const codes = examCodesInRecords();
+
+  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
+  codes.forEach(c => head.push((TEST_LABELS[c] || c) + ' Score', (TEST_LABELS[c] || c) + ' Result'));
+  const rows = [head];
+  rows0.forEach(c => {
+    const job = jobById(c.jobId);
+    const row = [c.name, c.email, c.phone, job ? job.title : '', c.score,
+      (c.matched || []).join('; '), (c.missing || []).join('; '),
+      c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)];
+    if (codes.length) {
+      const ex = matchTestResults(c.email, FB.records)[0];   // ครั้งล่าสุด
+      codes.forEach(code => row.push(ex ? (ex[code + '_score'] ?? '') : '', ex ? (ex[code + '_outcome'] ?? '') : ''));
+    }
+    rows.push(row);
+  });
+  downloadCSV(rows, `hma-ats-candidates-${today()}.csv`);
+  const note = rows0.length < DB.candidates.length ? ` (${rows0.length}/${DB.candidates.length} ตามตัวกรอง)` : '';
+  toast(`Export ผู้สมัครแล้ว${note}` + (codes.length ? ' · รวมคะแนนสอบ' : (FB.user ? '' : ' · ผลสอบไม่รวม (ยังไม่ login cloud)')));
+}
+
+function exportJobsCSV() {
+  if (!DB.jobs.length) { toast('ยังไม่มีตำแหน่งงานให้ export'); return; }
+  const head = ['Title', 'Department', 'Status', 'Min Experience (yrs)', 'Education Keywords', 'Skills (name:weight:required)', 'Candidate Count'];
+  const rows = [head];
+  DB.jobs.forEach(j => {
+    const skills = (j.skills || []).map(s => `${s.name}:${s.weight}${s.required ? ':required' : ''}`).join('; ');
+    const n = DB.candidates.filter(c => c.jobId === j.id).length;
+    rows.push([j.title, j.dept || '', j.status, j.minExp || 0, j.eduKeywords || '', skills, n]);
+  });
+  downloadCSV(rows, `hma-ats-jobs-${today()}.csv`);
+  toast('Export ตำแหน่งงานแล้ว');
 }
 
 /* ── Dashboard ── */
@@ -1705,6 +1752,7 @@ document.getElementById('clearScanBtn').addEventListener('click', clearScan);
 document.getElementById('seedBtn').addEventListener('click', seed);
 
 document.getElementById('jobAddBtn').addEventListener('click', () => openJobModal(null));
+document.getElementById('jobExportBtn').addEventListener('click', exportJobsCSV);
 document.getElementById('addSkillBtn').addEventListener('click', () => {
   document.getElementById('skillRows').insertAdjacentHTML('beforeend', skillRowHTML());
 });
