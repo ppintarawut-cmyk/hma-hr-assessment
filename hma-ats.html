@@ -202,6 +202,7 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .kv td { border: none; padding: 4px 8px 4px 0; }
 .kv td:first-child { color: var(--gray-400); white-space: nowrap; }
 .warn-box { background: var(--pend-l); color: var(--pend); border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 12px; }
+mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px; padding: 0 1px; font-weight: 600; }
 
 /* View toggle (table / board) */
 .seg { display: inline-flex; border: 1px solid var(--gray-300); border-radius: var(--radius); overflow: hidden; }
@@ -435,6 +436,19 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
       </div>
       <div id="skillRows"></div>
       <button class="btn btn-secondary btn-sm" id="addSkillBtn" style="margin-top:8px">＋ เพิ่มทักษะ</button>
+
+      <div class="section-title">รายละเอียดงาน (JD) และคุณสมบัติผู้สมัคร</div>
+      <p class="hint" style="margin-bottom:8px">ใส่เป็นข้อความ หรือวางลิงก์ (URL) ก็ได้ — เก็บไว้อ้างอิงตอนคัดผู้สมัคร</p>
+      <div class="field">
+        <label>Job Description (JD)</label>
+        <textarea id="j_jd" rows="4" placeholder="วางเนื้อหา JD ของตำแหน่งนี้ (ข้อความ)"></textarea>
+        <input id="j_jdurl" placeholder="หรือวางลิงก์ JD — https://…">
+      </div>
+      <div class="field">
+        <label>คุณสมบัติผู้สมัคร (Qualifications)</label>
+        <textarea id="j_quals" rows="4" placeholder="คุณสมบัติ / เงื่อนไขของผู้สมัคร (ข้อความ)"></textarea>
+        <input id="j_qualsurl" placeholder="หรือวางลิงก์ — https://…">
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="jobModalBg">ยกเลิก</button>
@@ -1175,6 +1189,42 @@ function addAllScans() {
 }
 
 /* ── Detail modal (scan result or saved candidate) ── */
+/* ไฮไลต์ข้อความใน resume ที่ตรงกับทักษะที่ "พบ" (matched) — escape ก่อนแล้วค่อยครอบ <mark>
+   ASCII ใช้ boundary (ไม่มี lookbehind — กัน Safari เก่า), ไทยใช้ substring · รวม replace ทีเดียว/กลุ่ม */
+function highlightResume(text, matchedSkills) {
+  let html = esc(text || '');
+  if (!html) return '';
+  const ascii = new Set(), thai = new Set();
+  (matchedSkills || []).forEach(name => skillSynonyms(name).forEach(t => {
+    if (!t) return;
+    (/^[\x00-\x7F]+$/.test(t) ? ascii : thai).add(esc(t));
+  }));
+  if (ascii.size) {
+    const alt = [...ascii].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+    html = html.replace(new RegExp('([^a-z0-9]|^)(' + alt + ')(?=[^a-z0-9]|$)', 'gi'), '$1<mark class="hl">$2</mark>');
+  }
+  if (thai.size) {
+    const alt = [...thai].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+    html = html.replace(new RegExp('(' + alt + ')', 'g'), '<mark class="hl">$1</mark>');
+  }
+  return html;
+}
+function safeUrl(u) {
+  u = String(u || '').trim();
+  return /^https?:\/\//i.test(u) ? u : '';   // อนุญาตเฉพาะ http/https — กัน javascript:/data: URL
+}
+function jobRefHTML(job) {
+  if (!job) return '';
+  const block = (label, text, url) => {
+    if (!text && !safeUrl(url)) return '';
+    const link = safeUrl(url) ? ` <a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" style="color:var(--teal)">🔗 เปิดลิงก์</a>` : '';
+    const body = text ? `<div class="resume-pre" style="max-height:120px; margin-top:4px">${esc(text)}</div>` : '';
+    return `<div style="margin-bottom:6px"><b>${label}</b>${link}${body}</div>`;
+  };
+  const html = block('JD:', job.jd, job.jdUrl) + block('คุณสมบัติผู้สมัคร:', job.quals, job.qualsUrl);
+  return html ? `<div class="section-title">รายละเอียดตำแหน่ง (${esc(job.title)})</div>${html}` : '';
+}
+
 function detailHTML(r) {
   const job = jobById(r.jobId);
   const warn = (r.warnings && r.warnings.length)
@@ -1206,18 +1256,19 @@ function detailHTML(r) {
     </div>
     <div class="section-title">ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div>
     <div>${chips || '<span style="color:var(--gray-400)">ตำแหน่งนี้ไม่ได้กำหนดทักษะ</span>'}</div>
+    ${jobRefHTML(job)}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
-    ${sectionsHTML(r.sections || extractSections(r.resumeText || ''))}
-    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด)</div>
-    <div class="resume-pre">${esc(r.resumeText || '(ว่าง)')}</div>`;
+    ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
+    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
+    <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
 }
-function sectionsHTML(sections) {
+function sectionsHTML(sections, matched) {
   if (!sections) return '';
   const labels = { experience: '🧑‍💼 ส่วนประสบการณ์ทำงาน', education: '🎓 ส่วนการศึกษา', skills: '🛠 ส่วนทักษะ' };
   const out = ['experience', 'education', 'skills']
     .filter(k => sections[k])
     .map(k => `<div class="section-title">${labels[k]} <span style="font-weight:500; text-transform:none; letter-spacing:0">(ระบบระบุอัตโนมัติ)</span></div>
-      <div class="resume-pre" style="max-height:140px">${esc(sections[k])}</div>`)
+      <div class="resume-pre" style="max-height:140px">${highlightResume(sections[k], matched)}</div>`)
     .join('');
   return out;
 }
@@ -1277,8 +1328,12 @@ function renderJobs() {
       const nm = skillSynonyms(s.name)[0] || s.name;
       return `<span class="chip ${s.required ? 'hit' : 'miss'}" title="น้ำหนัก ${s.weight}${s.required ? ' · จำเป็น' : ''}">${esc(nm)}${s.required ? ' *' : ''}</span>`;
     }).join('');
+    const links = [
+      safeUrl(j.jdUrl) ? `<a href="${esc(safeUrl(j.jdUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 JD</a>` : (j.jd ? '<span class="hint" title="มี JD แบบข้อความ">📄 JD</span>' : ''),
+      safeUrl(j.qualsUrl) ? `<a href="${esc(safeUrl(j.qualsUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 คุณสมบัติ</a>` : (j.quals ? '<span class="hint" title="มีคุณสมบัติแบบข้อความ">📄 คุณสมบัติ</span>' : ''),
+    ].filter(Boolean).join(' · ');
     return `<tr>
-      <td class="name-cell">${esc(j.title)}</td>
+      <td class="name-cell">${esc(j.title)}${links ? `<div class="hint" style="margin-top:3px">${links}</div>` : ''}</td>
       <td>${esc(j.dept) || '—'}</td>
       <td style="max-width:320px">${skills || '<span style="color:var(--gray-400)">—</span>'}</td>
       <td>${Number(j.minExp) > 0 ? j.minExp + ' ปี' : '—'}</td>
@@ -1310,6 +1365,10 @@ function openJobModal(j) {
   document.getElementById('j_minexp').value = j ? j.minExp : 0;
   document.getElementById('j_edu').value = j ? (j.eduKeywords || '') : '';
   document.getElementById('j_status').value = j ? j.status : 'Open';
+  document.getElementById('j_jd').value = j ? (j.jd || '') : '';
+  document.getElementById('j_jdurl').value = j ? (j.jdUrl || '') : '';
+  document.getElementById('j_quals').value = j ? (j.quals || '') : '';
+  document.getElementById('j_qualsurl').value = j ? (j.qualsUrl || '') : '';
   const rows = document.getElementById('skillRows');
   rows.innerHTML = (j && j.skills.length ? j.skills : [null, null, null]).map(skillRowHTML).join('');
   document.getElementById('jobModalBg').classList.add('open');
@@ -1339,6 +1398,10 @@ function saveJob() {
     minExp: Math.max(0, Number(document.getElementById('j_minexp').value) || 0),
     eduKeywords: document.getElementById('j_edu').value.trim(),
     status: document.getElementById('j_status').value,
+    jd: document.getElementById('j_jd').value.trim(),
+    jdUrl: document.getElementById('j_jdurl').value.trim(),
+    quals: document.getElementById('j_quals').value.trim(),
+    qualsUrl: document.getElementById('j_qualsurl').value.trim(),
     skills,
   };
   const i = id ? DB.jobs.findIndex(j => j.id === id) : -1;
