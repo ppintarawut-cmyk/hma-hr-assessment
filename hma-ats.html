@@ -203,6 +203,8 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .kv td:first-child { color: var(--gray-400); white-space: nowrap; }
 .warn-box { background: var(--pend-l); color: var(--pend); border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 12px; }
 mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px; padding: 0 1px; font-weight: 600; }
+.tpl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--gray-200); }
+.tpl-row:first-child { border-top: none; }
 
 /* View toggle (table / board) */
 .seg { display: inline-flex; border: 1px solid var(--gray-300); border-radius: var(--radius); overflow: hidden; }
@@ -518,7 +520,13 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
       <div class="warn-box">ℹ️ ระบบเตรียม<b>ร่าง</b>ให้เท่านั้น — ตรวจทานแล้วกด "เปิดในโปรแกรมอีเมล" เพื่อส่งด้วยตัวคุณเอง (ระบบไม่ส่งอีเมลแทน)</div>
       <div class="grid2">
         <div class="field"><label>ถึง (อีเมล)</label><input id="em_to" placeholder="name@example.com"></div>
-        <div class="field"><label>เทมเพลตตามสถานะ</label><select id="em_stage"></select></div>
+        <div class="field">
+          <label>เทมเพลต</label>
+          <div style="display:flex; gap:6px">
+            <select id="em_template" style="flex:1"></select>
+            <button class="btn btn-ghost btn-sm" id="em_manage" title="เพิ่ม/แก้ไข/ลบเทมเพลต">⚙</button>
+          </div>
+        </div>
       </div>
       <div class="field"><label>หัวข้อ</label><input id="em_subject"></div>
       <div class="field"><label>ข้อความ</label><textarea id="em_body" rows="13"></textarea></div>
@@ -527,6 +535,47 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
       <button class="btn btn-ghost" data-close="emailModalBg">ปิด</button>
       <button class="btn btn-secondary" id="em_copy">📋 คัดลอกข้อความ</button>
       <button class="btn btn-primary" id="em_open">เปิดในโปรแกรมอีเมล (ยังไม่ส่ง)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EMAIL TEMPLATE MANAGER MODAL ============ -->
+<div class="modal-bg" id="tplModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>⚙ ตั้งค่าเทมเพลตอีเมล</h2>
+      <button class="x-btn" data-close="tplModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:10px">เพิ่ม แก้ไข หรือลบเทมเพลตให้ตรงกับกระบวนการของคุณ · ผูกเทมเพลตกับสถานะเพื่อให้ระบบเลือกให้อัตโนมัติ · ใช้ <code>{name}</code> <code>{position}</code> <code>{company}</code> แทนค่าได้</p>
+      <div id="tplList"></div>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="tplAddBtn">＋ เพิ่มเทมเพลต</button>
+        <button class="btn btn-ghost btn-sm" id="tplResetBtn">↺ คืนค่าเริ่มต้น</button>
+      </div>
+
+      <div id="tplEditor" style="display:none; margin-top:14px; border-top:1px solid var(--gray-200); padding-top:14px">
+        <input type="hidden" id="t_id">
+        <div class="grid2">
+          <div class="field"><label>ชื่อเทมเพลต *</label><input id="t_name" placeholder="เช่น ขอเอกสารเพิ่มเติม"></div>
+          <div class="field"><label>ใช้เป็นค่าเริ่มต้นของสถานะ</label>
+            <select id="t_stage">
+              <option value="">— ไม่ผูกสถานะ —</option>
+              <option>Applied</option><option>Screening</option><option>Interview</option>
+              <option>Offer</option><option>Hired</option><option>Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>หัวข้อ</label><input id="t_subject" placeholder="หัวข้ออีเมล — ใช้ {position} {company} ได้"></div>
+        <div class="field"><label>ข้อความ</label><textarea id="t_body" rows="10"></textarea></div>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-primary btn-sm" id="tplSaveBtn">บันทึกเทมเพลต</button>
+          <button class="btn btn-ghost btn-sm" id="tplCancelBtn">ยกเลิก</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="tplModalBg">ปิด</button>
     </div>
   </div>
 </div>
@@ -827,12 +876,38 @@ function parseResume(rawText) {
 
 /* ── Storage ── */
 const ATS_KEY = 'hma_ats_v1';
+const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
+/* เทมเพลตอีเมลเริ่มต้น — ผู้ใช้แก้/เพิ่ม/ลบ/ผูกสถานะได้เอง เก็บใน DB.emailTemplates (เข้า backup ด้วย)
+   {name} {position} {company} จะถูกแทนค่าตอนร่าง · stage = สถานะที่ใช้เทมเพลตนี้เป็นค่าเริ่มต้น (เว้นว่าง = ไม่ผูก) */
+const DEFAULT_EMAIL_TEMPLATES = [
+  { stage: 'Applied', name: 'รับใบสมัคร',
+    subject: 'ยืนยันการรับสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจสมัครงานตำแหน่ง {position} กับ {company}\nเราได้รับใบสมัครของคุณเรียบร้อยแล้ว และอยู่ระหว่างการพิจารณาคุณสมบัติเบื้องต้น\nหากใบสมัครของคุณผ่านการคัดเลือก ทีมงานฝ่ายบุคคลจะติดต่อกลับโดยเร็วที่สุด\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Screening', name: 'อยู่ระหว่างคัดกรอง',
+    subject: 'อัปเดตสถานะใบสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณสำหรับความสนใจในตำแหน่ง {position}\nขณะนี้ใบสมัครของคุณอยู่ระหว่างการคัดกรองโดยทีมงาน หากต้องการข้อมูลหรือเอกสารเพิ่มเติม เราจะติดต่อกลับไป\nขอบคุณสำหรับความอดทนรอ\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Interview', name: 'เชิญสัมภาษณ์',
+    subject: 'เชิญเข้ารับการสัมภาษณ์ตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nยินดีแจ้งว่าใบสมัครของคุณผ่านการคัดเลือกเบื้องต้น {company} ขอเชิญคุณเข้ารับการสัมภาษณ์ตำแหน่ง {position} ตามรายละเอียดดังนี้\n\nวันที่: [ระบุวันที่]\nเวลา: [ระบุเวลา]\nรูปแบบ/สถานที่: [เช่น ณ สำนักงานใหญ่ หรือผ่านวิดีโอคอล]\n\nกรุณาตอบกลับอีเมลนี้เพื่อยืนยันการเข้าสัมภาษณ์ หรือแจ้งหากต้องการปรับเปลี่ยนวันเวลา\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Offer', name: 'เสนอตำแหน่งงาน',
+    subject: 'ข้อเสนอการจ้างงานตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nยินดีเป็นอย่างยิ่งที่จะแจ้งว่า {company} ประสงค์เสนอตำแหน่ง {position} ให้กับคุณ\nรายละเอียดข้อเสนอ (เงินเดือน สวัสดิการ และวันเริ่มงาน) จะแจ้งในลำดับถัดไป หรือแนบมาในเอกสารประกอบ\nกรุณาตอบกลับเพื่อยืนยันหรือสอบถามรายละเอียดเพิ่มเติมภายใน [ระบุวันที่]\n\nขอแสดงความยินดีอีกครั้ง และหวังเป็นอย่างยิ่งว่าจะได้ร่วมงานกัน\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Hired', name: 'ตอบรับ / ยินดีต้อนรับ',
+    subject: 'ยินดีต้อนรับสู่ {company} — ตำแหน่ง {position}',
+    body: `เรียน คุณ{name}\n\nยินดีต้อนรับสู่ครอบครัว {company}! เรารู้สึกยินดีที่คุณตอบรับตำแหน่ง {position}\nฝ่ายบุคคลจะติดต่อคุณเพื่อแจ้งรายละเอียดการเริ่มงาน เอกสารที่ต้องเตรียม และกำหนดการปฐมนิเทศ\nหากมีคำถามใด ๆ สามารถติดต่อกลับได้ที่อีเมลนี้\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Rejected', name: 'แจ้งผลไม่ผ่าน',
+    subject: 'ผลการพิจารณาใบสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจและสละเวลาสมัครตำแหน่ง {position} กับ {company}\nหลังจากพิจารณาอย่างรอบคอบแล้ว ในครั้งนี้เรายังไม่สามารถเสนอตำแหน่งดังกล่าวให้กับคุณได้\nเราประทับใจในคุณสมบัติของคุณ และจะเก็บข้อมูลไว้พิจารณาสำหรับตำแหน่งที่เหมาะสมในอนาคต (ตามระยะเวลาที่นโยบายกำหนด)\nขอให้คุณประสบความสำเร็จในการสมัครงานครั้งต่อไป\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+];
+function seedEmailTemplates() { return DEFAULT_EMAIL_TEMPLATES.map(t => Object.assign({ id: uid('t') }, t)); }
 function loadDB() {
+  let d = { jobs: [], candidates: [], emailTemplates: seedEmailTemplates() };
   try {
-    const d = JSON.parse(localStorage.getItem(ATS_KEY));
-    if (d && Array.isArray(d.jobs) && Array.isArray(d.candidates)) return d;
+    const p = JSON.parse(localStorage.getItem(ATS_KEY));
+    if (p && Array.isArray(p.jobs) && Array.isArray(p.candidates)) d = p;
   } catch (e) { /* corrupt → start fresh */ }
-  return { jobs: [], candidates: [] };
+  if (!Array.isArray(d.emailTemplates) || !d.emailTemplates.length) d.emailTemplates = seedEmailTemplates();  // migration/safety
+  return d;
 }
 let DB = loadDB();
 function saveDB() {
@@ -1009,7 +1084,7 @@ async function idbSet(key, val) {
 
 function backupPayload() {
   return JSON.stringify({ app: 'hma-ats', version: 1, savedAt: new Date().toISOString(),
-    jobs: DB.jobs, candidates: DB.candidates });
+    jobs: DB.jobs, candidates: DB.candidates, emailTemplates: DB.emailTemplates });
 }
 function renderBackupStatus(state) {
   const st = document.getElementById('backupStatus');
@@ -1088,7 +1163,8 @@ function applyRestore(data) {
   if (!confirm(`กู้คืนจากไฟล์สำรอง?\nตำแหน่ง ${data.jobs.length} · ผู้สมัคร ${data.candidates.length}` +
     (data.savedAt ? `\nสำรองเมื่อ ${new Date(data.savedAt).toLocaleString('th-TH')}` : '') +
     `\n\nข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด`)) return false;
-  DB = { jobs: data.jobs, candidates: data.candidates };
+  DB = { jobs: data.jobs, candidates: data.candidates,
+    emailTemplates: (Array.isArray(data.emailTemplates) && data.emailTemplates.length) ? data.emailTemplates : seedEmailTemplates() };
   saveDB(); renderAll();
   return true;
 }
@@ -1788,59 +1864,117 @@ function exportDashboardCSV() {
   toast('Export Dashboard แล้ว');
 }
 
-/* ── ร่างอีเมลถึงผู้สมัคร ตามสถานะ (เตรียมร่างเท่านั้น ไม่ส่งแทนผู้ใช้) ── */
-const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
-const EMAIL_TEMPLATES = {
-  Applied: {
-    subject: 'ยืนยันการรับสมัครตำแหน่ง {position} — {company}',
-    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจสมัครงานตำแหน่ง {position} กับ {company}\nเราได้รับใบสมัครของคุณเรียบร้อยแล้ว และอยู่ระหว่างการพิจารณาคุณสมบัติเบื้องต้น\nหากใบสมัครของคุณผ่านการคัดเลือก ทีมงานฝ่ายบุคคลจะติดต่อกลับโดยเร็วที่สุด\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
-  },
-  Screening: {
-    subject: 'อัปเดตสถานะใบสมัครตำแหน่ง {position} — {company}',
-    body: `เรียน คุณ{name}\n\nขอบคุณสำหรับความสนใจในตำแหน่ง {position}\nขณะนี้ใบสมัครของคุณอยู่ระหว่างการคัดกรองโดยทีมงาน หากต้องการข้อมูลหรือเอกสารเพิ่มเติม เราจะติดต่อกลับไป\nขอบคุณสำหรับความอดทนรอ\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
-  },
-  Interview: {
-    subject: 'เชิญเข้ารับการสัมภาษณ์ตำแหน่ง {position} — {company}',
-    body: `เรียน คุณ{name}\n\nยินดีแจ้งว่าใบสมัครของคุณผ่านการคัดเลือกเบื้องต้น {company} ขอเชิญคุณเข้ารับการสัมภาษณ์ตำแหน่ง {position} ตามรายละเอียดดังนี้\n\nวันที่: [ระบุวันที่]\nเวลา: [ระบุเวลา]\nรูปแบบ/สถานที่: [เช่น ณ สำนักงานใหญ่ หรือผ่านวิดีโอคอล]\n\nกรุณาตอบกลับอีเมลนี้เพื่อยืนยันการเข้าสัมภาษณ์ หรือแจ้งหากต้องการปรับเปลี่ยนวันเวลา\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
-  },
-  Offer: {
-    subject: 'ข้อเสนอการจ้างงานตำแหน่ง {position} — {company}',
-    body: `เรียน คุณ{name}\n\nยินดีเป็นอย่างยิ่งที่จะแจ้งว่า {company} ประสงค์เสนอตำแหน่ง {position} ให้กับคุณ\nรายละเอียดข้อเสนอ (เงินเดือน สวัสดิการ และวันเริ่มงาน) จะแจ้งในลำดับถัดไป หรือแนบมาในเอกสารประกอบ\nกรุณาตอบกลับเพื่อยืนยันหรือสอบถามรายละเอียดเพิ่มเติมภายใน [ระบุวันที่]\n\nขอแสดงความยินดีอีกครั้ง และหวังเป็นอย่างยิ่งว่าจะได้ร่วมงานกัน\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
-  },
-  Hired: {
-    subject: 'ยินดีต้อนรับสู่ {company} — ตำแหน่ง {position}',
-    body: `เรียน คุณ{name}\n\nยินดีต้อนรับสู่ครอบครัว {company}! เรารู้สึกยินดีที่คุณตอบรับตำแหน่ง {position}\nฝ่ายบุคคลจะติดต่อคุณเพื่อแจ้งรายละเอียดการเริ่มงาน เอกสารที่ต้องเตรียม และกำหนดการปฐมนิเทศ\nหากมีคำถามใด ๆ สามารถติดต่อกลับได้ที่อีเมลนี้\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
-  },
-  Rejected: {
-    subject: 'ผลการพิจารณาใบสมัครตำแหน่ง {position} — {company}',
-    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจและสละเวลาสมัครตำแหน่ง {position} กับ {company}\nหลังจากพิจารณาอย่างรอบคอบแล้ว ในครั้งนี้เรายังไม่สามารถเสนอตำแหน่งดังกล่าวให้กับคุณได้\nเราประทับใจในคุณสมบัติของคุณ และจะเก็บข้อมูลไว้พิจารณาสำหรับตำแหน่งที่เหมาะสมในอนาคต (ตามระยะเวลาที่นโยบายกำหนด)\nขอให้คุณประสบความสำเร็จในการสมัครงานครั้งต่อไป\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`,
-  },
-};
+/* ── ร่างอีเมลถึงผู้สมัคร (เตรียมร่างเท่านั้น ไม่ส่งแทนผู้ใช้) — เทมเพลตตั้งค่าได้ที่ DB.emailTemplates ── */
 let emailCandId = null;
-function emailDraft(c, stage) {
+function getTemplates() {
+  if (!Array.isArray(DB.emailTemplates) || !DB.emailTemplates.length) { DB.emailTemplates = seedEmailTemplates(); saveDB(); }
+  return DB.emailTemplates;
+}
+function fillTemplate(tpl, c) {
   const job = jobById(c.jobId);
-  const t = EMAIL_TEMPLATES[stage || c.stage] || EMAIL_TEMPLATES.Applied;
-  const fill = s => s.replace(/\{name\}/g, c.name || '')
+  const fill = s => String(s || '').replace(/\{name\}/g, c.name || '')
     .replace(/\{position\}/g, job ? job.title : 'ที่ท่านสมัคร')
     .replace(/\{company\}/g, EMAIL_COMPANY);
-  return { to: c.email || '', subject: fill(t.subject), body: fill(t.body) };
+  return { subject: fill(tpl.subject), body: fill(tpl.body) };
 }
-function fillEmailDraft(c, stage) {
-  const d = emailDraft(c, stage);
+/* เลือกเทมเพลตให้ผู้สมัคร: ตาม id → ตาม stage → เทมเพลตแรก */
+function pickTemplate(c, ref) {
+  const tpls = getTemplates();
+  return (ref && (tpls.find(t => t.id === ref) || tpls.find(t => t.stage === ref)))
+    || tpls.find(t => t.stage === c.stage) || tpls[0] || null;
+}
+/* คงชื่อ emailDraft ไว้ (ใช้ทดสอบ/ภายใน) — ref เป็น templateId หรือ stage ก็ได้ */
+function emailDraft(c, ref) {
+  const t = pickTemplate(c, ref);
+  if (!t) return { to: c.email || '', subject: '', body: '', templateId: null };
+  const { subject, body } = fillTemplate(t, c);
+  return { to: c.email || '', subject, body, templateId: t.id };
+}
+function fillEmailDraft(c, ref) {
+  const d = emailDraft(c, ref);
   document.getElementById('em_subject').value = d.subject;
   document.getElementById('em_body').value = d.body;
+  return d.templateId;
 }
 function openEmailDraft(id) {
   const c = DB.candidates.find(x => x.id === id);
   if (!c) return;
   emailCandId = id;
-  const sel = document.getElementById('em_stage');
-  sel.innerHTML = STAGES.map(s => `<option ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('');
+  const tpls = getTemplates();
+  const chosen = pickTemplate(c, null);
+  const sel = document.getElementById('em_template');
+  sel.innerHTML = tpls.map(t => `<option value="${t.id}">${esc(t.name)}${t.stage ? ' · ' + t.stage : ''}</option>`).join('')
+    || '<option value="">— ไม่มีเทมเพลต —</option>';
+  if (chosen) sel.value = chosen.id;
   document.getElementById('em_to').value = c.email || '';
-  fillEmailDraft(c, c.stage);
+  fillEmailDraft(c, chosen ? chosen.id : null);
   document.getElementById('detailModalBg').classList.remove('open');   // ปิด detail ถ้าเปิดอยู่
   document.getElementById('emailModalBg').classList.add('open');
   if (!c.email) toast('ผู้สมัครไม่มีอีเมล — กรอกช่อง "ถึง" ก่อนส่ง');
+}
+
+/* ── ตั้งค่าเทมเพลตอีเมล (เพิ่ม/แก้/ลบ) ── */
+function renderTplList() {
+  const tpls = getTemplates();
+  document.getElementById('tplList').innerHTML = tpls.map(t => `
+    <div class="tpl-row">
+      <div><b>${esc(t.name)}</b>${t.stage ? ` <span class="badge na">${t.stage}</span>` : ''}
+        <div class="hint" style="max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(t.subject)}</div></div>
+      <div style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="tplEdit('${t.id}')">แก้ไข</button>
+        <button class="btn btn-danger btn-sm" onclick="tplDelete('${t.id}')">ลบ</button>
+      </div>
+    </div>`).join('') || '<div class="hint">ยังไม่มีเทมเพลต</div>';
+}
+function openTplManager() {
+  document.getElementById('emailModalBg').classList.remove('open');
+  document.getElementById('tplEditor').style.display = 'none';
+  renderTplList();
+  document.getElementById('tplModalBg').classList.add('open');
+}
+function tplShowEditor(t) {
+  document.getElementById('t_id').value = t ? t.id : '';
+  document.getElementById('t_name').value = t ? t.name : '';
+  document.getElementById('t_stage').value = t ? (t.stage || '') : '';
+  document.getElementById('t_subject').value = t ? t.subject : '';
+  document.getElementById('t_body').value = t ? t.body : `เรียน คุณ{name}\n\n\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`;
+  document.getElementById('tplEditor').style.display = '';
+  document.getElementById('t_name').focus();
+}
+function tplEdit(id) { tplShowEditor(getTemplates().find(t => t.id === id)); }
+function tplDelete(id) {
+  const tpls = getTemplates();
+  if (tpls.length <= 1) { toast('ต้องมีอย่างน้อย 1 เทมเพลต'); return; }
+  const t = tpls.find(x => x.id === id);
+  if (!t || !confirm(`ลบเทมเพลต "${t.name}"?`)) return;
+  DB.emailTemplates = tpls.filter(x => x.id !== id);
+  saveDB(); renderTplList();
+  toast('ลบเทมเพลตแล้ว');
+}
+function tplSave() {
+  const name = document.getElementById('t_name').value.trim();
+  const nameEl = document.getElementById('t_name');
+  if (!name) { nameEl.classList.add('err'); toast('กรุณาตั้งชื่อเทมเพลต'); return; }
+  nameEl.classList.remove('err');
+  const rec = {
+    name, stage: document.getElementById('t_stage').value,
+    subject: document.getElementById('t_subject').value,
+    body: document.getElementById('t_body').value,
+  };
+  const id = document.getElementById('t_id').value;
+  const tpls = getTemplates();
+  if (id) { const i = tpls.findIndex(t => t.id === id); if (i >= 0) tpls[i] = Object.assign({ id }, rec); }
+  else tpls.push(Object.assign({ id: uid('t') }, rec));
+  saveDB();
+  document.getElementById('tplEditor').style.display = 'none';
+  renderTplList();
+  toast(id ? 'บันทึกเทมเพลตแล้ว' : 'เพิ่มเทมเพลตแล้ว');
+}
+function resetTemplates() {
+  if (!confirm('คืนค่าเทมเพลตทั้งหมดเป็นค่าเริ่มต้น? เทมเพลตที่คุณแก้ไว้จะหายทั้งหมด')) return;
+  DB.emailTemplates = seedEmailTemplates();
+  saveDB(); document.getElementById('tplEditor').style.display = 'none'; renderTplList();
+  toast('คืนค่าเทมเพลตเริ่มต้นแล้ว');
 }
 
 /* ── Dashboard ── */
@@ -1999,10 +2133,15 @@ document.getElementById('candAddBtn').addEventListener('click', () => document.g
 document.getElementById('candSaveBtn').addEventListener('click', saveManualCand);
 document.getElementById('candExportBtn').addEventListener('click', exportCSV);
 document.getElementById('dashExportBtn').addEventListener('click', exportDashboardCSV);
-document.getElementById('em_stage').addEventListener('change', () => {
+document.getElementById('em_template').addEventListener('change', () => {
   const c = DB.candidates.find(x => x.id === emailCandId);
-  if (c) fillEmailDraft(c, document.getElementById('em_stage').value);
+  if (c) fillEmailDraft(c, document.getElementById('em_template').value);
 });
+document.getElementById('em_manage').addEventListener('click', openTplManager);
+document.getElementById('tplAddBtn').addEventListener('click', () => tplShowEditor(null));
+document.getElementById('tplSaveBtn').addEventListener('click', tplSave);
+document.getElementById('tplCancelBtn').addEventListener('click', () => document.getElementById('tplEditor').style.display = 'none');
+document.getElementById('tplResetBtn').addEventListener('click', resetTemplates);
 document.getElementById('em_copy').addEventListener('click', async () => {
   const text = 'หัวข้อ: ' + document.getElementById('em_subject').value + '\n\n' + document.getElementById('em_body').value;
   try { await navigator.clipboard.writeText(text); toast('คัดลอกข้อความแล้ว'); }
