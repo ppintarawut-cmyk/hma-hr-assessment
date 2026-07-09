@@ -2144,6 +2144,7 @@ function renderReview(idx) {
         ${scoreLabel}
       </div>
       <div class="review-q-body">
+        ${q.passage?`<div style="background:var(--gray-50);border:1px solid var(--gray-200);border-left:3px solid var(--blue);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:var(--gray-700);white-space:pre-line;line-height:1.6">${q.passage}</div>`:''}
         <p style="font-size:13px;font-weight:500;margin-bottom:12px;line-height:1.6">${(LANG==='th'&&q.qTH)?q.qTH:q.q}</p>
         ${choices}
         ${q.exp?`<div class="explanation"><strong>💡 คำอธิบาย:</strong> ${q.exp}</div>`:''}
@@ -3851,8 +3852,12 @@ function renderQuestionEditor() {
           </div>
         </div>
         <div style="margin-bottom:10px">
+          <label style="font-size:12px;font-weight:500;color:var(--gray-500);display:block;margin-bottom:4px">📄 บทความ / เนื้อเรื่อง <small style="color:var(--gray-400)">(ไม่บังคับ — แสดงเหนือคำถาม เช่น NOTICE, บทอ่าน; ใช้ได้ทุกประเภท)</small></label>
+          <textarea class="q-inp" oninput="qeSetPassage(${i},this.value)" placeholder="เว้นว่างไว้ถ้าไม่ต้องการบทความ" style="min-height:56px">${esc(q.passage||'')}</textarea>
+        </div>
+        <div style="margin-bottom:10px">
           <label style="font-size:12px;font-weight:500;color:var(--gray-500);display:block;margin-bottom:4px">โจทย์</label>
-          <textarea class="q-inp" oninput="qeSetQ(${i},this.value)">${q.q}</textarea>
+          <textarea class="q-inp" oninput="qeSetQ(${i},this.value)">${esc(q.q)}</textarea>
         </div>
         <div style="margin-bottom:8px">
           <label style="font-size:12px;font-weight:500;color:var(--gray-500);display:block;margin-bottom:4px">🖼 รูปประกอบโจทย์</label>
@@ -3914,6 +3919,9 @@ function saveTestShuffle() {
 function qeToggle(i) { const b=document.getElementById(`qe-body-${i}`); b.classList.toggle('open'); }
 function qeSetQ(i,v)          { getEditQ()[qeActiveSet][i].q=v; }
 function qeSetExp(i,v)        { getEditQ()[qeActiveSet][i].exp=v; }
+// Optional passage/article shown above the question during the exam. Empty →
+// drop the field so it stays truly optional and doesn't bloat the saved bank.
+function qeSetPassage(i,v)    { const a=getEditQ()[qeActiveSet]; if(v && v.trim()) a[i].passage=v; else delete a[i].passage; }
 function qeSetType(i,t) {
   const q=getEditQ()[qeActiveSet][i]; q.type=t;
   renderQuestionEditor();
