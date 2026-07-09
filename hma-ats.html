@@ -435,7 +435,10 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
         <span>ทักษะ / คำพ้อง</span><span>น้ำหนัก (1-5)</span><span>จำเป็น?</span><span></span>
       </div>
       <div id="skillRows"></div>
-      <button class="btn btn-secondary btn-sm" id="addSkillBtn" style="margin-top:8px">＋ เพิ่มทักษะ</button>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="addSkillBtn">＋ เพิ่มทักษะ</button>
+        <button class="btn btn-secondary btn-sm" id="suggestSkillBtn" title="อ่านทักษะจากช่อง JD และคุณสมบัติด้านล่าง">✨ ดึงทักษะจาก JD/คุณสมบัติ</button>
+      </div>
 
       <div class="section-title">รายละเอียดงาน (JD) และคุณสมบัติผู้สมัคร</div>
       <p class="hint" style="margin-bottom:8px">ใส่เป็นข้อความ หรือวางลิงก์ (URL) ก็ได้ — เก็บไว้อ้างอิงตอนคัดผู้สมัคร</p>
@@ -683,6 +686,47 @@ function matchSkills(text, skills) {
    คะแนนเต็มถ่วงตามเกณฑ์ที่ตำแหน่งนั้นใช้จริง:
      ทักษะ = 60 · ประสบการณ์ = 25 (ถ้ากำหนด minExp) · การศึกษา = 15 (ถ้ากำหนดคีย์เวิร์ด)
    แสดง breakdown ทุกส่วนเพื่อความโปร่งใส */
+
+/* ── คลัง Core Competency ที่รู้จัก — ใช้ "ดึงทักษะจาก JD/คุณสมบัติ" อัตโนมัติ ──
+   รูปแบบ "หลัก/คำพ้อง1/คำพ้อง2" เดียวกับที่ระบบใช้คิดคะแนน (ไม่มี backend/AI จึงจับด้วยคลังคำ) */
+const SKILL_LIBRARY = [
+  // ธุรกิจ / ขาย / การตลาด
+  'Sales/ขาย/งานขาย', 'Marketing/การตลาด', 'Negotiation/เจรจาต่อรอง/ต่อรอง',
+  'CRM/Salesforce', 'Customer Service/บริการลูกค้า/ดูแลลูกค้า', 'Business Development/พัฒนาธุรกิจ',
+  // ภาษา / สื่อสาร / ซอฟต์สกิล
+  'English/ภาษาอังกฤษ', 'Communication/การสื่อสาร/สื่อสาร', 'Presentation/นำเสนอ/พรีเซนต์',
+  'Leadership/ภาวะผู้นำ/ผู้นำ', 'Teamwork/ทำงานเป็นทีม/ทีมเวิร์ก', 'Problem Solving/แก้ปัญหา',
+  'Time Management/บริหารเวลา', 'Analytical/วิเคราะห์/การวิเคราะห์',
+  // office / IT
+  'Excel/Microsoft Excel', 'PowerPoint/Microsoft PowerPoint', 'Word/Microsoft Word',
+  'Power BI/PowerBI', 'SQL', 'Python', 'Java', 'JavaScript/JS', 'SAP', 'ERP',
+  'Data Analysis/วิเคราะห์ข้อมูล',
+  // HR
+  'Recruitment/สรรหา/สรรหาบุคลากร', 'Payroll/เงินเดือน', 'Labor Law/กฎหมายแรงงาน',
+  'Training/ฝึกอบรม/อบรม', 'HRIS', 'Compensation/ค่าตอบแทน',
+  // บัญชี / การเงิน
+  'Accounting/บัญชี', 'Finance/การเงิน', 'Budgeting/งบประมาณ', 'Taxation/ภาษี',
+  // วิศวกรรม / การผลิต / โรงงาน
+  'Engineering/วิศวกรรม', 'AutoCAD', 'SolidWorks', 'Mechanical/เครื่องกล',
+  'Electrical/ไฟฟ้า', 'Maintenance/ซ่อมบำรุง/บำรุงรักษา', 'Production/การผลิต',
+  'Quality Control/ควบคุมคุณภาพ/QC', 'Quality Assurance/QA', 'ISO',
+  'Lean/Lean Manufacturing', 'Six Sigma', 'Kaizen', 'Safety/ความปลอดภัย/จป',
+  '5S', 'GMP',
+  // logistics / supply chain
+  'Logistics/โลจิสติกส์', 'Supply Chain/ซัพพลายเชน/ห่วงโซ่อุปทาน',
+  'Warehouse/คลังสินค้า', 'Procurement/จัดซื้อ', 'Inventory/สินค้าคงคลัง/สต็อก',
+  // ยานยนต์ (บริบท Hino) / อื่น ๆ
+  'Driving License/ใบขับขี่', 'Automotive/ยานยนต์/รถยนต์',
+  'Project Management/บริหารโครงการ/จัดการโครงการ',
+];
+
+/* คืนชื่อทักษะจากคลังที่พบคำพ้องใน text (JD+คุณสมบัติ) — ใช้ textHasTerm ตัวเดียวกับตอนคิดคะแนน */
+function suggestSkillsFromText(text) {
+  const low = String(text || '').toLowerCase();
+  if (!low.trim()) return [];
+  return SKILL_LIBRARY.filter(name => skillSynonyms(name).some(term => textHasTerm(low, term)));
+}
+
 const SCORE_W = { skills: 60, exp: 25, edu: 15 };   // น้ำหนักคะแนนรวม — แก้ที่เดียวพอ
 function scoreCandidate(parsed, job) {
   const breakdown = [];
@@ -1357,6 +1401,21 @@ function skillRowHTML(sk) {
     <button class="x-btn" onclick="this.parentElement.remove()" title="ลบทักษะ">&times;</button>
   </div>`;
 }
+/* ดึงทักษะจากช่อง JD + คุณสมบัติ มาเติมในรายการทักษะ (ไม่เพิ่มซ้ำของเดิม) */
+function suggestSkillsIntoForm() {
+  const text = document.getElementById('j_jd').value + '\n' + document.getElementById('j_quals').value;
+  const suggested = suggestSkillsFromText(text);
+  if (!suggested.length) { toast('ไม่พบทักษะที่รู้จักใน JD/คุณสมบัติ — เพิ่มเองได้'); return; }
+  const existing = new Set();
+  document.querySelectorAll('#skillRows .sk-name').forEach(inp =>
+    skillSynonyms(inp.value).forEach(s => existing.add(s.toLowerCase())));
+  const toAdd = suggested.filter(name => !skillSynonyms(name).some(s => existing.has(s.toLowerCase())));
+  if (!toAdd.length) { toast('ทักษะจาก JD มีอยู่ในรายการแล้ว'); return; }
+  const rows = document.getElementById('skillRows');
+  rows.querySelectorAll('.skill-row').forEach(row => { if (!row.querySelector('.sk-name').value.trim()) row.remove(); });
+  toAdd.forEach(name => rows.insertAdjacentHTML('beforeend', skillRowHTML({ name, weight: 3, required: false })));
+  toast(`เพิ่ม ${toAdd.length} ทักษะจาก JD แล้ว — ปรับน้ำหนัก/จำเป็นได้`);
+}
 function openJobModal(j) {
   document.getElementById('jobModalTitle').textContent = j ? 'แก้ไขตำแหน่งงาน' : 'เพิ่มตำแหน่งงาน';
   document.getElementById('j_id').value = j ? j.id : '';
@@ -1819,6 +1878,7 @@ document.getElementById('jobExportBtn').addEventListener('click', exportJobsCSV)
 document.getElementById('addSkillBtn').addEventListener('click', () => {
   document.getElementById('skillRows').insertAdjacentHTML('beforeend', skillRowHTML());
 });
+document.getElementById('suggestSkillBtn').addEventListener('click', suggestSkillsIntoForm);
 document.getElementById('jobSaveBtn').addEventListener('click', saveJob);
 
 document.getElementById('candAddBtn').addEventListener('click', () => document.getElementById('candModalBg').classList.add('open'));
