@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talent Assessment Battery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#15181C; --graphite:#22272E; --steel:#363D46; --paper:#FCFCFB;
+  --mist:#EEF0F2; --line:#D7DBDF; --muted:#697078; --faint:#9AA1A8;
+  --signal:#D8412F; --signal-dk:#B5331F; --blue:#2F6F8F; --green:#2E7D55; --amber:#B9791A;
+  --ui:'Inter',system-ui,-apple-system,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--mist);color:var(--ink);font-family:var(--ui);-webkit-font-smoothing:antialiased;line-height:1.5}
+button{font-family:inherit;cursor:pointer}
+.wrap{max-width:860px;margin:0 auto;padding:0 18px}
+
+/* ---- top chrome ---- */
+.bar{background:var(--ink);color:#fff}
+.bar .wrap{display:flex;align-items:center;justify-content:space-between;height:58px}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand b{font-weight:700;letter-spacing:.2px}
+.brand .tag{font-family:var(--mono);font-size:11px;color:#8b939c;text-transform:uppercase;letter-spacing:1.5px}
+.hrtoggle{font-family:var(--mono);font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#c5ccd3;background:transparent;border:1px solid #3a4047;padding:7px 12px;border-radius:6px}
+.hrtoggle.on{background:var(--signal);border-color:var(--signal);color:#fff}
+
+/* ---- screens ---- */
+.screen{display:none;padding:26px 0 60px}
+.screen.active{display:block}
+
+/* ---- home ---- */
+.hero{padding:30px 0 18px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--signal);font-weight:600}
+.hero h1{font-size:30px;line-height:1.12;font-weight:700;margin:10px 0 8px;letter-spacing:-.5px}
+.hero p{color:var(--muted);max-width:560px}
+.idrow{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0 6px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+.field{flex:1 1 200px}
+.field label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.field input{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:15px;font-family:var(--ui);background:var(--paper)}
+.field input:focus{outline:2px solid var(--blue);outline-offset:0;border-color:var(--blue)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:14px;margin-top:18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;transition:transform .12s,box-shadow .12s,border-color .12s;text-align:left}
+.card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(21,24,28,.10);border-color:var(--steel)}
+.card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.card .code{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--signal);font-weight:600}
+.card h3{font-size:18px;font-weight:600;letter-spacing:-.2px}
+.card .desc{font-size:13px;color:var(--muted);min-height:34px}
+.card .meta{display:flex;gap:14px;font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px;border-top:1px solid var(--mist);padding-top:10px}
+.card .meta b{color:var(--steel);font-weight:600}
+.card.done{border-color:var(--green)}
+.card .stamp{font-family:var(--mono);font-size:11px;color:var(--green);font-weight:600}
+
+/* ---- instructions ---- */
+.panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px}
+.panel h2{font-size:23px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
+.panel .sub{color:var(--muted);margin-bottom:18px}
+.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px}
+.spec{background:var(--paper);padding:14px 16px}
+.spec .k{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.spec .v{font-size:18px;font-weight:600;font-family:var(--mono);margin-top:3px}
+.rules{list-style:none;display:flex;flex-direction:column;gap:8px;margin:8px 0 22px}
+.rules li{display:flex;gap:10px;font-size:14px;color:var(--steel)}
+.rules li::before{content:"";flex:0 0 6px;height:6px;border-radius:50%;background:var(--signal);margin-top:8px}
+
+/* ---- test ---- */
+.testhead{position:sticky;top:0;z-index:5;background:var(--ink);color:#fff;border-radius:0 0 12px 12px}
+.testhead .wrap{display:flex;align-items:center;justify-content:space-between;height:54px;max-width:860px}
+.thname{font-weight:600;font-size:15px}
+.thright{display:flex;align-items:center;gap:16px}
+.timer{font-family:var(--mono);font-size:16px;font-weight:600;letter-spacing:.5px;background:#2a3038;padding:6px 12px;border-radius:7px}
+.timer.warn{background:var(--signal);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.6}}
+.progline{height:3px;background:#2a3038}
+.progline i{display:block;height:100%;background:var(--signal);transition:width .25s}
+
+.q{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;margin-top:18px}
+.qtop{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.qnum{font-family:var(--mono);font-size:12px;letter-spacing:1px;color:var(--muted)}
+.qsec{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--blue);background:#eaf2f6;padding:4px 9px;border-radius:20px;font-weight:600}
+.stem{font-size:17px;line-height:1.5;margin-bottom:6px;font-weight:500}
+.stem .mono{font-family:var(--mono);background:var(--mist);padding:1px 6px;border-radius:5px;font-size:.92em}
+.passage{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;padding:14px 16px;margin:6px 0 16px;font-size:14.5px;color:var(--steel);white-space:pre-line}
+.svgstem{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0}
+.gbox{width:54px;height:54px;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--paper)}
+.gq{width:54px;height:54px;border:1px dashed var(--signal);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--signal);font-family:var(--mono);font-size:22px;font-weight:600;background:#fdf3f1}
+.gly{width:30px;height:30px;color:var(--ink)}
+.gly *{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.gly .fill{fill:currentColor;stroke:none}
+
+.opts{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.opt{display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:10px;padding:13px 15px;background:var(--paper);transition:border-color .1s,background .1s;text-align:left;width:100%}
+.opt:hover{border-color:var(--steel)}
+.opt:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.opt.sel{border-color:var(--signal);background:#fdf3f1;box-shadow:inset 0 0 0 1px var(--signal)}
+.opt .key{flex:0 0 26px;height:26px;border:1px solid var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--muted)}
+.opt.sel .key{background:var(--signal);border-color:var(--signal);color:#fff}
+.opt .txt{font-size:15px}
+.opt .gly{width:34px;height:34px}
+
+.nav{display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:12px 20px;border-radius:9px;font-size:14.5px;font-weight:600;transition:background .1s,transform .08s}
+.btn:hover{background:var(--mist)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--signal);border-color:var(--signal);color:#fff}
+.btn.primary:hover{background:var(--signal-dk)}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.dark:hover{background:var(--graphite)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+
+.dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:340px}
+.dot{width:11px;height:11px;border-radius:3px;background:var(--line);border:none;padding:0}
+.dot.ans{background:var(--steel)}
+.dot.cur{outline:2px solid var(--signal);outline-offset:1px}
+
+/* ---- results readout ---- */
+.readout{background:var(--ink);color:#fff;border-radius:16px;padding:28px;margin-top:8px}
+.ro-top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.ro-score{font-family:var(--mono);font-weight:600;line-height:.9}
+.ro-score .big{font-size:62px;letter-spacing:-2px}
+.ro-score .of{font-size:22px;color:#8b939c}
+.ro-pct{font-family:var(--mono);font-size:15px;color:#aeb6bd;margin-top:6px}
+.band{text-align:right}
+.band .lab{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8b939c}
+.band .val{font-size:24px;font-weight:700;margin-top:4px}
+.ro-name{font-family:var(--mono);font-size:12px;color:#8b939c;letter-spacing:1px;border-top:1px solid #2c333b;margin-top:20px;padding-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+.breakdown{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;margin-top:16px}
+.breakdown h3{font-size:13px;font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+.secrow{margin-bottom:15px}
+.secrow .lab{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px}
+.secrow .lab b{font-weight:600}
+.secrow .lab span{font-family:var(--mono);color:var(--muted);font-size:13px}
+.track{height:9px;background:var(--mist);border-radius:5px;overflow:hidden}
+.track i{display:block;height:100%;border-radius:5px;transition:width .6s ease}
+
+/* ---- HR review ---- */
+.review{margin-top:16px}
+.rv{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:10px}
+.rv .rvtop{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.rv .rvnum{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.diff{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:3px 7px;border-radius:5px;text-transform:uppercase;font-weight:600}
+.diff.E{background:#e6f3ec;color:var(--green)}
+.diff.M{background:#fdf2e3;color:var(--amber)}
+.diff.H{background:#fbe9e6;color:var(--signal)}
+.rv .verdict{margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:600}
+.rv .verdict.ok{color:var(--green)}
+.rv .verdict.no{color:var(--signal)}
+.rv .rvstem{font-size:14.5px;margin-bottom:8px}
+.rv .rvkey{font-size:13px;color:var(--steel);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.rv .rvkey b{color:var(--green)}
+.rv .rvkey .picked{color:var(--signal)}
+.rv .why{font-size:12.5px;color:var(--muted);margin-top:6px;font-style:italic}
+
+.hrbanner{background:#fdf3f1;border:1px solid #f0c5bd;color:var(--signal-dk);border-radius:10px;padding:12px 16px;font-size:13px;margin-top:14px;display:flex;gap:10px;align-items:center}
+.hrbanner b{font-weight:600}
+
+.foot{text-align:center;color:var(--faint);font-size:12px;font-family:var(--mono);padding:30px 0 10px}
+.toolbar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+
+@media (max-width:560px){
+  .hero h1{font-size:25px}
+  .ro-score .big{font-size:48px}
+  .testhead .wrap{height:50px}
+}
+@media print{
+  .bar,.testhead,.toolbar,.nav,.hrtoggle{display:none}
+  .screen{display:none!important}
+  #r-screen{display:block!important}
+  body{background:#fff}
+  .readout{background:#15181C!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .track i,.diff{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="brand"><b>Talent Assessment Battery</b><span class="tag">v1.0 · screening</span></div>
+    <button class="hrtoggle" id="hrBtn" onclick="toggleHR()">HR view: off</button>
+  </div>
+</header>
+
+<!-- HOME -->
+<section class="screen active" id="home-screen">
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Pre-employment screening</div>
+      <h1>Six measures of capability,<br>one calibrated battery.</h1>
+      <p>Each instrument is built to separate strong candidates from the rest — tiered difficulty, plausible distractors, and a defensible key on every item. Enter the candidate's details, then run any test.</p>
+    </div>
+    <div class="idrow">
+      <div class="field"><label>Candidate name</label><input id="cName" placeholder="e.g. Somchai P." autocomplete="off"></div>
+      <div class="field"><label>Candidate ID / Req</label><input id="cId" placeholder="e.g. ENG-2026-014" autocomplete="off"></div>
+    </div>
+    <div class="grid" id="cardGrid"></div>
+  </div>
+</section>
+
+<!-- INSTRUCTIONS -->
+<section class="screen" id="intro-screen">
+  <div class="wrap">
+    <div class="panel">
+      <h2 id="i-title"></h2>
+      <p class="sub" id="i-sub"></p>
+      <div class="specs" id="i-specs"></div>
+      <ul class="rules" id="i-rules"></ul>
+      <div class="nav">
+        <button class="btn ghost" onclick="go('home-screen')">← Back to battery</button>
+        <button class="btn primary" onclick="startTest()">Start test →</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TEST -->
+<section class="screen" id="test-screen">
+  <div class="testhead">
+    <div class="wrap">
+      <div class="thname" id="t-name"></div>
+      <div class="thright">
+        <div class="qnum" id="t-count" style="font-family:var(--mono);font-size:12px;color:#8b939c"></div>
+        <div class="timer" id="t-timer">--:--</div>
+      </div>
+    </div>
+    <div class="progline"><i id="t-prog" style="width:0%"></i></div>
+  </div>
+  <div class="wrap">
+    <div class="q" id="qcard"></div>
+    <div class="nav">
+      <button class="btn" id="prevBtn" onclick="prevQ()">← Previous</button>
+      <div class="dots" id="navDots"></div>
+      <button class="btn dark" id="nextBtn" onclick="nextQ()">Next →</button>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section class="screen" id="r-screen">
+  <div class="wrap" id="r-body"></div>
+</section>
+
+<div class="wrap"><div class="foot">Talent Assessment Battery · scores are session-only · design for screening, calibrate on live data before high-stakes use</div></div>
+
+<script>
+/* ============================ GLYPH HELPERS ============================ */
+const sq=`<svg viewBox="0 0 24 24" class="gly"><rect x="4" y="4" width="16" height="16"/></svg>`;
+const ci=`<svg viewBox="0 0 24 24" class="gly"><circle cx="12" cy="12" r="8"/></svg>`;
+const tr=`<svg viewBox="0 0 24 24" class="gly"><polygon points="12,4 20,20 4,20"/></svg>`;
+const di=`<svg viewBox="0 0 24 24" class="gly"><polygon points="12,3 21,12 12,21 3,12"/></svg>`;
+const arr=a=>`<svg viewBox="0 0 24 24" class="gly"><g transform="rotate(${a} 12 12)"><line x1="12" y1="20" x2="12" y2="6"/><polyline points="7,11 12,6 17,11"/></g></svg>`;
+const dots=n=>{let d='';const pos=[[12,12],[8,8],[16,8],[8,16],[16,16]];for(let i=0;i<n;i++)d+=`<circle class="fill" cx="${pos[i][0]}" cy="${pos[i][1]}" r="2.6"/>`;return `<svg viewBox="0 0 24 24" class="gly"><rect x="2" y="2" width="20" height="20"/>${d}</svg>`;};
+const half=s=>{const p={top:'M3,12 A9,9 0 0 1 21,12 Z',right:'M12,3 A9,9 0 0 1 12,21 Z',bottom:'M21,12 A9,9 0 0 1 3,12 Z',left:'M12,21 A9,9 0 0 1 12,3 Z'}[s];return `<svg viewBox="0 0 24 24" class="gly"><circle cx="12" cy="12" r="9"/><path class="fill" d="${p}"/></svg>`;};
+const gbox=g=>`<span class="gbox">${g}</span>`;
+
+/* ============================ ITEM BANK ============================
+   schema: {sec, diff:'E'|'M'|'H', q, opts:[{t, p}], why, passage?, svgStem?, svgOpts?}
+   p = points awarded for choosing that option (binary tests use 0/1, graded use 0/1/2).
+   correct/best = option with the highest p.
+======================================================================= */
+const TESTS={
+/* ---------------------------------- IQ ---------------------------------- */
+iq:{name:'Cognitive Ability (IQ)',code:'GMA',mins:18,graded:false,
+ desc:'General mental ability — verbal, numerical, logical, abstract.',
+ standard:'Modeled on SHL / Wonderlic-style aptitude screens. GMA is the single strongest predictor of job performance.',
+ rules:['Work quickly and accurately — the timer matters.','Exactly one answer is correct per item.','You may revisit and change answers before submitting.','No calculator; mental math only.'],
+ bands:[[0,40,'Below average'],[40,60,'Average'],[60,80,'Above average'],[80,101,'Superior']],
+ items:[
+  {sec:'Verbal',diff:'E',q:`<b>ABUNDANT</b> is most similar in meaning to:`,opts:[{t:'Scarce',p:0},{t:'Plentiful',p:1},{t:'Hidden',p:0},{t:'Rapid',p:0}],why:'Abundant = existing in large quantities → plentiful.'},
+  {sec:'Verbal',diff:'M',q:`<b>Author</b> is to <b>Book</b> as <b>Composer</b> is to:`,opts:[{t:'Music',p:1},{t:'Piano',p:0},{t:'Orchestra',p:0},{t:'Audience',p:0}],why:'An author creates a book; a composer creates music. Piano/orchestra are tools/performers, not the creation.'},
+  {sec:'Verbal',diff:'M',q:`Choose the word that does NOT belong: <b>Novel · Poem · Sculpture · Essay</b>`,opts:[{t:'Novel',p:0},{t:'Poem',p:0},{t:'Sculpture',p:1},{t:'Essay',p:0}],why:'Novel, poem and essay are written works; a sculpture is not.'},
+  {sec:'Verbal',diff:'H',q:`Complete: "Despite the team's ____ efforts, the deadline slipped because the scope kept ____."`,opts:[{t:'diligent / expanding',p:1},{t:'careless / shrinking',p:0},{t:'minimal / freezing',p:0},{t:'reluctant / contracting',p:0}],why:'"Despite … efforts" implies positive effort (diligent); the deadline slips because scope grew (expanding).'},
+  {sec:'Verbal',diff:'H',q:`All items on the report were reviewed. Some reviewed items were rejected. Which must be true?`,opts:[{t:'All report items were rejected',p:0},{t:'Some report items may have been rejected',p:1},{t:'No report items were rejected',p:0},{t:'All rejected items were on the report',p:0}],why:'Some reviewed items were rejected, and all report items were reviewed — so some report items may (not must) be among the rejected.'},
+
+  {sec:'Numerical',diff:'E',q:`What number continues the series? <b>2, 4, 8, 16, ?</b>`,opts:[{t:'20',p:0},{t:'24',p:0},{t:'32',p:1},{t:'28',p:0}],why:'Each term doubles: 16 × 2 = 32.'},
+  {sec:'Numerical',diff:'M',q:`A shirt costs <b>800 THB after a 20% discount</b>. What was the original price?`,opts:[{t:'960',p:0},{t:'1,000',p:1},{t:'1,024',p:0},{t:'1,060',p:0}],why:'800 is 80% of the original: 800 ÷ 0.80 = 1,000.'},
+  {sec:'Numerical',diff:'M',q:`What number continues the series? <b>3, 6, 11, 18, 27, ?</b>`,opts:[{t:'34',p:0},{t:'36',p:0},{t:'38',p:1},{t:'40',p:0}],why:'Differences grow by 2: +3, +5, +7, +9, then +11 → 27 + 11 = 38.'},
+  {sec:'Numerical',diff:'H',q:`A machine makes <b>120 parts in 4 hours</b>. At the same rate, how many parts in 7 hours?`,opts:[{t:'180',p:0},{t:'210',p:1},{t:'200',p:0},{t:'240',p:0}],why:'Rate = 30 parts/hour; 30 × 7 = 210.'},
+  {sec:'Numerical',diff:'H',q:`Engineers to technicians are in a ratio of <b>3 : 5</b>. If there are <b>24 engineers</b>, how many technicians?`,opts:[{t:'30',p:0},{t:'40',p:1},{t:'45',p:0},{t:'15',p:0}],why:'24 engineers = 3 parts → 1 part = 8 → technicians = 5 × 8 = 40.'},
+
+  {sec:'Logical',diff:'M',q:`<b>All A are B. No B are C.</b> Therefore:`,opts:[{t:'All C are A',p:0},{t:'No A are C',p:1},{t:'Some A are C',p:0},{t:'All A are C',p:0}],why:'A is inside B; B and C share nothing; so A and C share nothing → No A are C.'},
+  {sec:'Logical',diff:'M',q:`"If it rains, the picnic is cancelled." The picnic was <b>NOT</b> cancelled. Therefore:`,opts:[{t:'It rained',p:0},{t:'It did not rain',p:1},{t:'Cannot be determined',p:0},{t:'It will rain later',p:0}],why:'Modus tollens: rain forces cancellation; no cancellation means it did not rain.'},
+  {sec:'Logical',diff:'H',q:`Anna is taller than Ben. Ben is taller than Carl. Dina is taller than Anna. Who is <b>shortest</b>?`,opts:[{t:'Anna',p:0},{t:'Ben',p:0},{t:'Carl',p:1},{t:'Dina',p:0}],why:'Order: Dina > Anna > Ben > Carl. Carl is shortest.'},
+  {sec:'Logical',diff:'H',q:`Only badge-holders may enter. <b>Some visitors hold badges.</b> Which must be true?`,opts:[{t:'All visitors may enter',p:0},{t:'Some visitors may enter',p:1},{t:'No visitors may enter',p:0},{t:'Only visitors may enter',p:0}],why:'The visitors who hold badges satisfy the entry rule, so some visitors may enter.'},
+
+  {sec:'Abstract',diff:'E',q:`What comes next in the sequence?`,svgStem:[gbox(sq),gbox(ci),gbox(tr),gbox(sq),gbox(ci),`<span class="gq">?</span>`],svgOpts:[tr,sq,ci,di],opts:[{t:'',p:1},{t:'',p:0},{t:'',p:0},{t:'',p:0}],why:'The pattern repeats square → circle → triangle. After square, circle, the next is triangle.'},
+  {sec:'Abstract',diff:'M',q:`The arrow rotates 90° clockwise each step. What comes next?`,svgStem:[gbox(arr(0)),gbox(arr(90)),gbox(arr(180)),`<span class="gq">?</span>`],svgOpts:[arr(270),arr(0),arr(90),arr(180)],opts:[{t:'',p:1},{t:'',p:0},{t:'',p:0},{t:'',p:0}],why:'Up → right → down → left. A further 90° clockwise turn points left.'},
+  {sec:'Abstract',diff:'H',q:`The number of dots increases by one each step. What comes next?`,svgStem:[gbox(dots(1)),gbox(dots(2)),gbox(dots(3)),`<span class="gq">?</span>`],svgOpts:[dots(4),dots(2),dots(5),dots(3)],opts:[{t:'',p:1},{t:'',p:0},{t:'',p:0},{t:'',p:0}],why:'1, 2, 3 dots → the next box holds 4 dots.'},
+  {sec:'Abstract',diff:'H',q:`The shaded half rotates 90° clockwise each step. What comes next?`,svgStem:[gbox(half('top')),gbox(half('right')),gbox(half('bottom')),`<span class="gq">?</span>`],svgOpts:[half('left'),half('top'),half('right'),half('bottom')],opts:[{t:'',p:1},{t:'',p:0},{t:'',p:0},{t:'',p:0}],why:'Shading moves top → right → bottom → left as it rotates clockwise.'}
+ ]},
+
+/* ---------------------------------- EQ ---------------------------------- */
+eq:{name:'Emotional Intelligence (EQ)',code:'SJT',mins:12,graded:true,
+ desc:'Situational judgement across Goleman\u2019s four domains.',
+ standard:'Built as a Situational Judgement Test on Goleman\u2019s model (self-awareness, self-management, social awareness, relationship management). SJT format resists faking better than self-report.',
+ rules:['Choose the MOST effective response in each situation.','Options are scored on a gradient — some are partly effective, not simply right or wrong.','Answer as you would actually behave, not as you think you "should".','There is no penalty for thinking; take the time you need.'],
+ bands:[[0,50,'Developing'],[50,70,'Competent'],[70,86,'Strong'],[86,101,'Exceptional']],
+ items:[
+  {sec:'Self-management',diff:'M',q:`In a meeting, a colleague presents your idea as their own. What is the most effective immediate response?`,opts:[{t:'Interrupt and tell everyone they are taking your credit',p:0},{t:'Calmly add detail that shows your contribution, then raise it privately afterward',p:2},{t:'Say nothing and vent to other colleagues later',p:0},{t:'Email your manager about it during the meeting',p:1}],why:'Best response protects the relationship and the record without a public confrontation; private follow-up addresses it directly.'},
+  {sec:'Self-awareness',diff:'M',q:`You receive feedback that feels unfair. What do you do first?`,opts:[{t:'Defend yourself point by point right away',p:0},{t:'Pause and ask questions to understand where it comes from',p:2},{t:'Accept it silently and quietly disengage',p:1},{t:'Dismiss it as the other person\u2019s bias',p:0}],why:'Seeking to understand before reacting is the core of self-awareness; silent acceptance is passive, defending/dismissing block learning.'},
+  {sec:'Relationship management',diff:'M',q:`A normally reliable teammate has missed two deadlines this month. The best approach is to:`,opts:[{t:'Report them to the manager so it\u2019s documented',p:0},{t:'Pick up their work yourself to keep the peace',p:1},{t:'Ask them privately if something is going on and how you can help',p:2},{t:'Wait to see if it happens a third time',p:0}],why:'A change from a reliable person signals an underlying issue; a supportive private conversation addresses cause, not just symptom.'},
+  {sec:'Self-management',diff:'H',q:`Under heavy deadline pressure, your stress is rising and your focus is slipping. Most effective?`,opts:[{t:'Push through harder and skip breaks to save time',p:0},{t:'Take a short reset, then reprioritize the two highest-impact tasks',p:2},{t:'Tell the team you can\u2019t cope and ask them to take over',p:1},{t:'Vent your frustration so people understand the pressure',p:0}],why:'Brief recovery plus reprioritization restores effectiveness; pushing through stress usually lowers output quality.'},
+  {sec:'Social awareness',diff:'M',q:`In a discussion, a quiet team member looks like they disagree but hasn\u2019t spoken. You should:`,opts:[{t:'Move on — if they had something they would say it',p:0},{t:'Invite their view directly and make space for it',p:2},{t:'Ask the group to vote to settle it quickly',p:1},{t:'Assume their silence means agreement',p:0}],why:'Reading non-verbal cues and drawing out an unheard view is social awareness in action.'},
+  {sec:'Relationship management',diff:'H',q:`Two team members you rely on are in open conflict that is affecting work. Best first step?`,opts:[{t:'Tell them to sort it out themselves like adults',p:0},{t:'Side with whoever is usually right',p:0},{t:'Meet each separately to understand both views, then bring them together on shared goals',p:2},{t:'Reassign one of them to avoid the friction',p:1}],why:'Understanding both sides before mediating toward common ground resolves the conflict rather than just suppressing it.'},
+  {sec:'Self-awareness',diff:'M',q:`You realize mid-project that an earlier decision you championed was wrong. You:`,opts:[{t:'Look for evidence that you were actually right',p:0},{t:'Quietly let it slide and hope no one notices',p:0},{t:'Flag it to the team, own it, and propose a correction',p:2},{t:'Blame the information you were given at the time',p:1}],why:'Owning the error openly and proposing a fix builds trust; deflection and concealment erode it.'},
+  {sec:'Self-management',diff:'M',q:`A customer is angry and raising their voice about a problem that isn\u2019t your fault. You:`,opts:[{t:'Match their energy so they take you seriously',p:0},{t:'Stay calm, acknowledge their frustration, and focus on a solution',p:2},{t:'Explain in detail why it isn\u2019t your fault',p:0},{t:'Put them on hold until they cool down',p:1}],why:'Regulating your own response and validating their feeling de-escalates and moves toward resolution.'},
+  {sec:'Social awareness',diff:'H',q:`A new colleague from a different culture seems uncomfortable with the team\u2019s blunt feedback style. Best?`,opts:[{t:'Expect them to adapt — it\u2019s how the team works',p:0},{t:'Adjust your delivery and check how feedback lands for them',p:2},{t:'Give them less feedback to avoid the issue',p:1},{t:'Assume they\u2019re too sensitive for the role',p:0}],why:'Noticing the discomfort and adapting delivery shows empathy without lowering the bar.'},
+  {sec:'Relationship management',diff:'M',q:`You have to deliver disappointing news to your team about a cancelled project. You:`,opts:[{t:'Send a short email and avoid the awkward conversation',p:0},{t:'Tell them honestly, acknowledge the impact, and explain what comes next',p:2},{t:'Soften it so much that the message gets lost',p:1},{t:'Wait for the rumor mill to break it first',p:0}],why:'Honest, empathetic, forward-looking communication respects the team and maintains trust.'},
+  {sec:'Self-management',diff:'H',q:`A peer publicly criticizes your work in a way you feel is exaggerated. In the moment you:`,opts:[{t:'Fire back with their own past mistakes',p:0},{t:'Acknowledge any valid point and suggest continuing the detail offline',p:2},{t:'Go silent and stew about it for the rest of the day',p:1},{t:'Demand an apology in front of everyone',p:0}],why:'Separating the signal from the tone, and moving the detail offline, keeps you effective and professional.'},
+  {sec:'Self-awareness',diff:'M',q:`You notice you\u2019ve been short-tempered with colleagues for the past week. The healthiest response is to:`,opts:[{t:'Assume everyone has just been more annoying than usual',p:0},{t:'Reflect on what\u2019s driving it and adjust, perhaps flagging your load',p:2},{t:'Force a cheerful act to hide it',p:1},{t:'Wait for it to pass on its own',p:0}],why:'Recognizing the pattern and tracing its cause is self-awareness; the alternatives ignore or mask it.'},
+  {sec:'Social awareness',diff:'M',q:`A teammate\u2019s performance has dropped sharply and they seem withdrawn. You:`,opts:[{t:'Focus only on the numbers in the next review',p:0},{t:'Check in with genuine concern before anything else',p:2},{t:'Tell others to give them space',p:1},{t:'Assume they\u2019ve stopped caring about the job',p:0}],why:'Responding to the human signal first, with concern rather than judgment, is socially attuned.'},
+  {sec:'Relationship management',diff:'H',q:`You strongly disagree with a decision your manager has already made and announced. You:`,opts:[{t:'Comply but criticize it to peers',p:0},{t:'Raise your concerns directly and constructively, then commit to the chosen path',p:2},{t:'Refuse to support something you disagree with',p:0},{t:'Say nothing and hope it fails so you\u2019re proven right',p:0}],why:'"Disagree and commit" — voice the concern through the right channel, then back the team\u2019s direction.'}
+ ]},
+
+/* ------------------------------- ENGLISH ------------------------------- */
+en:{name:'Business English',code:'CEFR',mins:22,graded:false,
+ desc:'Grammar, vocabulary and workplace reading — mapped to CEFR.',
+ standard:'Modeled on TOEIC / CEFR for workplace English (A2\u2013C1). Reading uses authentic business correspondence.',
+ rules:['Choose the single best answer for each item.','Difficulty ranges from elementary (A2) to advanced (C1).','For reading items, base answers only on the passage shown.','Your band (A2\u2013C1) is estimated from your score.'],
+ bands:[[0,40,'A2 — Elementary'],[40,60,'B1 — Intermediate'],[60,80,'B2 — Upper-intermediate'],[80,101,'C1 — Advanced']],
+ items:[
+  {sec:'Grammar',diff:'E',q:`She ____ to the office every morning.`,opts:[{t:'go',p:0},{t:'goes',p:1},{t:'going',p:0},{t:'gone',p:0}],why:'Third-person singular present simple → "goes".'},
+  {sec:'Grammar',diff:'M',q:`If I ____ more time, I would help you with the report.`,opts:[{t:'have',p:0},{t:'had',p:1},{t:'will have',p:0},{t:'having',p:0}],why:'Second conditional: "if + past simple … would" → "had".'},
+  {sec:'Grammar',diff:'M',q:`The report ____ by the finance team last week.`,opts:[{t:'was completed',p:1},{t:'is completing',p:0},{t:'has complete',p:0},{t:'completed',p:0}],why:'Past passive with a past time marker → "was completed".'},
+  {sec:'Grammar',diff:'M',q:`He suggested ____ the meeting until Friday.`,opts:[{t:'to postpone',p:0},{t:'postponing',p:1},{t:'postpone',p:0},{t:'postponed',p:0}],why:'"Suggest" is followed by the gerund → "postponing".'},
+  {sec:'Grammar',diff:'H',q:`____ the delay, the project was still delivered on schedule.`,opts:[{t:'Although',p:0},{t:'Despite',p:1},{t:'However',p:0},{t:'Because',p:0}],why:'"Despite" + noun phrase ("the delay"); "Although" needs a clause.'},
+  {sec:'Grammar',diff:'H',q:`By the time we arrived, the presentation ____.`,opts:[{t:'already started',p:0},{t:'had already started',p:1},{t:'has already started',p:0},{t:'was already start',p:0}],why:'Past perfect for an action completed before another past action → "had already started".'},
+  {sec:'Grammar',diff:'H',q:`Not only ____ the deadline, but he also exceeded every target.`,opts:[{t:'he met',p:0},{t:'did he meet',p:1},{t:'he did meet',p:0},{t:'met he',p:0}],why:'Negative-fronted "Not only" forces subject-auxiliary inversion → "did he meet".'},
+  {sec:'Grammar',diff:'H',q:`I\u2019d rather you ____ the client before sending the quote.`,opts:[{t:'call',p:0},{t:'called',p:1},{t:'will call',p:0},{t:'to call',p:0}],why:'"I\u2019d rather + subject" takes the past subjunctive → "called".'},
+
+  {sec:'Vocabulary',diff:'M',q:`We need to ____ this issue before it gets worse.`,opts:[{t:'address',p:1},{t:'dress',p:0},{t:'press',p:0},{t:'depress',p:0}],why:'"Address an issue" = deal with it.'},
+  {sec:'Vocabulary',diff:'H',q:`The new policy will ____ significant changes to our daily workflow.`,opts:[{t:'entail',p:1},{t:'detail',p:0},{t:'retail',p:0},{t:'curtail',p:0}],why:'"Entail" = involve as a necessary consequence.'},
+  {sec:'Vocabulary',diff:'H',q:`Her explanation was ____; everyone understood it immediately.`,opts:[{t:'ambiguous',p:0},{t:'lucid',p:1},{t:'tedious',p:0},{t:'verbose',p:0}],why:'"Lucid" = clear and easy to understand.'},
+  {sec:'Vocabulary',diff:'H',q:`The manager\u2019s ____ style made every team member feel heard.`,opts:[{t:'inclusive',p:1},{t:'elusive',p:0},{t:'exclusive',p:0},{t:'reclusive',p:0}],why:'"Inclusive" = bringing everyone in.'},
+  {sec:'Vocabulary',diff:'M',q:`Please ____ the attached document for full details.`,opts:[{t:'refer to',p:1},{t:'reflect on',p:0},{t:'refuse',p:0},{t:'refund',p:0}],why:'"Refer to" = look at for information.'},
+
+  {sec:'Reading',diff:'M',passage:`From: Operations\nSubject: East warehouse closure\n\nDear team,\nThe East warehouse will be closed for maintenance from 12 to 14 June. During this period, route all shipments through the West warehouse. Pickups originally scheduled for those three dates have been moved to 15 June. Please direct any questions to Logistics.`,q:`When does the East warehouse reopen?`,opts:[{t:'12 June',p:0},{t:'14 June',p:0},{t:'15 June',p:1},{t:'It does not say',p:0}],why:'Closed 12\u201314 June → it reopens on 15 June.'},
+  {sec:'Reading',diff:'M',passage:`From: Operations\nSubject: East warehouse closure\n\nDear team,\nThe East warehouse will be closed for maintenance from 12 to 14 June. During this period, route all shipments through the West warehouse. Pickups originally scheduled for those three dates have been moved to 15 June. Please direct any questions to Logistics.`,q:`What should staff do with shipments during the closure?`,opts:[{t:'Hold them until the warehouse reopens',p:0},{t:'Route them through the West warehouse',p:1},{t:'Cancel them',p:0},{t:'Send them to Logistics',p:0}],why:'The email instructs routing all shipments through the West warehouse.'},
+  {sec:'Reading',diff:'B1',q:`What happened to pickups scheduled for 12\u201314 June?`,passage:`From: Operations\nSubject: East warehouse closure\n\nDear team,\nThe East warehouse will be closed for maintenance from 12 to 14 June. During this period, route all shipments through the West warehouse. Pickups originally scheduled for those three dates have been moved to 15 June. Please direct any questions to Logistics.`,diff:'E',opts:[{t:'They were cancelled',p:0},{t:'They were moved to 15 June',p:1},{t:'They were unaffected',p:0},{t:'They were doubled',p:0}],why:'The pickups were rescheduled to 15 June.'},
+  {sec:'Reading',diff:'H',passage:`NOTICE — Expense policy update\n\nEffective next quarter, any expense reimbursement exceeding 5,000 THB requires written pre-approval from a department head. Submissions made without prior approval will be returned and may delay payment by up to two weeks. Employees are encouraged to plan larger purchases accordingly.`,q:`What triggers the new pre-approval requirement?`,opts:[{t:'Any expense at all',p:0},{t:'Expenses above 5,000 THB',p:1},{t:'Only travel expenses',p:0},{t:'Expenses paid in cash',p:0}],why:'Pre-approval applies to reimbursements over 5,000 THB.'},
+  {sec:'Reading',diff:'H',passage:`NOTICE — Expense policy update\n\nEffective next quarter, any expense reimbursement exceeding 5,000 THB requires written pre-approval from a department head. Submissions made without prior approval will be returned and may delay payment by up to two weeks. Employees are encouraged to plan larger purchases accordingly.`,q:`What is the consequence of skipping pre-approval?`,opts:[{t:'A fine is charged',p:0},{t:'The claim is returned and payment may be delayed up to two weeks',p:1},{t:'The expense is approved automatically',p:0},{t:'Nothing changes',p:0}],why:'Unapproved submissions are returned and payment may be delayed up to two weeks.'},
+  {sec:'Reading',diff:'H',passage:`NOTICE — Expense policy update\n\nEffective next quarter, any expense reimbursement exceeding 5,000 THB requires written pre-approval from a department head. Submissions made without prior approval will be returned and may delay payment by up to two weeks. Employees are encouraged to plan larger purchases accordingly.`,q:`The main purpose of this notice is to:`,opts:[{t:'Announce a new approval requirement for larger expenses',p:1},{t:'Ban all reimbursements',p:0},{t:'Praise the finance team',p:0},{t:'Reduce salaries',p:0}],why:'The notice introduces a pre-approval rule for expenses over a threshold — its central purpose.'}
+ ]},
+
+/* ---------------------------------- AQ ---------------------------------- */
+aq:{name:'Adversity Quotient (AQ)',code:'CORE',mins:12,graded:true,
+ desc:'How a candidate responds to setbacks and pressure.',
+ standard:'Built on Stoltz\u2019s CORE model — Control, Ownership, Reach, Endurance — the basis of the Adversity Response Profile.',
+ rules:['Pick the response that best reflects how you genuinely tend to react.','Items measure resilience, ownership and persistence under difficulty.','Responses are scored on a gradient.','Answer honestly — there is no single "heroic" answer that fits everyone.'],
+ bands:[[0,50,'Low resilience'],[50,68,'Moderate'],[68,85,'High'],[85,101,'Very high']],
+ items:[
+  {sec:'Control',diff:'M',q:`A major project you led has just failed. Your first honest thought is closest to:`,opts:[{t:'"There was nothing I could have done."',p:0},{t:'"What could I have controlled, and what can I still influence now?"',p:2},{t:'"This is just bad luck."',p:0},{t:'"It\u2019s my manager\u2019s fault for the timeline."',p:1}],why:'High AQ locates points of control and influence rather than treating the outcome as fixed or external.'},
+  {sec:'Endurance',diff:'M',q:`After a serious setback, you most often expect the impact to:`,opts:[{t:'Define how things go from now on',p:0},{t:'Be temporary and recoverable with effort',p:2},{t:'Never fully go away',p:0},{t:'Depend entirely on other people',p:1}],why:'Seeing adversity as temporary and within reach of recovery is the endurance dimension of high AQ.'},
+  {sec:'Reach',diff:'H',q:`You get harsh criticism on one piece of work. By that afternoon you:`,opts:[{t:'Feel your whole competence is in question',p:0},{t:'Keep it contained to that one piece and carry on with the rest',p:2},{t:'Let it sour your mood at home too',p:0},{t:'Avoid all similar tasks for a while',p:1}],why:'Low "reach" means a setback stays bounded instead of spilling into other areas of work and life.'},
+  {sec:'Ownership',diff:'M',q:`A deliverable from your team was late and the client is unhappy. You:`,opts:[{t:'Point to whoever specifically dropped the ball',p:1},{t:'Step up, take responsibility for the outcome, and lead the fix',p:2},{t:'Wait for your manager to assign blame',p:0},{t:'Argue the deadline was unrealistic anyway',p:0}],why:'Ownership means stepping into the problem and driving the response, regardless of who erred.'},
+  {sec:'Control',diff:'H',q:`Your workload suddenly doubles due to a colleague\u2019s resignation. You:`,opts:[{t:'Decide it\u2019s impossible and wait to be rescued',p:0},{t:'Map what you can re-prioritize, automate or push back, then act',p:2},{t:'Work longer hours indefinitely without changing anything',p:1},{t:'Resent management until something gives',p:0}],why:'High control focuses energy on the levers you can actually move under pressure.'},
+  {sec:'Endurance',diff:'M',q:`You\u2019ve tried twice to fix a stubborn problem and failed. Most likely you:`,opts:[{t:'Conclude it can\u2019t be solved',p:0},{t:'Treat each failure as information and try a different approach',p:2},{t:'Hand it off and hope someone else cracks it',p:1},{t:'Keep repeating the same attempt',p:0}],why:'Persistence with adaptation — not blind repetition or surrender — characterizes high endurance.'},
+  {sec:'Reach',diff:'M',q:`One difficult client interaction goes badly first thing in the morning. The rest of your day:`,opts:[{t:'Is basically written off',p:0},{t:'Continues largely on track once you reset',p:2},{t:'Feels heavier but you push through',p:1},{t:'Becomes a series of small mistakes',p:0}],why:'Containing the emotional reach of one event keeps performance steady across the day.'},
+  {sec:'Ownership',diff:'H',q:`A process you designed turns out to have a flaw that cost the team time. You:`,opts:[{t:'Quietly hope no one traces it to you',p:0},{t:'Surface it yourself, explain the cause, and fix the design',p:2},{t:'Emphasize that everyone approved it',p:1},{t:'Defend the original design',p:0}],why:'Owning a flaw you created and correcting it openly is the strongest ownership response.'},
+  {sec:'Control',diff:'M',q:`You receive a rejection after a final-round interview elsewhere. You:`,opts:[{t:'Decide you\u2019re probably not good enough',p:0},{t:'Ask for feedback and treat it as data for next time',p:2},{t:'Blame the interviewer\u2019s judgement',p:1},{t:'Stop applying for similar roles',p:0}],why:'Seeking actionable feedback turns a setback into something within your control to improve.'},
+  {sec:'Endurance',diff:'H',q:`A long, important effort is knocked back to the drawing board near the finish. Your inner read is:`,opts:[{t:'"All that work was wasted."',p:0},{t:'"Painful, but recoverable — and I learned what doesn\u2019t work."',p:2},{t:'"I\u2019ll never get this kind of chance again."',p:0},{t:'"Only if someone bails me out."',p:1}],why:'Framing a major setback as recoverable and informative sustains effort over the long haul.'},
+  {sec:'Reach',diff:'M',q:`You make a visible mistake in a meeting. Afterwards you:`,opts:[{t:'Assume the whole team now doubts you',p:0},{t:'Correct it, note the lesson, and move on',p:2},{t:'Replay it for days',p:0},{t:'Go quiet in future meetings to be safe',p:1}],why:'Keeping a single mistake from generalizing into avoidance reflects low, healthy reach.'},
+  {sec:'Ownership',diff:'M',q:`Results for the quarter fell short of target. In the review you:`,opts:[{t:'List the external factors that were against you',p:1},{t:'Name what you\u2019d do differently and what you own',p:2},{t:'Stay silent and let others speak',p:0},{t:'Insist the targets were unfair',p:0}],why:'Naming your own contribution to a miss — alongside context — is the mark of ownership.'},
+  {sec:'Control',diff:'H',q:`A key tool you depend on goes down right before a deadline. You:`,opts:[{t:'Stop and wait for IT, deadline be damned',p:0},{t:'Find a workaround for the critical parts while escalating the fix',p:2},{t:'Panic and tell everyone it can\u2019t be done',p:0},{t:'Do nothing until someone tells you what to do',p:1}],why:'High control finds the achievable path forward instead of surrendering to the obstacle.'}
+ ]},
+
+/* ------------------------------ LEADERSHIP ------------------------------ */
+ld:{name:'Leadership Potential',code:'MLQ-SJT',mins:12,graded:true,
+ desc:'Decision-making, people development, conflict and change.',
+ standard:'Situational Judgement Test drawing on situational and transformational leadership (MLQ) dimensions.',
+ rules:['Choose the MOST effective leadership action in each situation.','Items span delegation, decisions, conflict, development, accountability and change.','Options are scored on a gradient of effectiveness.','Assume you have normal authority for a team lead / supervisor.'],
+ bands:[[0,50,'Emerging'],[50,68,'Capable'],[68,85,'Strong'],[85,101,'High-potential']],
+ items:[
+  {sec:'Delegation',diff:'M',q:`A capable team member is underused while you are overloaded. Best action?`,opts:[{t:'Keep doing it yourself to guarantee quality',p:1},{t:'Delegate clearly with expectations and a check-in point',p:2},{t:'Hand over tasks with no context and hope it works',p:0},{t:'Wait until they ask for more responsibility',p:0}],why:'Effective delegation grows the person and frees the leader, with clarity and a light check-in — not abdication.'},
+  {sec:'Decision-making',diff:'H',q:`Your team is split 50/50 on a decision and a deadline is hours away. You:`,opts:[{t:'Delay the decision until everyone agrees',p:0},{t:'Weigh the arguments, decide, and explain your reasoning',p:2},{t:'Pick whichever side is louder',p:0},{t:'Push the decision up to your boss',p:1}],why:'A leader makes a timely, reasoned call and communicates the "why" when consensus isn\u2019t available.'},
+  {sec:'Developing people',diff:'M',q:`A junior keeps making the same mistake. The most developmental response is to:`,opts:[{t:'Quietly fix it yourself each time',p:0},{t:'Coach them on the cause and have them attempt the fix',p:2},{t:'Reassign the task to someone reliable',p:1},{t:'Warn them it can\u2019t happen again, without guidance',p:0}],why:'Coaching the underlying cause builds capability; fixing it for them or merely warning does not.'},
+  {sec:'Conflict',diff:'H',q:`Two strong performers clash repeatedly over approach. You:`,opts:[{t:'Let the better performer\u2019s way win',p:0},{t:'Facilitate a conversation focused on shared goals and clear roles',p:2},{t:'Separate them permanently',p:1},{t:'Avoid it and hope it cools down',p:0}],why:'Channeling the conflict toward shared objectives and role clarity turns friction into productive tension.'},
+  {sec:'Accountability',diff:'M',q:`Your team misses a target you committed to leadership. In the post-mortem you:`,opts:[{t:'Protect yourself by highlighting your team\u2019s gaps',p:0},{t:'Own the result publicly, then work the lessons with the team privately',p:2},{t:'Blame conditions outside your control',p:0},{t:'Say nothing and move on',p:1}],why:'Leaders absorb accountability outward and drive improvement inward — the reverse of blame-shifting.'},
+  {sec:'Vision',diff:'H',q:`Morale is low after a reorganization. The most effective leadership move is to:`,opts:[{t:'Tell people to focus on their work and stop complaining',p:0},{t:'Acknowledge the disruption and connect daily work to a clear direction',p:2},{t:'Promise that nothing else will change',p:1},{t:'Wait for things to settle on their own',p:0}],why:'Transformational leaders restore meaning by linking present effort to a credible direction.'},
+  {sec:'Change',diff:'M',q:`You must roll out an unpopular new system. You:`,opts:[{t:'Mandate it and dismiss complaints',p:0},{t:'Explain the why, involve people in the how, and support the transition',p:2},{t:'Apologize for it and distance yourself from the decision',p:0},{t:'Roll it out silently and hope no one notices',p:1}],why:'Leading change well means owning the rationale, giving people agency in execution, and supporting them through it.'},
+  {sec:'Delegation',diff:'H',q:`You\u2019ve delegated a task and the person is doing it differently than you would. The result will still be fine. You:`,opts:[{t:'Step in and have them do it your way',p:0},{t:'Let them own their approach and offer help only if asked',p:2},{t:'Take the task back to be safe',p:0},{t:'Critique the differences afterward',p:1}],why:'Trusting a sound-if-different approach builds ownership; micromanaging effective work undermines it.'},
+  {sec:'Decision-making',diff:'M',q:`New information suggests a plan you announced last week is now the wrong call. You:`,opts:[{t:'Stick with it to avoid looking indecisive',p:0},{t:'Change course openly and explain what changed',p:2},{t:'Change quietly and hope no one connects it',p:1},{t:'Wait for someone else to raise it',p:0}],why:'Updating on evidence and explaining it signals strength and integrity, not weakness.'},
+  {sec:'Developing people',diff:'H',q:`A high performer says they\u2019re bored and considering leaving. You:`,opts:[{t:'Remind them of their salary and benefits',p:0},{t:'Explore what motivates them and find stretch or growth opportunities',p:2},{t:'Tell them to be patient until something opens up',p:1},{t:'Assume they\u2019re leaving anyway and disengage',p:0}],why:'Retaining talent means understanding motivation and creating real growth, not relying on pay alone.'},
+  {sec:'Accountability',diff:'M',q:`A decision you made turned out poorly and a teammate is being blamed for it. You:`,opts:[{t:'Stay quiet to protect your standing',p:0},{t:'Correct the record and take the responsibility that\u2019s yours',p:2},{t:'Share part of the blame to seem fair',p:1},{t:'Let it blow over',p:0}],why:'Shielding a team member from misplaced blame is a defining act of leadership accountability.'},
+  {sec:'Conflict',diff:'M',q:`In a meeting, a team member challenges your decision in front of others. You:`,opts:[{t:'Shut the challenge down to keep authority',p:0},{t:'Hear them out, address the point, and follow up if needed',p:2},{t:'Pretend to agree to avoid friction',p:1},{t:'Take it as a personal attack',p:0}],why:'Engaging a public challenge calmly and substantively models openness and earns respect.'}
+ ]},
+
+/* --------------------------------- EXCEL --------------------------------- */
+xl:{name:'Microsoft Excel',code:'MOS',mins:16,graded:false,
+ desc:'Tiered skills from basics to advanced formulas.',
+ standard:'Mapped to Microsoft Office Specialist (MOS) skill tiers: Basic \u2192 Intermediate \u2192 Advanced.',
+ rules:['Choose the single correct answer.','Difficulty rises from basic operations to advanced formula logic.','Assume standard Excel (Windows) behavior.','No spreadsheet is open — reason about the formulas directly.'],
+ bands:[[0,40,'Foundational gaps'],[40,65,'Basic'],[65,85,'Intermediate'],[85,101,'Advanced']],
+ items:[
+  {sec:'Basic',diff:'E',q:`Which formula adds the values in cells <span class="mono">A1</span> through <span class="mono">A10</span>?`,opts:[{t:'=SUM(A1:A10)',p:1},{t:'=ADD(A1:A10)',p:0},{t:'=TOTAL(A1:A10)',p:0},{t:'=A1+A10',p:0}],why:'SUM with a range is the standard; =A1+A10 adds only the two endpoints.'},
+  {sec:'Basic',diff:'E',q:`Every Excel formula must begin with which symbol?`,opts:[{t:'#',p:0},{t:'=',p:1},{t:'+',p:0},{t:'@',p:0}],why:'Formulas start with "=".'},
+  {sec:'Basic',diff:'E',q:`<span class="mono">=AVERAGE(B1:B5)</span> returns:`,opts:[{t:'The largest value in B1:B5',p:0},{t:'The mean of B1:B5',p:1},{t:'The count of B1:B5',p:0},{t:'The total of B1:B5',p:0}],why:'AVERAGE returns the arithmetic mean of the range.'},
+  {sec:'Basic',diff:'M',q:`To make a reference fully absolute (row and column locked), you write:`,opts:[{t:'A1',p:0},{t:'$A1',p:0},{t:'A$1',p:0},{t:'$A$1',p:1}],why:'A "$" before both the column and the row locks both → $A$1.'},
+  {sec:'Basic',diff:'M',q:`Which function counts how many cells in <span class="mono">A1:A20</span> contain numbers?`,opts:[{t:'=COUNT(A1:A20)',p:1},{t:'=COUNTA(A1:A20)',p:0},{t:'=SUM(A1:A20)',p:0},{t:'=NUM(A1:A20)',p:0}],why:'COUNT counts numeric cells; COUNTA counts all non-empty cells.'},
+  {sec:'Basic',diff:'M',q:`Which feature shows only the rows that meet a condition, hiding the rest?`,opts:[{t:'Sort',p:0},{t:'Filter',p:1},{t:'Freeze Panes',p:0},{t:'Wrap Text',p:0}],why:'Filter temporarily hides rows that don\u2019t match the criteria.'},
+
+  {sec:'Intermediate',diff:'M',q:`<span class="mono">=VLOOKUP("X101",A2:C50,3,FALSE)</span> returns:`,opts:[{t:'The value in column C of the row where column A = X101',p:1},{t:'The value in column A of row 3',p:0},{t:'Always an error',p:0},{t:'The closest match to X101 in column C',p:0}],why:'Column index 3 with FALSE = the exact-match row\u2019s third-column (C) value.'},
+  {sec:'Intermediate',diff:'M',q:`Which formula sums <span class="mono">B2:B100</span> only where <span class="mono">A2:A100</span> equals "Bangkok"?`,opts:[{t:'=SUM(B2:B100,"Bangkok")',p:0},{t:'=SUMIF(A2:A100,"Bangkok",B2:B100)',p:1},{t:'=COUNTIF(A2:A100,"Bangkok")',p:0},{t:'=IF(A2:A100="Bangkok",B2:B100)',p:0}],why:'SUMIF(criteria_range, criteria, sum_range) is the correct conditional sum.'},
+  {sec:'Intermediate',diff:'M',q:`<span class="mono">=IF(D2>=50,"Pass","Fail")</span> — if D2 is exactly 50, the result is:`,opts:[{t:'Pass',p:1},{t:'Fail',p:0},{t:'50',p:0},{t:'An error',p:0}],why:'">=" includes 50, so the condition is TRUE → "Pass".'},
+  {sec:'Intermediate',diff:'M',q:`Which formula counts cells in <span class="mono">C2:C100</span> that are greater than 1000?`,opts:[{t:'=COUNTIF(C2:C100,">1000")',p:1},{t:'=COUNT(C2:C100>1000)',p:0},{t:'=SUMIF(C2:C100,">1000")',p:0},{t:'=IF(C2:C100>1000)',p:0}],why:'COUNTIF with a ">1000" criterion counts the qualifying cells.'},
+  {sec:'Intermediate',diff:'H',q:`When you copy <span class="mono">=B$1</span> down a column, what stays fixed?`,opts:[{t:'The column B',p:0},{t:'The row 1',p:1},{t:'Both B and 1',p:0},{t:'Nothing',p:0}],why:'The "$" before 1 locks the row; copying down keeps row 1 fixed (column changes only if copied across).'},
+  {sec:'Intermediate',diff:'H',q:`Which limitation of VLOOKUP does XLOOKUP solve?`,opts:[{t:'VLOOKUP cannot return text',p:0},{t:'VLOOKUP cannot look to the left of the lookup column',p:1},{t:'VLOOKUP cannot use exact match',p:0},{t:'VLOOKUP cannot be copied down',p:0}],why:'VLOOKUP only searches rightward from the lookup column; XLOOKUP can look in any direction.'},
+  {sec:'Intermediate',diff:'M',q:`A PivotTable is best used to:`,opts:[{t:'Write long text paragraphs',p:0},{t:'Summarize and aggregate large data by category',p:1},{t:'Protect a worksheet with a password',p:0},{t:'Insert images into cells',p:0}],why:'PivotTables summarize and group large datasets dynamically.'},
+
+  {sec:'Advanced',diff:'H',q:`<span class="mono">=INDEX(B2:B100,MATCH("X101",A2:A100,0))</span> does what?`,opts:[{t:'Returns the B-value in the row where column A = X101',p:1},{t:'Returns row number 101',p:0},{t:'Always errors',p:0},{t:'Sums column B',p:0}],why:'MATCH finds the position of X101 in A; INDEX returns the B-value at that position — a flexible, leftward-capable lookup.'},
+  {sec:'Advanced',diff:'H',q:`<span class="mono">=IFERROR(VLOOKUP(...),"Not found")</span> will:`,opts:[{t:'Speed up the lookup',p:0},{t:'Return "Not found" if the lookup produces an error',p:1},{t:'Ignore the VLOOKUP entirely',p:0},{t:'Convert text to numbers',p:0}],why:'IFERROR catches an error result and returns the fallback value instead.'},
+  {sec:'Advanced',diff:'H',q:`<span class="mono">=IF(A1>90,"A",IF(A1>80,"B","C"))</span> — if A1 is 85, the result is:`,opts:[{t:'A',p:0},{t:'B',p:1},{t:'C',p:0},{t:'An error',p:0}],why:'85 is not > 90, but it is > 80 → the nested IF returns "B".'},
+  {sec:'Advanced',diff:'H',q:`<span class="mono">=SUMPRODUCT((A2:A10="BKK")*(B2:B10))</span> returns:`,opts:[{t:'The count of "BKK" rows',p:0},{t:'The sum of B where A = "BKK"',p:1},{t:'An error',p:0},{t:'The product of all B values',p:0}],why:'The boolean array (A="BKK") multiplies B, so SUMPRODUCT totals B only for "BKK" rows.'},
+  {sec:'Advanced',diff:'M',q:`Data Validation is used to:`,opts:[{t:'Restrict what can be entered in a cell (e.g. a dropdown list)',p:1},{t:'Automatically back up the file',p:0},{t:'Translate cell contents',p:0},{t:'Encrypt the workbook',p:0}],why:'Data Validation controls and limits the values a user can enter, such as a list dropdown.'}
+ ]}
+};
+
+/* ============================ STATE ============================ */
+const ORDER=['iq','eq','en','aq','ld','xl'];
+let hrMode=false;
+let cur={key:null,i:0,answers:[],timeLeft:0,timer:null};
+const results={}; // key -> {raw,max,pct,band,sections,answers}
+
+/* ============================ SECURITY HELPERS ============================ */
+// Escape user-supplied text before it is placed into innerHTML (candidate name / ID).
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// SHA-256 hex via Web Crypto — gates the HR answer-key view without storing a plaintext passcode.
+async function sha256Hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+
+/* ============================ HOME ============================ */
+function renderHome(){
+  const g=document.getElementById('cardGrid');
+  g.innerHTML=ORDER.map(k=>{
+    const t=TESTS[k];const done=results[k];
+    return `<button class="card ${done?'done':''}" onclick="openIntro('${k}')">
+      <span class="code">${t.code}</span>
+      <h3>${t.name}</h3>
+      <div class="desc">${t.desc}</div>
+      <div class="meta"><span><b>${t.items.length}</b> items</span><span><b>${t.mins}</b> min</span>${done?`<span class="stamp" style="margin-left:auto">✓ ${done.band}</span>`:''}</div>
+    </button>`;
+  }).join('');
+}
+// HR answer-key view is gated by a passcode the reviewer sets on first use (hash stored in localStorage,
+// never in the page source). NOTE: this only stops a one-click reveal on a shared/kiosk device — the item
+// bank and scoring still run client-side, so a candidate who opens browser DevTools can bypass it. Real
+// protection requires moving scoring server-side (see hma-testing-system.html / Firestore).
+const HR_PASS_KEY='tab_hr_pass_hash';
+async function hrGate(){
+  const stored=localStorage.getItem(HR_PASS_KEY);
+  if(!stored){
+    const p1=prompt('Set an HR passcode (first-time setup on this device):');
+    if(!p1)return false;
+    const p2=prompt('Confirm the HR passcode:');
+    if(p1!==p2){alert('Passcodes did not match — HR view not enabled.');return false;}
+    localStorage.setItem(HR_PASS_KEY,await sha256Hex(p1));
+    return true;
+  }
+  const entry=prompt('Enter HR passcode to reveal the answer key:');
+  if(entry===null)return false;
+  if(await sha256Hex(entry)!==stored){alert('Incorrect passcode.');return false;}
+  return true;
+}
+async function toggleHR(){
+  if(!hrMode && !await hrGate())return;
+  hrMode=!hrMode;
+  const b=document.getElementById('hrBtn');
+  b.classList.toggle('on',hrMode);
+  b.textContent='HR view: '+(hrMode?'on':'off');
+  if(document.getElementById('r-screen').classList.contains('active'))renderResults();
+}
+function go(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
+
+/* ============================ INTRO ============================ */
+let pendingKey=null;
+function openIntro(k){
+  pendingKey=k;const t=TESTS[k];
+  document.getElementById('i-title').textContent=t.name;
+  document.getElementById('i-sub').textContent=t.standard;
+  const diffMix=t.items.reduce((a,it)=>{a[it.diff]=(a[it.diff]||0)+1;return a;},{});
+  document.getElementById('i-specs').innerHTML=`
+    <div class="spec"><div class="k">Items</div><div class="v">${t.items.length}</div></div>
+    <div class="spec"><div class="k">Time limit</div><div class="v">${t.mins}:00</div></div>
+    <div class="spec"><div class="k">Scoring</div><div class="v" style="font-size:14px">${t.graded?'Graded':'Right/Wrong'}</div></div>
+    <div class="spec"><div class="k">Mix E·M·H</div><div class="v" style="font-size:15px">${diffMix.E||0}·${diffMix.M||0}·${diffMix.H||0}</div></div>`;
+  document.getElementById('i-rules').innerHTML=t.rules.map(r=>`<li>${r}</li>`).join('');
+  go('intro-screen');
+}
+
+/* ============================ TEST ============================ */
+function startTest(){
+  const k=pendingKey;const t=TESTS[k];
+  cur={key:k,i:0,answers:new Array(t.items.length).fill(null),timeLeft:t.mins*60,timer:null};
+  document.getElementById('t-name').textContent=t.name;
+  go('test-screen');
+  renderQ();
+  startTimer();
+}
+function startTimer(){
+  clearInterval(cur.timer);
+  cur.timer=setInterval(()=>{
+    cur.timeLeft--;
+    const m=Math.floor(cur.timeLeft/60),s=cur.timeLeft%60;
+    const el=document.getElementById('t-timer');
+    el.textContent=`${m}:${String(s).padStart(2,'0')}`;
+    el.classList.toggle('warn',cur.timeLeft<=30);
+    if(cur.timeLeft<=0){clearInterval(cur.timer);submitTest();}
+  },1000);
+  const m=Math.floor(cur.timeLeft/60),s=cur.timeLeft%60;
+  document.getElementById('t-timer').textContent=`${m}:${String(s).padStart(2,'0')}`;
+}
+function renderQ(){
+  const t=TESTS[cur.key];const it=t.items[cur.i];const n=t.items.length;
+  document.getElementById('t-count').textContent=`${cur.i+1} / ${n}`;
+  document.getElementById('t-prog').style.width=((cur.i+1)/n*100)+'%';
+  let html=`<div class="qtop"><span class="qnum">Question ${cur.i+1}</span><span class="qsec">${it.sec}</span></div>`;
+  if(it.passage)html+=`<div class="passage">${it.passage}</div>`;
+  html+=`<div class="stem">${it.q}</div>`;
+  if(it.svgStem)html+=`<div class="svgstem">${it.svgStem.join('')}</div>`;
+  html+=`<div class="opts">`;
+  const keys=['A','B','C','D','E'];
+  it.opts.forEach((o,idx)=>{
+    const sel=cur.answers[cur.i]===idx?'sel':'';
+    const label=it.svgOpts?`<span class="gly">${it.svgOpts[idx]}</span>`:`<span class="txt">${o.t}</span>`;
+    html+=`<button class="opt ${sel}" onclick="pick(${idx})"><span class="key">${keys[idx]}</span>${label}</button>`;
+  });
+  html+=`</div>`;
+  document.getElementById('qcard').innerHTML=html;
+  document.getElementById('prevBtn').disabled=cur.i===0;
+  document.getElementById('nextBtn').textContent=cur.i===n-1?'Review & submit →':'Next →';
+  renderDots();
+}
+function renderDots(){
+  const t=TESTS[cur.key];
+  document.getElementById('navDots').innerHTML=t.items.map((_,idx)=>{
+    const a=cur.answers[idx]!==null?'ans':'';const c=idx===cur.i?'cur':'';
+    return `<button class="dot ${a} ${c}" onclick="jump(${idx})" aria-label="Question ${idx+1}"></button>`;
+  }).join('');
+}
+function pick(idx){cur.answers[cur.i]=idx;renderQ();}
+function jump(idx){cur.i=idx;renderQ();window.scrollTo(0,0);}
+function prevQ(){if(cur.i>0){cur.i--;renderQ();window.scrollTo(0,0);}}
+function nextQ(){
+  const n=TESTS[cur.key].items.length;
+  if(cur.i<n-1){cur.i++;renderQ();window.scrollTo(0,0);}
+  else{
+    const unanswered=cur.answers.filter(a=>a===null).length;
+    if(unanswered>0 && !confirm(`${unanswered} question(s) are unanswered. Submit anyway?`))return;
+    submitTest();
+  }
+}
+
+/* ============================ SCORING ============================ */
+function band(t,pct){const b=t.bands.find(x=>pct>=x[0]&&pct<x[1]);return b?b[2]:t.bands[t.bands.length-1][2];}
+function submitTest(){
+  clearInterval(cur.timer);
+  const t=TESTS[cur.key];
+  let raw=0,max=0;const sec={};
+  t.items.forEach((it,idx)=>{
+    const best=Math.max(...it.opts.map(o=>o.p));
+    max+=best;
+    const got=cur.answers[idx]!==null?it.opts[cur.answers[idx]].p:0;
+    raw+=got;
+    if(!sec[it.sec])sec[it.sec]={got:0,max:0};
+    sec[it.sec].got+=got;sec[it.sec].max+=best;
+  });
+  const pct=Math.round(raw/max*100);
+  results[cur.key]={raw,max,pct,band:band(t,pct),sections:sec,answers:cur.answers.slice()};
+  renderResults();
+  go('r-screen');
+}
+
+/* ============================ RESULTS ============================ */
+function barColor(pct){return pct>=80?'var(--green)':pct>=60?'var(--blue)':pct>=40?'var(--amber)':'var(--signal)';}
+function renderResults(){
+  const k=cur.key;const t=TESTS[k];const r=results[k];
+  const name=document.getElementById('cName').value||'Unnamed candidate';
+  const id=document.getElementById('cId').value||'—';
+  let html=`
+    <div class="readout">
+      <div class="ro-top">
+        <div>
+          <div class="ro-score"><span class="big">${r.raw}</span><span class="of"> / ${r.max}</span></div>
+          <div class="ro-pct">${r.pct}% · ${t.code} scale</div>
+        </div>
+        <div class="band"><div class="lab">Result band</div><div class="val" style="color:${barColor(r.pct)}">${r.band}</div></div>
+      </div>
+      <div class="ro-name"><span>${esc(name)} · ${esc(id)}</span><span>${t.name}</span></div>
+    </div>`;
+
+  // section breakdown
+  html+=`<div class="breakdown"><h3>Section breakdown</h3>`;
+  Object.entries(r.sections).forEach(([s,v])=>{
+    const p=Math.round(v.got/v.max*100);
+    html+=`<div class="secrow"><div class="lab"><b>${s}</b><span>${v.got}/${v.max} · ${p}%</span></div>
+      <div class="track"><i style="width:${p}%;background:${barColor(p)}"></i></div></div>`;
+  });
+  html+=`</div>`;
+
+  // HR review
+  if(hrMode){
+    html+=`<div class="hrbanner">🔒 <b>HR view</b> — answer key, item difficulty and rationale. Hide before the candidate sees the screen.</div>`;
+    html+=`<div class="review">`;
+    const keys=['A','B','C','D','E'];
+    t.items.forEach((it,idx)=>{
+      const bestP=Math.max(...it.opts.map(o=>o.p));
+      const bestIdx=it.opts.findIndex(o=>o.p===bestP);
+      const pick=r.answers[idx];
+      const got=pick!==null?it.opts[pick].p:0;
+      const ok=got===bestP;
+      const optTxt=o=>it.svgOpts?`[shape ${keys[it.opts.indexOf(o)]}]`:o.t;
+      let pickStr=pick!==null?`${keys[pick]}. ${optTxt(it.opts[pick])}${got>0&&got<bestP?` (partial: ${got}/${bestP})`:''}`:'— no answer';
+      html+=`<div class="rv">
+        <div class="rvtop">
+          <span class="rvnum">Q${idx+1}</span>
+          <span class="diff ${it.diff}">${it.diff==='E'?'Easy':it.diff==='M'?'Medium':'Hard'}</span>
+          <span class="qsec">${it.sec}</span>
+          <span class="verdict ${ok?'ok':'no'}">${ok?'✓ '+got+'/'+bestP:'✗ '+got+'/'+bestP}</span>
+        </div>
+        <div class="rvstem">${it.q.replace(/<[^>]+>/g,m=>m)}</div>
+        <div class="rvkey"><b>Best: ${keys[bestIdx]}. ${optTxt(it.opts[bestIdx])}</b> &nbsp;·&nbsp; <span class="picked">Candidate: ${pickStr}</span></div>
+        <div class="why">${it.why}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+
+  // toolbar
+  html+=`<div class="toolbar">
+    <button class="btn dark" onclick="go('home-screen');renderHome()">← Battery menu</button>
+    <button class="btn" onclick="window.print()">Print / save report</button>
+    <button class="btn" onclick="copyResult()">Copy summary</button>
+    ${!hrMode?`<button class="btn ghost" onclick="toggleHR()">Show HR review →</button>`:''}
+  </div>`;
+
+  document.getElementById('r-body').innerHTML=html;
+}
+function copyResult(){
+  const k=cur.key;const t=TESTS[k];const r=results[k];
+  const name=document.getElementById('cName').value||'Unnamed';
+  const id=document.getElementById('cId').value||'-';
+  let txt=`TALENT ASSESSMENT — ${t.name}\nCandidate: ${name} (${id})\nScore: ${r.raw}/${r.max} (${r.pct}%)\nBand: ${r.band}\n\nSection breakdown:\n`;
+  Object.entries(r.sections).forEach(([s,v])=>{txt+=`  ${s}: ${v.got}/${v.max} (${Math.round(v.got/v.max*100)}%)\n`;});
+  navigator.clipboard.writeText(txt).then(()=>{
+    const b=event.target;const o=b.textContent;b.textContent='✓ Copied';setTimeout(()=>b.textContent=o,1500);
+  });
+}
+
+/* ============================ INIT ============================ */
+renderHome();
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('test-screen').classList.contains('active'))return;
+  if(['1','2','3','4','5'].includes(e.key)){const idx=+e.key-1;if(idx<TESTS[cur.key].items[cur.i].opts.length)pick(idx);}
+  if(e.key==='ArrowRight')nextQ();
+  if(e.key==='ArrowLeft')prevQ();
+});
+</script>
+</body>
+</html>
