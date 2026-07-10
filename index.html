@@ -937,6 +937,22 @@ textarea.q-inp:focus{border-color:var(--teal)}
         <p style="font-size:13px;color:var(--gray-400)">เข้าสู่ระบบเพื่อดูผลการทดสอบ</p>
       </div>
       <div id="login-expired" class="alert alert-warn">⏰ Session หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่</div>
+      <div id="login-setup-banner" class="alert alert-info" style="display:none; text-align:left; margin-bottom:14px">
+        <div style="margin-bottom:8px">🔑 ยังไม่มีบัญชีผู้ดูแลระบบในเครื่องนี้ — ตั้งค่าบัญชี Super Admin ก่อนเข้าใช้งานครั้งแรก</div>
+        <button class="btn btn-secondary btn-sm" onclick="toggleFirstRunSetup(true)">ตั้งค่าบัญชี Super Admin</button>
+      </div>
+      <div id="login-setup-form" class="card" style="display:none; text-align:left">
+        <h3 style="font-size:14px;margin-bottom:10px">ตั้งค่าบัญชี Super Admin คนแรก</h3>
+        <div id="setup-err" class="alert alert-err" style="display:none"></div>
+        <div class="field"><label>ชื่อที่แสดง</label><input id="su-name" type="text" placeholder="เช่น สมชาย ใจดี"></div>
+        <div class="field"><label>Username</label><input id="su-user" type="text" placeholder="เช่น admin"></div>
+        <div class="field"><label>Password</label><input id="su-pass" type="password" placeholder="อย่างน้อย 8 ตัวอักษร"></div>
+        <div class="field"><label>ยืนยัน Password</label><input id="su-pass2" type="password" placeholder="พิมพ์รหัสผ่านอีกครั้ง"></div>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-primary" style="flex:1" onclick="submitFirstRunSetup()">สร้างบัญชี</button>
+          <button class="btn btn-secondary" onclick="toggleFirstRunSetup(false)">ยกเลิก</button>
+        </div>
+      </div>
       <div class="card">
         <div id="login-err" class="alert alert-err"></div>
         <div class="field"><label>Email / Username</label><input id="l-user" type="text" placeholder="you@email.com" autofocus></div>
@@ -1659,6 +1675,7 @@ function nav(id) {
   if (id === 'p-admin')   toggleAdminSidebar(false);
   if (id === 'p-register') populatePositionTypes();
   if (id === 'p-position-editor') { peDraft=null; renderPositionEditor(); }
+  if (id === 'p-login') updateLoginSetupBanner();
 }
 
 // ══════════════════════════════════════════
@@ -4475,11 +4492,24 @@ function applyRolePerms() {
 }
 applyRolePerms();
 
-const DEFAULT_ADMIN_USERS = [
-  { name:'Super Admin', username:'admin',  password:'Hino@HMA-2026#R7vq',  role:'superadmin' },
-  { name:'Pin (HR)',    username:'pin',    password:'Hma-HR#2026!m3k',     role:'hr'         },
-  { name:'Viewer',      username:'viewer', password:'Hma-View#2026!z5p',   role:'viewer'     },
-];
+// Local admin accounts are created via the first-run setup screen on the login
+// page. Only a salted SHA-256 hash of the password is ever stored (see
+// hashPassword()) — never the plaintext. The previously shipped default
+// passwords were removed; if they were reused on any other system, rotate them there.
+const DEFAULT_ADMIN_USERS = [];
+
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function randomSaltHex(len = 16) {
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function hashPassword(password, salt) {
+  return sha256Hex(salt + ':' + password);
+}
 
 function getAdminUsers() {
   try {
@@ -4533,12 +4563,56 @@ function submitLogin() {
   }
 
   // Fallback: local multi-user accounts (offline, this device only)
-  setTimeout(() => {
+  setTimeout(async () => {
     const users = getAdminUsers();
-    const user  = users.find(x => x.username === u && x.password === p);
-    if (user) { btn.innerHTML='เข้าสู่ระบบ'; btn.disabled=false; currentAdmin = user; enterAdmin(); }
+    const user  = users.find(x => x.username === u);
+    const ok = user && user.passwordHash && user.salt && (await hashPassword(p, user.salt)) === user.passwordHash;
+    if (ok) { btn.innerHTML='เข้าสู่ระบบ'; btn.disabled=false; currentAdmin = user; enterAdmin(); }
     else fail();
   }, 700);
+}
+
+// ── First-run local admin setup (replaces the removed shipped default credentials) ──
+function updateLoginSetupBanner() {
+  const banner = document.getElementById('login-setup-banner');
+  if (!banner) return;
+  const hasLocalUsers = getAdminUsers().length > 0;
+  banner.style.display = hasLocalUsers ? 'none' : 'block';
+  if (hasLocalUsers) toggleFirstRunSetup(false);
+}
+function toggleFirstRunSetup(show) {
+  const form = document.getElementById('login-setup-form');
+  if (!form) return;
+  form.style.display = show ? 'block' : 'none';
+  if (show) {
+    document.getElementById('setup-err').style.display = 'none';
+    document.getElementById('su-name').value = '';
+    document.getElementById('su-user').value = '';
+    document.getElementById('su-pass').value = '';
+    document.getElementById('su-pass2').value = '';
+  }
+}
+async function submitFirstRunSetup() {
+  const err = document.getElementById('setup-err');
+  err.style.display = 'none';
+  const name  = document.getElementById('su-name').value.trim();
+  const user  = document.getElementById('su-user').value.trim();
+  const pass  = document.getElementById('su-pass').value;
+  const pass2 = document.getElementById('su-pass2').value;
+  if (!name || !user || !pass) { err.textContent = 'กรุณากรอกข้อมูลให้ครบ'; err.style.display = 'block'; return; }
+  if (pass.length < 8) { err.textContent = 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'; err.style.display = 'block'; return; }
+  if (pass !== pass2) { err.textContent = 'รหัสผ่านทั้งสองช่องไม่ตรงกัน'; err.style.display = 'block'; return; }
+  const users = getAdminUsers();
+  if (users.find(x => x.username === user)) { err.textContent = 'Username นี้มีแล้ว'; err.style.display = 'block'; return; }
+  const salt = randomSaltHex();
+  const passwordHash = await hashPassword(pass, salt);
+  users.push({ name, username: user, role: 'superadmin', salt, passwordHash });
+  saveAdminUsers(users);
+  toggleFirstRunSetup(false);
+  updateLoginSetupBanner();
+  document.getElementById('l-user').value = user;
+  document.getElementById('l-pass').value = '';
+  showToast('✅ สร้างบัญชี Super Admin แล้ว — เข้าสู่ระบบได้เลย');
 }
 
 function updateAdminUI() {
@@ -4546,7 +4620,7 @@ function updateAdminUI() {
   const role = ROLE_INFO[currentAdmin.role] || ROLE_INFO.viewer;
   // Update greeting
   const greet = document.getElementById('a-greet');
-  if (greet) greet.innerHTML = `สวัสดี <strong>${currentAdmin.name}</strong> <span class="role-badge ${role.cls}" style="margin-left:4px">${role.label}</span>`;
+  if (greet) greet.innerHTML = `สวัสดี <strong>${esc(currentAdmin.name)}</strong> <span class="role-badge ${role.cls}" style="margin-left:4px">${role.label}</span>`;
   // Re-render the sidebar so menu items respect this role's permissions
   if (typeof renderAdminNav === 'function') renderAdminNav();
 }
@@ -4577,10 +4651,10 @@ function renderCollabPage() {
     ).join('');
     return `<div class="user-row">
       <div style="display:flex;align-items:flex-start;gap:10px;min-width:0">
-        <div class="avatar" style="background:var(--gray-100);color:var(--gray-500);width:34px;height:34px;font-size:14px;margin-top:1px">${u.name.charAt(0)}</div>
+        <div class="avatar" style="background:var(--gray-100);color:var(--gray-500);width:34px;height:34px;font-size:14px;margin-top:1px">${esc(u.name.charAt(0))}</div>
         <div style="min-width:0">
-          <div style="font-weight:600;font-size:13px">${u.name} ${isSelf ? '<span style="font-size:11px;color:var(--teal)">(คุณ)</span>' : ''}</div>
-          <div style="font-size:12px;color:var(--gray-400)">@${u.username}</div>
+          <div style="font-weight:600;font-size:13px">${esc(u.name)} ${isSelf ? '<span style="font-size:11px;color:var(--teal)">(คุณ)</span>' : ''}</div>
+          <div style="font-size:12px;color:var(--gray-400)">@${esc(u.username)}</div>
           <div class="permission-tag">${chips}</div>
         </div>
       </div>
@@ -4665,6 +4739,7 @@ function openAddUser() {
   document.getElementById('nu-name').value = '';
   document.getElementById('nu-user').value = '';
   document.getElementById('nu-pass').value = '';
+  document.getElementById('nu-pass').placeholder = '••••••••';
   document.getElementById('nu-role').value = 'hr';
   document.getElementById('nu-edit-idx').value = '';
   openModal('mod-adduser');
@@ -4674,25 +4749,34 @@ function editUser(i) {
   const u = getAdminUsers()[i];
   document.getElementById('nu-name').value = u.name;
   document.getElementById('nu-user').value = u.username;
-  document.getElementById('nu-pass').value = u.password;
+  // Passwords are stored as salted hashes and cannot be reversed to display —
+  // leave blank; the placeholder tells the admin how to keep it unchanged.
+  document.getElementById('nu-pass').value = '';
+  document.getElementById('nu-pass').placeholder = 'เว้นว่างไว้เพื่อคงรหัสผ่านเดิม';
   document.getElementById('nu-role').value = u.role;
   document.getElementById('nu-edit-idx').value = i;
   openModal('mod-adduser');
 }
 
-function saveUser() {
+async function saveUser() {
   const name = document.getElementById('nu-name').value.trim();
   const user = document.getElementById('nu-user').value.trim();
   const pass = document.getElementById('nu-pass').value;
   const role = document.getElementById('nu-role').value;
   const idx  = document.getElementById('nu-edit-idx').value;
-  if (!name || !user || !pass) { showToast('❌ กรอกข้อมูลให้ครบ'); return; }
+  if (!name || !user) { showToast('❌ กรอกข้อมูลให้ครบ'); return; }
   const users = getAdminUsers();
   if (idx !== '') {
-    users[Number(idx)] = { name, username:user, password:pass, role };
+    const existing = users[Number(idx)];
+    let salt = existing.salt, passwordHash = existing.passwordHash;
+    if (pass) { salt = randomSaltHex(); passwordHash = await hashPassword(pass, salt); }
+    users[Number(idx)] = { name, username:user, role, salt, passwordHash };
   } else {
+    if (!pass) { showToast('❌ กรุณาตั้งรหัสผ่าน'); return; }
     if (users.find(u => u.username === user)) { showToast('❌ Username นี้มีแล้ว'); return; }
-    users.push({ name, username:user, password:pass, role });
+    const salt = randomSaltHex();
+    const passwordHash = await hashPassword(pass, salt);
+    users.push({ name, username:user, role, salt, passwordHash });
   }
   saveAdminUsers(users);
   closeModal('mod-adduser');
