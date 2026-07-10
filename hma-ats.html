@@ -202,6 +202,11 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .kv td { border: none; padding: 4px 8px 4px 0; }
 .kv td:first-child { color: var(--gray-400); white-space: nowrap; }
 .warn-box { background: var(--pend-l); color: var(--pend); border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 12px; }
+mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px; padding: 0 1px; font-weight: 600; }
+.tpl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--gray-200); }
+.tpl-row:first-child { border-top: none; }
+.info-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; min-width: 18px; border-radius: 50%; border: 1px solid var(--gray-300); background: var(--white); color: var(--gray-500); font-weight: 800; font-size: 11px; line-height: 1; cursor: pointer; padding: 0; }
+.info-btn:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-l); }
 
 /* View toggle (table / board) */
 .seg { display: inline-flex; border: 1px solid var(--gray-300); border-radius: var(--radius); overflow: hidden; }
@@ -346,6 +351,7 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 
     <div class="toolbar">
       <span></span><span class="topbar-spacer"></span>
+      <button class="btn btn-secondary btn-sm" id="jobExportBtn">⬇ Export CSV</button>
       <button class="btn btn-primary btn-sm" id="jobAddBtn">＋ เพิ่มตำแหน่ง</button>
     </div>
 
@@ -367,6 +373,11 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
   <div id="tab-dashboard" style="display:none">
     <h1>Dashboard</h1>
     <p class="page-sub">ภาพรวมผู้สมัคร คะแนน และ pipeline</p>
+
+    <div class="toolbar">
+      <span class="topbar-spacer"></span>
+      <button class="btn btn-secondary btn-sm" id="dashExportBtn">⬇ Export CSV (สรุป)</button>
+    </div>
 
     <div class="kpi-grid" id="kpiGrid"></div>
 
@@ -433,7 +444,23 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
         <span>ทักษะ / คำพ้อง</span><span>น้ำหนัก (1-5)</span><span>จำเป็น?</span><span></span>
       </div>
       <div id="skillRows"></div>
-      <button class="btn btn-secondary btn-sm" id="addSkillBtn" style="margin-top:8px">＋ เพิ่มทักษะ</button>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="addSkillBtn">＋ เพิ่มทักษะ</button>
+        <button class="btn btn-secondary btn-sm" id="suggestSkillBtn" title="อ่านทักษะจากช่อง JD และคุณสมบัติด้านล่าง">✨ ดึงทักษะจาก JD/คุณสมบัติ</button>
+      </div>
+
+      <div class="section-title">รายละเอียดงาน (JD) และคุณสมบัติผู้สมัคร</div>
+      <p class="hint" style="margin-bottom:8px">ใส่เป็นข้อความ หรือวางลิงก์ (URL) ก็ได้ — เก็บไว้อ้างอิงตอนคัดผู้สมัคร</p>
+      <div class="field">
+        <label>Job Description (JD)</label>
+        <textarea id="j_jd" rows="4" placeholder="วางเนื้อหา JD ของตำแหน่งนี้ (ข้อความ)"></textarea>
+        <input id="j_jdurl" placeholder="หรือวางลิงก์ JD — https://…">
+      </div>
+      <div class="field">
+        <label>คุณสมบัติผู้สมัคร (Qualifications)</label>
+        <textarea id="j_quals" rows="4" placeholder="คุณสมบัติ / เงื่อนไขของผู้สมัคร (ข้อความ)"></textarea>
+        <input id="j_qualsurl" placeholder="หรือวางลิงก์ — https://…">
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="jobModalBg">ยกเลิก</button>
@@ -480,6 +507,91 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
     <div class="modal-body" id="detailBody"></div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close="detailModalBg">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EMAIL DRAFT MODAL ============ -->
+<div class="modal-bg" id="emailModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>✉ ร่างอีเมลถึงผู้สมัคร</h2>
+      <button class="x-btn" data-close="emailModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="warn-box">ℹ️ ระบบเตรียม<b>ร่าง</b>ให้เท่านั้น — ตรวจทานแล้วกด "เปิดในโปรแกรมอีเมล" เพื่อส่งด้วยตัวคุณเอง (ระบบไม่ส่งอีเมลแทน)</div>
+      <div class="grid2">
+        <div class="field"><label>ถึง (อีเมล)</label><input id="em_to" placeholder="name@example.com"></div>
+        <div class="field">
+          <label>เทมเพลต</label>
+          <div style="display:flex; gap:6px">
+            <select id="em_template" style="flex:1"></select>
+            <button class="btn btn-ghost btn-sm" id="em_manage" title="เพิ่ม/แก้ไข/ลบเทมเพลต">⚙</button>
+          </div>
+        </div>
+      </div>
+      <div class="field"><label>หัวข้อ</label><input id="em_subject"></div>
+      <div class="field"><label>ข้อความ</label><textarea id="em_body" rows="13"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="emailModalBg">ปิด</button>
+      <button class="btn btn-secondary" id="em_copy">📋 คัดลอกข้อความ</button>
+      <button class="btn btn-primary" id="em_open">เปิดในโปรแกรมอีเมล (ยังไม่ส่ง)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EMAIL TEMPLATE MANAGER MODAL ============ -->
+<div class="modal-bg" id="tplModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>⚙ ตั้งค่าเทมเพลตอีเมล</h2>
+      <button class="x-btn" data-close="tplModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:10px">เพิ่ม แก้ไข หรือลบเทมเพลตให้ตรงกับกระบวนการของคุณ · ผูกเทมเพลตกับสถานะเพื่อให้ระบบเลือกให้อัตโนมัติ · ใช้ <code>{name}</code> <code>{position}</code> <code>{company}</code> แทนค่าได้</p>
+      <div id="tplList"></div>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="tplAddBtn">＋ เพิ่มเทมเพลต</button>
+        <button class="btn btn-ghost btn-sm" id="tplResetBtn">↺ คืนค่าเริ่มต้น</button>
+      </div>
+
+      <div id="tplEditor" style="display:none; margin-top:14px; border-top:1px solid var(--gray-200); padding-top:14px">
+        <input type="hidden" id="t_id">
+        <div class="grid2">
+          <div class="field"><label>ชื่อเทมเพลต *</label><input id="t_name" placeholder="เช่น ขอเอกสารเพิ่มเติม"></div>
+          <div class="field"><label>ใช้เป็นค่าเริ่มต้นของสถานะ</label>
+            <select id="t_stage">
+              <option value="">— ไม่ผูกสถานะ —</option>
+              <option>Applied</option><option>Screening</option><option>Interview</option>
+              <option>Offer</option><option>Hired</option><option>Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>หัวข้อ</label><input id="t_subject" placeholder="หัวข้ออีเมล — ใช้ {position} {company} ได้"></div>
+        <div class="field"><label>ข้อความ</label><textarea id="t_body" rows="10"></textarea></div>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-primary btn-sm" id="tplSaveBtn">บันทึกเทมเพลต</button>
+          <button class="btn btn-ghost btn-sm" id="tplCancelBtn">ยกเลิก</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="tplModalBg">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCORE BREAKDOWN MODAL ============ -->
+<div class="modal-bg" id="scoreModalBg">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h2 id="scoreInfoTitle">ที่มาของคะแนน</h2>
+      <button class="x-btn" data-close="scoreModalBg">&times;</button>
+    </div>
+    <div class="modal-body" id="scoreInfoBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="scoreModalBg">ปิด</button>
     </div>
   </div>
 </div>
@@ -668,6 +780,47 @@ function matchSkills(text, skills) {
    คะแนนเต็มถ่วงตามเกณฑ์ที่ตำแหน่งนั้นใช้จริง:
      ทักษะ = 60 · ประสบการณ์ = 25 (ถ้ากำหนด minExp) · การศึกษา = 15 (ถ้ากำหนดคีย์เวิร์ด)
    แสดง breakdown ทุกส่วนเพื่อความโปร่งใส */
+
+/* ── คลัง Core Competency ที่รู้จัก — ใช้ "ดึงทักษะจาก JD/คุณสมบัติ" อัตโนมัติ ──
+   รูปแบบ "หลัก/คำพ้อง1/คำพ้อง2" เดียวกับที่ระบบใช้คิดคะแนน (ไม่มี backend/AI จึงจับด้วยคลังคำ) */
+const SKILL_LIBRARY = [
+  // ธุรกิจ / ขาย / การตลาด
+  'Sales/ขาย/งานขาย', 'Marketing/การตลาด', 'Negotiation/เจรจาต่อรอง/ต่อรอง',
+  'CRM/Salesforce', 'Customer Service/บริการลูกค้า/ดูแลลูกค้า', 'Business Development/พัฒนาธุรกิจ',
+  // ภาษา / สื่อสาร / ซอฟต์สกิล
+  'English/ภาษาอังกฤษ', 'Communication/การสื่อสาร/สื่อสาร', 'Presentation/นำเสนอ/พรีเซนต์',
+  'Leadership/ภาวะผู้นำ/ผู้นำ', 'Teamwork/ทำงานเป็นทีม/ทีมเวิร์ก', 'Problem Solving/แก้ปัญหา',
+  'Time Management/บริหารเวลา', 'Analytical/วิเคราะห์/การวิเคราะห์',
+  // office / IT
+  'Excel/Microsoft Excel', 'PowerPoint/Microsoft PowerPoint', 'Word/Microsoft Word',
+  'Power BI/PowerBI', 'SQL', 'Python', 'Java', 'JavaScript/JS', 'SAP', 'ERP',
+  'Data Analysis/วิเคราะห์ข้อมูล',
+  // HR
+  'Recruitment/สรรหา/สรรหาบุคลากร', 'Payroll/เงินเดือน', 'Labor Law/กฎหมายแรงงาน',
+  'Training/ฝึกอบรม/อบรม', 'HRIS', 'Compensation/ค่าตอบแทน',
+  // บัญชี / การเงิน
+  'Accounting/บัญชี', 'Finance/การเงิน', 'Budgeting/งบประมาณ', 'Taxation/ภาษี',
+  // วิศวกรรม / การผลิต / โรงงาน
+  'Engineering/วิศวกรรม', 'AutoCAD', 'SolidWorks', 'Mechanical/เครื่องกล',
+  'Electrical/ไฟฟ้า', 'Maintenance/ซ่อมบำรุง/บำรุงรักษา', 'Production/การผลิต',
+  'Quality Control/ควบคุมคุณภาพ/QC', 'Quality Assurance/QA', 'ISO',
+  'Lean/Lean Manufacturing', 'Six Sigma', 'Kaizen', 'Safety/ความปลอดภัย/จป',
+  '5S', 'GMP',
+  // logistics / supply chain
+  'Logistics/โลจิสติกส์', 'Supply Chain/ซัพพลายเชน/ห่วงโซ่อุปทาน',
+  'Warehouse/คลังสินค้า', 'Procurement/จัดซื้อ', 'Inventory/สินค้าคงคลัง/สต็อก',
+  // ยานยนต์ (บริบท Hino) / อื่น ๆ
+  'Driving License/ใบขับขี่', 'Automotive/ยานยนต์/รถยนต์',
+  'Project Management/บริหารโครงการ/จัดการโครงการ',
+];
+
+/* คืนชื่อทักษะจากคลังที่พบคำพ้องใน text (JD+คุณสมบัติ) — ใช้ textHasTerm ตัวเดียวกับตอนคิดคะแนน */
+function suggestSkillsFromText(text) {
+  const low = String(text || '').toLowerCase();
+  if (!low.trim()) return [];
+  return SKILL_LIBRARY.filter(name => skillSynonyms(name).some(term => textHasTerm(low, term)));
+}
+
 const SCORE_W = { skills: 60, exp: 25, edu: 15 };   // น้ำหนักคะแนนรวม — แก้ที่เดียวพอ
 function scoreCandidate(parsed, job) {
   const breakdown = [];
@@ -739,12 +892,38 @@ function parseResume(rawText) {
 
 /* ── Storage ── */
 const ATS_KEY = 'hma_ats_v1';
+const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
+/* เทมเพลตอีเมลเริ่มต้น — ผู้ใช้แก้/เพิ่ม/ลบ/ผูกสถานะได้เอง เก็บใน DB.emailTemplates (เข้า backup ด้วย)
+   {name} {position} {company} จะถูกแทนค่าตอนร่าง · stage = สถานะที่ใช้เทมเพลตนี้เป็นค่าเริ่มต้น (เว้นว่าง = ไม่ผูก) */
+const DEFAULT_EMAIL_TEMPLATES = [
+  { stage: 'Applied', name: 'รับใบสมัคร',
+    subject: 'ยืนยันการรับสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจสมัครงานตำแหน่ง {position} กับ {company}\nเราได้รับใบสมัครของคุณเรียบร้อยแล้ว และอยู่ระหว่างการพิจารณาคุณสมบัติเบื้องต้น\nหากใบสมัครของคุณผ่านการคัดเลือก ทีมงานฝ่ายบุคคลจะติดต่อกลับโดยเร็วที่สุด\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Screening', name: 'อยู่ระหว่างคัดกรอง',
+    subject: 'อัปเดตสถานะใบสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณสำหรับความสนใจในตำแหน่ง {position}\nขณะนี้ใบสมัครของคุณอยู่ระหว่างการคัดกรองโดยทีมงาน หากต้องการข้อมูลหรือเอกสารเพิ่มเติม เราจะติดต่อกลับไป\nขอบคุณสำหรับความอดทนรอ\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Interview', name: 'เชิญสัมภาษณ์',
+    subject: 'เชิญเข้ารับการสัมภาษณ์ตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nยินดีแจ้งว่าใบสมัครของคุณผ่านการคัดเลือกเบื้องต้น {company} ขอเชิญคุณเข้ารับการสัมภาษณ์ตำแหน่ง {position} ตามรายละเอียดดังนี้\n\nวันที่: [ระบุวันที่]\nเวลา: [ระบุเวลา]\nรูปแบบ/สถานที่: [เช่น ณ สำนักงานใหญ่ หรือผ่านวิดีโอคอล]\n\nกรุณาตอบกลับอีเมลนี้เพื่อยืนยันการเข้าสัมภาษณ์ หรือแจ้งหากต้องการปรับเปลี่ยนวันเวลา\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Offer', name: 'เสนอตำแหน่งงาน',
+    subject: 'ข้อเสนอการจ้างงานตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nยินดีเป็นอย่างยิ่งที่จะแจ้งว่า {company} ประสงค์เสนอตำแหน่ง {position} ให้กับคุณ\nรายละเอียดข้อเสนอ (เงินเดือน สวัสดิการ และวันเริ่มงาน) จะแจ้งในลำดับถัดไป หรือแนบมาในเอกสารประกอบ\nกรุณาตอบกลับเพื่อยืนยันหรือสอบถามรายละเอียดเพิ่มเติมภายใน [ระบุวันที่]\n\nขอแสดงความยินดีอีกครั้ง และหวังเป็นอย่างยิ่งว่าจะได้ร่วมงานกัน\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Hired', name: 'ตอบรับ / ยินดีต้อนรับ',
+    subject: 'ยินดีต้อนรับสู่ {company} — ตำแหน่ง {position}',
+    body: `เรียน คุณ{name}\n\nยินดีต้อนรับสู่ครอบครัว {company}! เรารู้สึกยินดีที่คุณตอบรับตำแหน่ง {position}\nฝ่ายบุคคลจะติดต่อคุณเพื่อแจ้งรายละเอียดการเริ่มงาน เอกสารที่ต้องเตรียม และกำหนดการปฐมนิเทศ\nหากมีคำถามใด ๆ สามารถติดต่อกลับได้ที่อีเมลนี้\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+  { stage: 'Rejected', name: 'แจ้งผลไม่ผ่าน',
+    subject: 'ผลการพิจารณาใบสมัครตำแหน่ง {position} — {company}',
+    body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจและสละเวลาสมัครตำแหน่ง {position} กับ {company}\nหลังจากพิจารณาอย่างรอบคอบแล้ว ในครั้งนี้เรายังไม่สามารถเสนอตำแหน่งดังกล่าวให้กับคุณได้\nเราประทับใจในคุณสมบัติของคุณ และจะเก็บข้อมูลไว้พิจารณาสำหรับตำแหน่งที่เหมาะสมในอนาคต (ตามระยะเวลาที่นโยบายกำหนด)\nขอให้คุณประสบความสำเร็จในการสมัครงานครั้งต่อไป\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
+];
+function seedEmailTemplates() { return DEFAULT_EMAIL_TEMPLATES.map(t => Object.assign({ id: uid('t') }, t)); }
 function loadDB() {
+  let d = { jobs: [], candidates: [], emailTemplates: seedEmailTemplates() };
   try {
-    const d = JSON.parse(localStorage.getItem(ATS_KEY));
-    if (d && Array.isArray(d.jobs) && Array.isArray(d.candidates)) return d;
+    const p = JSON.parse(localStorage.getItem(ATS_KEY));
+    if (p && Array.isArray(p.jobs) && Array.isArray(p.candidates)) d = p;
   } catch (e) { /* corrupt → start fresh */ }
-  return { jobs: [], candidates: [] };
+  if (!Array.isArray(d.emailTemplates) || !d.emailTemplates.length) d.emailTemplates = seedEmailTemplates();  // migration/safety
+  return d;
 }
 let DB = loadDB();
 function saveDB() {
@@ -777,6 +956,48 @@ function scoreBar(n) {
   const c = scoreClass(n);
   return `<div class="score-wrap"><span class="score-num sc-${c}-t">${n}</span>
     <div class="score-track"><div class="score-fill sc-${c}" style="width:${n}%"></div></div></div>`;
+}
+/* คะแนน + ปุ่ม ! อธิบายที่มาของคะแนน (ใช้ทั้งตาราง/บอร์ด/ผลสแกน) */
+function scoreCell(id, score) {
+  return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(score)}<button class="info-btn" onclick="event.stopPropagation();showScoreInfo('${id}')" title="ที่มาของคะแนน — คลิกดูรายละเอียด">!</button></div>`;
+}
+function findRecord(id) {
+  return DB.candidates.find(x => x.id === id) || (typeof scanResults !== 'undefined' ? scanResults.find(x => x.id === id) : null) || null;
+}
+function scoreBreakdownHTML(r) {
+  const bd = r.breakdown || [];
+  const earned = bd.reduce((s, b) => s + b.pts, 0);
+  const max = bd.reduce((s, b) => s + b.max, 0);
+  const rows = bd.map(b => {
+    const pctv = b.max ? Math.round(b.pts / b.max * 100) : 0;
+    const cls = scoreClass(pctv);
+    return `<div class="break-row">
+      <b>${esc(b.label)}</b>
+      <div>
+        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(b.detail)}</div>
+        <div class="score-track"><div class="score-fill sc-${cls}" style="width:${pctv}%"></div></div>
+      </div>
+      <span class="break-pts">${b.pts.toFixed(1)} / ${b.max}</span>
+    </div>`;
+  }).join('') || '<div class="hint">ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน จึงยังคิดคะแนนไม่ได้</div>';
+  const matched = r.matched || [], missing = r.missing || [], missReq = r.missingRequired || [];
+  const chips = [
+    ...matched.map(s => `<span class="chip hit">✓ ${esc(s)}</span>`),
+    ...missing.map(s => `<span class="chip miss ${missReq.includes(s) ? 'req' : ''}">${missReq.includes(s) ? '✗ ' : ''}${esc(s)}</span>`),
+  ].join('');
+  return `
+    <div style="font-size:16px; font-weight:800; margin-bottom:4px">คะแนนรวม ${r.score}/100</div>
+    <p class="hint" style="margin-bottom:12px">แต่ละส่วนคิดจากเกณฑ์ที่ตำแหน่งนี้กำหนดจริง แล้วปรับเป็นสัดส่วนเต็ม 100 — น้ำหนักเต็ม: <b>ทักษะ 60 · ประสบการณ์ 25 · การศึกษา 15</b> (ส่วนที่ตำแหน่งไม่ได้กำหนด จะไม่ถูกนำมาคิด)</p>
+    ${rows}
+    ${bd.length ? `<div style="margin-top:10px; text-align:right; font-weight:700">รวมได้ ${earned.toFixed(1)} / ${max} คะแนนเต็มที่ใช้ → คิดเป็น ${r.score}/100</div>` : ''}
+    ${(matched.length + missing.length) ? `<div class="section-title">ทักษะที่ตรวจ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div><div>${chips}</div>` : ''}`;
+}
+function showScoreInfo(id) {
+  const r = findRecord(id);
+  if (!r) return;
+  document.getElementById('scoreInfoTitle').textContent = 'ที่มาของคะแนน — ' + (r.name || r.fileName || '');
+  document.getElementById('scoreInfoBody').innerHTML = scoreBreakdownHTML(r);
+  document.getElementById('scoreModalBg').classList.add('open');
 }
 function jobById(id) { return DB.jobs.find(j => j.id === id); }
 
@@ -921,7 +1142,7 @@ async function idbSet(key, val) {
 
 function backupPayload() {
   return JSON.stringify({ app: 'hma-ats', version: 1, savedAt: new Date().toISOString(),
-    jobs: DB.jobs, candidates: DB.candidates });
+    jobs: DB.jobs, candidates: DB.candidates, emailTemplates: DB.emailTemplates });
 }
 function renderBackupStatus(state) {
   const st = document.getElementById('backupStatus');
@@ -1000,7 +1221,8 @@ function applyRestore(data) {
   if (!confirm(`กู้คืนจากไฟล์สำรอง?\nตำแหน่ง ${data.jobs.length} · ผู้สมัคร ${data.candidates.length}` +
     (data.savedAt ? `\nสำรองเมื่อ ${new Date(data.savedAt).toLocaleString('th-TH')}` : '') +
     `\n\nข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด`)) return false;
-  DB = { jobs: data.jobs, candidates: data.candidates };
+  DB = { jobs: data.jobs, candidates: data.candidates,
+    emailTemplates: (Array.isArray(data.emailTemplates) && data.emailTemplates.length) ? data.emailTemplates : seedEmailTemplates() };
   saveDB(); renderAll();
   return true;
 }
@@ -1117,7 +1339,7 @@ function renderScanTable() {
       <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis" title="${esc(r.fileName)}">${esc(r.fileName)}</td>
       <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">ไม่พบชื่อ</span>'}</td>
       <td>${esc(r.email) || '—'}</td>
-      <td>${scoreBar(r.score)}</td>
+      <td>${scoreCell(r.id, r.score)}</td>
       <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
       <td>${warn || '<span class="badge pass">OK</span>'}</td>
       <td style="white-space:nowrap">
@@ -1174,6 +1396,42 @@ function addAllScans() {
 }
 
 /* ── Detail modal (scan result or saved candidate) ── */
+/* ไฮไลต์ข้อความใน resume ที่ตรงกับทักษะที่ "พบ" (matched) — escape ก่อนแล้วค่อยครอบ <mark>
+   ASCII ใช้ boundary (ไม่มี lookbehind — กัน Safari เก่า), ไทยใช้ substring · รวม replace ทีเดียว/กลุ่ม */
+function highlightResume(text, matchedSkills) {
+  let html = esc(text || '');
+  if (!html) return '';
+  const ascii = new Set(), thai = new Set();
+  (matchedSkills || []).forEach(name => skillSynonyms(name).forEach(t => {
+    if (!t) return;
+    (/^[\x00-\x7F]+$/.test(t) ? ascii : thai).add(esc(t));
+  }));
+  if (ascii.size) {
+    const alt = [...ascii].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+    html = html.replace(new RegExp('([^a-z0-9]|^)(' + alt + ')(?=[^a-z0-9]|$)', 'gi'), '$1<mark class="hl">$2</mark>');
+  }
+  if (thai.size) {
+    const alt = [...thai].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+    html = html.replace(new RegExp('(' + alt + ')', 'g'), '<mark class="hl">$1</mark>');
+  }
+  return html;
+}
+function safeUrl(u) {
+  u = String(u || '').trim();
+  return /^https?:\/\//i.test(u) ? u : '';   // อนุญาตเฉพาะ http/https — กัน javascript:/data: URL
+}
+function jobRefHTML(job) {
+  if (!job) return '';
+  const block = (label, text, url) => {
+    if (!text && !safeUrl(url)) return '';
+    const link = safeUrl(url) ? ` <a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" style="color:var(--teal)">🔗 เปิดลิงก์</a>` : '';
+    const body = text ? `<div class="resume-pre" style="max-height:120px; margin-top:4px">${esc(text)}</div>` : '';
+    return `<div style="margin-bottom:6px"><b>${label}</b>${link}${body}</div>`;
+  };
+  const html = block('JD:', job.jd, job.jdUrl) + block('คุณสมบัติผู้สมัคร:', job.quals, job.qualsUrl);
+  return html ? `<div class="section-title">รายละเอียดตำแหน่ง (${esc(job.title)})</div>${html}` : '';
+}
+
 function detailHTML(r) {
   const job = jobById(r.jobId);
   const warn = (r.warnings && r.warnings.length)
@@ -1205,18 +1463,20 @@ function detailHTML(r) {
     </div>
     <div class="section-title">ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div>
     <div>${chips || '<span style="color:var(--gray-400)">ตำแหน่งนี้ไม่ได้กำหนดทักษะ</span>'}</div>
+    ${jobRefHTML(job)}
+    ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">✉ ร่างอีเมลถึงผู้สมัคร</button></div>` : ''}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
-    ${sectionsHTML(r.sections || extractSections(r.resumeText || ''))}
-    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด)</div>
-    <div class="resume-pre">${esc(r.resumeText || '(ว่าง)')}</div>`;
+    ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
+    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
+    <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
 }
-function sectionsHTML(sections) {
+function sectionsHTML(sections, matched) {
   if (!sections) return '';
   const labels = { experience: '🧑‍💼 ส่วนประสบการณ์ทำงาน', education: '🎓 ส่วนการศึกษา', skills: '🛠 ส่วนทักษะ' };
   const out = ['experience', 'education', 'skills']
     .filter(k => sections[k])
     .map(k => `<div class="section-title">${labels[k]} <span style="font-weight:500; text-transform:none; letter-spacing:0">(ระบบระบุอัตโนมัติ)</span></div>
-      <div class="resume-pre" style="max-height:140px">${esc(sections[k])}</div>`)
+      <div class="resume-pre" style="max-height:140px">${highlightResume(sections[k], matched)}</div>`)
     .join('');
   return out;
 }
@@ -1276,8 +1536,12 @@ function renderJobs() {
       const nm = skillSynonyms(s.name)[0] || s.name;
       return `<span class="chip ${s.required ? 'hit' : 'miss'}" title="น้ำหนัก ${s.weight}${s.required ? ' · จำเป็น' : ''}">${esc(nm)}${s.required ? ' *' : ''}</span>`;
     }).join('');
+    const links = [
+      safeUrl(j.jdUrl) ? `<a href="${esc(safeUrl(j.jdUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 JD</a>` : (j.jd ? '<span class="hint" title="มี JD แบบข้อความ">📄 JD</span>' : ''),
+      safeUrl(j.qualsUrl) ? `<a href="${esc(safeUrl(j.qualsUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 คุณสมบัติ</a>` : (j.quals ? '<span class="hint" title="มีคุณสมบัติแบบข้อความ">📄 คุณสมบัติ</span>' : ''),
+    ].filter(Boolean).join(' · ');
     return `<tr>
-      <td class="name-cell">${esc(j.title)}</td>
+      <td class="name-cell">${esc(j.title)}${links ? `<div class="hint" style="margin-top:3px">${links}</div>` : ''}</td>
       <td>${esc(j.dept) || '—'}</td>
       <td style="max-width:320px">${skills || '<span style="color:var(--gray-400)">—</span>'}</td>
       <td>${Number(j.minExp) > 0 ? j.minExp + ' ปี' : '—'}</td>
@@ -1301,6 +1565,21 @@ function skillRowHTML(sk) {
     <button class="x-btn" onclick="this.parentElement.remove()" title="ลบทักษะ">&times;</button>
   </div>`;
 }
+/* ดึงทักษะจากช่อง JD + คุณสมบัติ มาเติมในรายการทักษะ (ไม่เพิ่มซ้ำของเดิม) */
+function suggestSkillsIntoForm() {
+  const text = document.getElementById('j_jd').value + '\n' + document.getElementById('j_quals').value;
+  const suggested = suggestSkillsFromText(text);
+  if (!suggested.length) { toast('ไม่พบทักษะที่รู้จักใน JD/คุณสมบัติ — เพิ่มเองได้'); return; }
+  const existing = new Set();
+  document.querySelectorAll('#skillRows .sk-name').forEach(inp =>
+    skillSynonyms(inp.value).forEach(s => existing.add(s.toLowerCase())));
+  const toAdd = suggested.filter(name => !skillSynonyms(name).some(s => existing.has(s.toLowerCase())));
+  if (!toAdd.length) { toast('ทักษะจาก JD มีอยู่ในรายการแล้ว'); return; }
+  const rows = document.getElementById('skillRows');
+  rows.querySelectorAll('.skill-row').forEach(row => { if (!row.querySelector('.sk-name').value.trim()) row.remove(); });
+  toAdd.forEach(name => rows.insertAdjacentHTML('beforeend', skillRowHTML({ name, weight: 3, required: false })));
+  toast(`เพิ่ม ${toAdd.length} ทักษะจาก JD แล้ว — ปรับน้ำหนัก/จำเป็นได้`);
+}
 function openJobModal(j) {
   document.getElementById('jobModalTitle').textContent = j ? 'แก้ไขตำแหน่งงาน' : 'เพิ่มตำแหน่งงาน';
   document.getElementById('j_id').value = j ? j.id : '';
@@ -1309,6 +1588,10 @@ function openJobModal(j) {
   document.getElementById('j_minexp').value = j ? j.minExp : 0;
   document.getElementById('j_edu').value = j ? (j.eduKeywords || '') : '';
   document.getElementById('j_status').value = j ? j.status : 'Open';
+  document.getElementById('j_jd').value = j ? (j.jd || '') : '';
+  document.getElementById('j_jdurl').value = j ? (j.jdUrl || '') : '';
+  document.getElementById('j_quals').value = j ? (j.quals || '') : '';
+  document.getElementById('j_qualsurl').value = j ? (j.qualsUrl || '') : '';
   const rows = document.getElementById('skillRows');
   rows.innerHTML = (j && j.skills.length ? j.skills : [null, null, null]).map(skillRowHTML).join('');
   document.getElementById('jobModalBg').classList.add('open');
@@ -1338,6 +1621,10 @@ function saveJob() {
     minExp: Math.max(0, Number(document.getElementById('j_minexp').value) || 0),
     eduKeywords: document.getElementById('j_edu').value.trim(),
     status: document.getElementById('j_status').value,
+    jd: document.getElementById('j_jd').value.trim(),
+    jdUrl: document.getElementById('j_jdurl').value.trim(),
+    quals: document.getElementById('j_quals').value.trim(),
+    qualsUrl: document.getElementById('j_qualsurl').value.trim(),
     skills,
   };
   const i = id ? DB.jobs.findIndex(j => j.id === id) : -1;
@@ -1421,7 +1708,7 @@ function renderCandTable() {
       <td style="color:var(--gray-400)">${i + 1}</td>
       <td class="name-cell">${esc(c.name)}<div class="hint">${esc(c.email) || ''}</div></td>
       <td>${esc(job ? job.title : '—')}</td>
-      <td>${scoreBar(c.score)}</td>
+      <td>${scoreCell(c.id, c.score)}</td>
       <td>${(c.matched || []).length}/${(c.matched || []).length + (c.missing || []).length}${reqMiss}</td>
       <td>${c.expYears || 0} ปี</td>
       <td><select class="inline" onchange="setStage('${c.id}', this.value)">
@@ -1430,6 +1717,7 @@ function renderCandTable() {
       <td>${fmtDate(c.addedAt)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick="showCandDetail('${c.id}')">ดู</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEmailDraft('${c.id}')" title="ร่างอีเมล">✉</button>
         <button class="btn btn-danger btn-sm" onclick="deleteCand('${c.id}')">ลบ</button>
       </td>
     </tr>`;
@@ -1444,7 +1732,7 @@ function candCardHTML(c) {
   return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
     <div class="kc-name">${esc(c.name)}${reqMiss}</div>
     <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
-    <div class="kc-foot">${scoreBar(c.score)}
+    <div class="kc-foot">${scoreCell(c.id, c.score)}
       <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
     </div>
   </div>`;
@@ -1541,23 +1829,210 @@ function csvCell(v) {
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return '"' + s.replace(/"/g, '""') + '"';
 }
-function exportCSV() {
-  if (!DB.candidates.length) { toast('ไม่มีข้อมูลให้ export'); return; }
-  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
-  const rows = [head];
-  DB.candidates.forEach(c => {
-    const job = jobById(c.jobId);
-    rows.push([c.name, c.email, c.phone, job ? job.title : '', c.score,
-      (c.matched || []).join('; '), (c.missing || []).join('; '),
-      c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)]);
-  });
+function downloadCSV(rows, filename) {
   const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });   // BOM ให้ Excel อ่านไทยถูก
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `hma-ats-candidates-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = filename;
   a.click();
-  toast('Export CSV แล้ว');
+}
+function today() { return new Date().toISOString().slice(0, 10); }
+
+/* รหัสชุดสอบทั้งหมดที่พบใน records (dynamic — ทนต่อชุดสอบใหม่) เรียงตาม TEST_LABELS ก่อน */
+function examCodesInRecords() {
+  const seen = new Set();
+  (FB.records || []).forEach(r => Object.keys(r).forEach(k => {
+    const m = k.match(/^([A-Z]+)_score$/);
+    if (m) seen.add(m[1]);
+  }));
+  const known = Object.keys(TEST_LABELS).filter(c => seen.has(c));
+  const extra = [...seen].filter(c => !TEST_LABELS[c]);
+  return [...known, ...extra];
+}
+
+async function exportCSV() {
+  // export เฉพาะผู้สมัครที่ตรงกับ filter/ค้นหาที่เปิดอยู่ (board ไม่ใช้ stage filter)
+  const rows0 = filteredCandidates(candView !== 'board');
+  if (!rows0.length) {
+    toast(DB.candidates.length ? 'ไม่มีผู้สมัครตรงกับตัวกรองที่เลือก' : 'ไม่มีข้อมูลให้ export');
+    return;
+  }
+  // ดึงผลสอบมารวมถ้า login cloud ไว้แล้ว (fetch ครั้งเดียวถ้ายังไม่มี)
+  if (FB.db && FB.user && !FB.records) { try { await fetchExamRecords(); } catch (e) { /* ปล่อยผ่าน */ } }
+  const codes = examCodesInRecords();
+
+  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
+  codes.forEach(c => head.push((TEST_LABELS[c] || c) + ' Score', (TEST_LABELS[c] || c) + ' Result'));
+  const rows = [head];
+  rows0.forEach(c => {
+    const job = jobById(c.jobId);
+    const row = [c.name, c.email, c.phone, job ? job.title : '', c.score,
+      (c.matched || []).join('; '), (c.missing || []).join('; '),
+      c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)];
+    if (codes.length) {
+      const ex = matchTestResults(c.email, FB.records)[0];   // ครั้งล่าสุด
+      codes.forEach(code => row.push(ex ? (ex[code + '_score'] ?? '') : '', ex ? (ex[code + '_outcome'] ?? '') : ''));
+    }
+    rows.push(row);
+  });
+  downloadCSV(rows, `hma-ats-candidates-${today()}.csv`);
+  const note = rows0.length < DB.candidates.length ? ` (${rows0.length}/${DB.candidates.length} ตามตัวกรอง)` : '';
+  toast(`Export ผู้สมัครแล้ว${note}` + (codes.length ? ' · รวมคะแนนสอบ' : (FB.user ? '' : ' · ผลสอบไม่รวม (ยังไม่ login cloud)')));
+}
+
+function exportJobsCSV() {
+  if (!DB.jobs.length) { toast('ยังไม่มีตำแหน่งงานให้ export'); return; }
+  const head = ['Title', 'Department', 'Status', 'Min Experience (yrs)', 'Education Keywords', 'Skills (name:weight:required)', 'Candidate Count'];
+  const rows = [head];
+  DB.jobs.forEach(j => {
+    const skills = (j.skills || []).map(s => `${s.name}:${s.weight}${s.required ? ':required' : ''}`).join('; ');
+    const n = DB.candidates.filter(c => c.jobId === j.id).length;
+    rows.push([j.title, j.dept || '', j.status, j.minExp || 0, j.eduKeywords || '', skills, n]);
+  });
+  downloadCSV(rows, `hma-ats-jobs-${today()}.csv`);
+  toast('Export ตำแหน่งงานแล้ว');
+}
+
+function exportDashboardCSV() {
+  const cs = DB.candidates;
+  if (!cs.length && !DB.jobs.length) { toast('ไม่มีข้อมูลให้ export'); return; }
+  const avg = cs.length ? Math.round(cs.reduce((s, c) => s + c.score, 0) / cs.length) : 0;
+  const rows = [
+    ['HMA ATS — Dashboard Summary', today()], [],
+    ['KPI', 'Value'],
+    ['ผู้สมัครทั้งหมด', cs.length],
+    ['ตำแหน่งเปิดรับ', DB.jobs.filter(j => j.status === 'Open').length],
+    ['ตำแหน่งทั้งหมด', DB.jobs.length],
+    ['คะแนน Match เฉลี่ย', avg],
+    ['ผู้สมัครคะแนน >= 70', cs.filter(c => c.score >= 70).length],
+    ['อยู่ระหว่างคัดเลือก', cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length],
+    ['รับเข้าทำงาน (Hired)', cs.filter(c => c.stage === 'Hired').length],
+    [],
+    ['ตำแหน่งงาน', 'จำนวนผู้สมัคร', 'คะแนนเฉลี่ย', 'รับเข้าทำงาน'],
+  ];
+  DB.jobs.forEach(j => {
+    const list = cs.filter(c => c.jobId === j.id);
+    const a = list.length ? Math.round(list.reduce((s, c) => s + c.score, 0) / list.length) : 0;
+    rows.push([j.title, list.length, a, list.filter(c => c.stage === 'Hired').length]);
+  });
+  rows.push([], ['สถานะ Pipeline', 'จำนวน']);
+  STAGES.forEach(s => rows.push([s, cs.filter(c => c.stage === s).length]));
+  downloadCSV(rows, `hma-ats-dashboard-${today()}.csv`);
+  toast('Export Dashboard แล้ว');
+}
+
+/* ── ร่างอีเมลถึงผู้สมัคร (เตรียมร่างเท่านั้น ไม่ส่งแทนผู้ใช้) — เทมเพลตตั้งค่าได้ที่ DB.emailTemplates ── */
+let emailCandId = null;
+function getTemplates() {
+  if (!Array.isArray(DB.emailTemplates) || !DB.emailTemplates.length) { DB.emailTemplates = seedEmailTemplates(); saveDB(); }
+  return DB.emailTemplates;
+}
+function fillTemplate(tpl, c) {
+  const job = jobById(c.jobId);
+  const fill = s => String(s || '').replace(/\{name\}/g, c.name || '')
+    .replace(/\{position\}/g, job ? job.title : 'ที่ท่านสมัคร')
+    .replace(/\{company\}/g, EMAIL_COMPANY);
+  return { subject: fill(tpl.subject), body: fill(tpl.body) };
+}
+/* เลือกเทมเพลตให้ผู้สมัคร: ตาม id → ตาม stage → เทมเพลตแรก */
+function pickTemplate(c, ref) {
+  const tpls = getTemplates();
+  return (ref && (tpls.find(t => t.id === ref) || tpls.find(t => t.stage === ref)))
+    || tpls.find(t => t.stage === c.stage) || tpls[0] || null;
+}
+/* คงชื่อ emailDraft ไว้ (ใช้ทดสอบ/ภายใน) — ref เป็น templateId หรือ stage ก็ได้ */
+function emailDraft(c, ref) {
+  const t = pickTemplate(c, ref);
+  if (!t) return { to: c.email || '', subject: '', body: '', templateId: null };
+  const { subject, body } = fillTemplate(t, c);
+  return { to: c.email || '', subject, body, templateId: t.id };
+}
+function fillEmailDraft(c, ref) {
+  const d = emailDraft(c, ref);
+  document.getElementById('em_subject').value = d.subject;
+  document.getElementById('em_body').value = d.body;
+  return d.templateId;
+}
+function openEmailDraft(id) {
+  const c = DB.candidates.find(x => x.id === id);
+  if (!c) return;
+  emailCandId = id;
+  const tpls = getTemplates();
+  const chosen = pickTemplate(c, null);
+  const sel = document.getElementById('em_template');
+  sel.innerHTML = tpls.map(t => `<option value="${t.id}">${esc(t.name)}${t.stage ? ' · ' + t.stage : ''}</option>`).join('')
+    || '<option value="">— ไม่มีเทมเพลต —</option>';
+  if (chosen) sel.value = chosen.id;
+  document.getElementById('em_to').value = c.email || '';
+  fillEmailDraft(c, chosen ? chosen.id : null);
+  document.getElementById('detailModalBg').classList.remove('open');   // ปิด detail ถ้าเปิดอยู่
+  document.getElementById('emailModalBg').classList.add('open');
+  if (!c.email) toast('ผู้สมัครไม่มีอีเมล — กรอกช่อง "ถึง" ก่อนส่ง');
+}
+
+/* ── ตั้งค่าเทมเพลตอีเมล (เพิ่ม/แก้/ลบ) ── */
+function renderTplList() {
+  const tpls = getTemplates();
+  document.getElementById('tplList').innerHTML = tpls.map(t => `
+    <div class="tpl-row">
+      <div><b>${esc(t.name)}</b>${t.stage ? ` <span class="badge na">${t.stage}</span>` : ''}
+        <div class="hint" style="max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(t.subject)}</div></div>
+      <div style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="tplEdit('${t.id}')">แก้ไข</button>
+        <button class="btn btn-danger btn-sm" onclick="tplDelete('${t.id}')">ลบ</button>
+      </div>
+    </div>`).join('') || '<div class="hint">ยังไม่มีเทมเพลต</div>';
+}
+function openTplManager() {
+  document.getElementById('emailModalBg').classList.remove('open');
+  document.getElementById('tplEditor').style.display = 'none';
+  renderTplList();
+  document.getElementById('tplModalBg').classList.add('open');
+}
+function tplShowEditor(t) {
+  document.getElementById('t_id').value = t ? t.id : '';
+  document.getElementById('t_name').value = t ? t.name : '';
+  document.getElementById('t_stage').value = t ? (t.stage || '') : '';
+  document.getElementById('t_subject').value = t ? t.subject : '';
+  document.getElementById('t_body').value = t ? t.body : `เรียน คุณ{name}\n\n\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`;
+  document.getElementById('tplEditor').style.display = '';
+  document.getElementById('t_name').focus();
+}
+function tplEdit(id) { tplShowEditor(getTemplates().find(t => t.id === id)); }
+function tplDelete(id) {
+  const tpls = getTemplates();
+  if (tpls.length <= 1) { toast('ต้องมีอย่างน้อย 1 เทมเพลต'); return; }
+  const t = tpls.find(x => x.id === id);
+  if (!t || !confirm(`ลบเทมเพลต "${t.name}"?`)) return;
+  DB.emailTemplates = tpls.filter(x => x.id !== id);
+  saveDB(); renderTplList();
+  toast('ลบเทมเพลตแล้ว');
+}
+function tplSave() {
+  const name = document.getElementById('t_name').value.trim();
+  const nameEl = document.getElementById('t_name');
+  if (!name) { nameEl.classList.add('err'); toast('กรุณาตั้งชื่อเทมเพลต'); return; }
+  nameEl.classList.remove('err');
+  const rec = {
+    name, stage: document.getElementById('t_stage').value,
+    subject: document.getElementById('t_subject').value,
+    body: document.getElementById('t_body').value,
+  };
+  const id = document.getElementById('t_id').value;
+  const tpls = getTemplates();
+  if (id) { const i = tpls.findIndex(t => t.id === id); if (i >= 0) tpls[i] = Object.assign({ id }, rec); }
+  else tpls.push(Object.assign({ id: uid('t') }, rec));
+  saveDB();
+  document.getElementById('tplEditor').style.display = 'none';
+  renderTplList();
+  toast(id ? 'บันทึกเทมเพลตแล้ว' : 'เพิ่มเทมเพลตแล้ว');
+}
+function resetTemplates() {
+  if (!confirm('คืนค่าเทมเพลตทั้งหมดเป็นค่าเริ่มต้น? เทมเพลตที่คุณแก้ไว้จะหายทั้งหมด')) return;
+  DB.emailTemplates = seedEmailTemplates();
+  saveDB(); document.getElementById('tplEditor').style.display = 'none'; renderTplList();
+  toast('คืนค่าเทมเพลตเริ่มต้นแล้ว');
 }
 
 /* ── Dashboard ── */
@@ -1705,14 +2180,37 @@ document.getElementById('clearScanBtn').addEventListener('click', clearScan);
 document.getElementById('seedBtn').addEventListener('click', seed);
 
 document.getElementById('jobAddBtn').addEventListener('click', () => openJobModal(null));
+document.getElementById('jobExportBtn').addEventListener('click', exportJobsCSV);
 document.getElementById('addSkillBtn').addEventListener('click', () => {
   document.getElementById('skillRows').insertAdjacentHTML('beforeend', skillRowHTML());
 });
+document.getElementById('suggestSkillBtn').addEventListener('click', suggestSkillsIntoForm);
 document.getElementById('jobSaveBtn').addEventListener('click', saveJob);
 
 document.getElementById('candAddBtn').addEventListener('click', () => document.getElementById('candModalBg').classList.add('open'));
 document.getElementById('candSaveBtn').addEventListener('click', saveManualCand);
 document.getElementById('candExportBtn').addEventListener('click', exportCSV);
+document.getElementById('dashExportBtn').addEventListener('click', exportDashboardCSV);
+document.getElementById('em_template').addEventListener('change', () => {
+  const c = DB.candidates.find(x => x.id === emailCandId);
+  if (c) fillEmailDraft(c, document.getElementById('em_template').value);
+});
+document.getElementById('em_manage').addEventListener('click', openTplManager);
+document.getElementById('tplAddBtn').addEventListener('click', () => tplShowEditor(null));
+document.getElementById('tplSaveBtn').addEventListener('click', tplSave);
+document.getElementById('tplCancelBtn').addEventListener('click', () => document.getElementById('tplEditor').style.display = 'none');
+document.getElementById('tplResetBtn').addEventListener('click', resetTemplates);
+document.getElementById('em_copy').addEventListener('click', async () => {
+  const text = 'หัวข้อ: ' + document.getElementById('em_subject').value + '\n\n' + document.getElementById('em_body').value;
+  try { await navigator.clipboard.writeText(text); toast('คัดลอกข้อความแล้ว'); }
+  catch (e) { toast('คัดลอกไม่สำเร็จ — เลือกข้อความในช่องแล้วกด Ctrl+C'); }
+});
+document.getElementById('em_open').addEventListener('click', () => {
+  const to = document.getElementById('em_to').value.trim();
+  const sub = encodeURIComponent(document.getElementById('em_subject').value);
+  const body = encodeURIComponent(document.getElementById('em_body').value);
+  window.location.href = `mailto:${to}?subject=${sub}&body=${body}`;   // เปิด mail client — ผู้ใช้กดส่งเอง
+});
 ['candSearch', 'candJobFilter', 'candStageFilter', 'candSort'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', renderCandidates);
