@@ -973,25 +973,9 @@ textarea.q-inp:focus{border-color:var(--teal)}
         <p style="font-size:13px;color:var(--gray-400)">เข้าสู่ระบบเพื่อดูผลการทดสอบ</p>
       </div>
       <div id="login-expired" class="alert alert-warn">⏰ Session หมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่</div>
-      <div id="login-setup-banner" class="alert alert-info" style="display:none; text-align:left; margin-bottom:14px">
-        <div style="margin-bottom:8px">🔑 ยังไม่มีบัญชีผู้ดูแลระบบในเครื่องนี้ — ตั้งค่าบัญชี Super Admin ก่อนเข้าใช้งานครั้งแรก</div>
-        <button class="btn btn-secondary btn-sm" onclick="toggleFirstRunSetup(true)">ตั้งค่าบัญชี Super Admin</button>
-      </div>
-      <div id="login-setup-form" class="card" style="display:none; text-align:left">
-        <h3 style="font-size:14px;margin-bottom:10px">ตั้งค่าบัญชี Super Admin คนแรก</h3>
-        <div id="setup-err" class="alert alert-err" style="display:none"></div>
-        <div class="field"><label>ชื่อที่แสดง</label><input id="su-name" type="text" placeholder="เช่น สมชาย ใจดี"></div>
-        <div class="field"><label>Username</label><input id="su-user" type="text" placeholder="เช่น admin"></div>
-        <div class="field"><label>Password</label><input id="su-pass" type="password" placeholder="อย่างน้อย 8 ตัวอักษร"></div>
-        <div class="field"><label>ยืนยัน Password</label><input id="su-pass2" type="password" placeholder="พิมพ์รหัสผ่านอีกครั้ง"></div>
-        <div style="display:flex; gap:8px">
-          <button class="btn btn-primary" style="flex:1" onclick="submitFirstRunSetup()">สร้างบัญชี</button>
-          <button class="btn btn-secondary" onclick="toggleFirstRunSetup(false)">ยกเลิก</button>
-        </div>
-      </div>
       <div class="card">
         <div id="login-err" class="alert alert-err"></div>
-        <div class="field"><label>Email / Username</label><input id="l-user" type="text" placeholder="you@email.com" autofocus></div>
+        <div class="field"><label>Email</label><input id="l-user" type="email" placeholder="you@email.com" autofocus></div>
         <div class="field">
           <label>Password</label>
           <div style="position:relative">
@@ -1711,7 +1695,6 @@ function nav(id) {
   if (id === 'p-admin')   toggleAdminSidebar(false);
   if (id === 'p-register') populatePositionTypes();
   if (id === 'p-position-editor') { peDraft=null; renderPositionEditor(); }
-  if (id === 'p-login') updateLoginSetupBanner();
 }
 
 // ══════════════════════════════════════════
@@ -4580,76 +4563,36 @@ function submitLogin() {
     err.textContent = msg || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'; err.style.display = 'block';
   };
 
-  // Email + Firebase Auth → cloud admin (can see candidates across devices)
-  if (u.includes('@') && cloudEnabled()) {
-    fbAuth.signInWithEmailAndPassword(u, p)
-      .then(cred => {
-        currentAdmin = { name: cred.user.email, username: cred.user.email, role: 'superadmin', cloud: true };
-        btn.innerHTML = 'เข้าสู่ระบบ'; btn.disabled = false;
-        enterAdmin();
-        cloudFetchAll();   // pull all candidate data
-      })
-      .catch(e => {
-        const m = (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found')
-          ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
-          : ('เข้าสู่ระบบ cloud ไม่สำเร็จ: ' + (e.code || e.message));
-        fail(m);
-      });
+  // Admin access is cloud-only: authentication always goes through Firebase Auth
+  // against approved accounts. There is deliberately no self-service/local admin
+  // path — on a public static site a client-side "create admin" flow is not a
+  // real security boundary (anyone could appoint themselves), so it was removed.
+  if (!cloudEnabled()) {
+    fail('เข้าสู่ระบบแอดมินต้องเชื่อมต่ออินเทอร์เน็ต (ระบบ cloud ไม่พร้อมใช้งาน — อาจถูก ad-blocker บล็อก)');
     return;
   }
-
-  // Fallback: local multi-user accounts (offline, this device only)
-  setTimeout(async () => {
-    const users = getAdminUsers();
-    const user  = users.find(x => x.username === u);
-    const ok = user && user.passwordHash && user.salt && (await hashPassword(p, user.salt)) === user.passwordHash;
-    if (ok) { btn.innerHTML='เข้าสู่ระบบ'; btn.disabled=false; currentAdmin = user; enterAdmin(); }
-    else fail();
-  }, 700);
-}
-
-// ── First-run local admin setup (replaces the removed shipped default credentials) ──
-function updateLoginSetupBanner() {
-  const banner = document.getElementById('login-setup-banner');
-  if (!banner) return;
-  const hasLocalUsers = getAdminUsers().length > 0;
-  banner.style.display = hasLocalUsers ? 'none' : 'block';
-  if (hasLocalUsers) toggleFirstRunSetup(false);
-}
-function toggleFirstRunSetup(show) {
-  const form = document.getElementById('login-setup-form');
-  if (!form) return;
-  form.style.display = show ? 'block' : 'none';
-  if (show) {
-    document.getElementById('setup-err').style.display = 'none';
-    document.getElementById('su-name').value = '';
-    document.getElementById('su-user').value = '';
-    document.getElementById('su-pass').value = '';
-    document.getElementById('su-pass2').value = '';
+  if (!u.includes('@')) {
+    fail('กรุณาเข้าสู่ระบบด้วยอีเมลแอดมินที่ได้รับอนุมัติ');
+    return;
   }
+  fbAuth.signInWithEmailAndPassword(u, p)
+    .then(cred => {
+      currentAdmin = { name: cred.user.email, username: cred.user.email, role: 'superadmin', cloud: true };
+      btn.innerHTML = 'เข้าสู่ระบบ'; btn.disabled = false;
+      enterAdmin();
+      cloudFetchAll();   // pull all candidate data
+    })
+    .catch(e => {
+      const m = (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found')
+        ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
+        : ('เข้าสู่ระบบ cloud ไม่สำเร็จ: ' + (e.code || e.message));
+      fail(m);
+    });
 }
-async function submitFirstRunSetup() {
-  const err = document.getElementById('setup-err');
-  err.style.display = 'none';
-  const name  = document.getElementById('su-name').value.trim();
-  const user  = document.getElementById('su-user').value.trim();
-  const pass  = document.getElementById('su-pass').value;
-  const pass2 = document.getElementById('su-pass2').value;
-  if (!name || !user || !pass) { err.textContent = 'กรุณากรอกข้อมูลให้ครบ'; err.style.display = 'block'; return; }
-  if (pass.length < 8) { err.textContent = 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'; err.style.display = 'block'; return; }
-  if (pass !== pass2) { err.textContent = 'รหัสผ่านทั้งสองช่องไม่ตรงกัน'; err.style.display = 'block'; return; }
-  const users = getAdminUsers();
-  if (users.find(x => x.username === user)) { err.textContent = 'Username นี้มีแล้ว'; err.style.display = 'block'; return; }
-  const salt = randomSaltHex();
-  const passwordHash = await hashPassword(pass, salt);
-  users.push({ name, username: user, role: 'superadmin', salt, passwordHash });
-  saveAdminUsers(users);
-  toggleFirstRunSetup(false);
-  updateLoginSetupBanner();
-  document.getElementById('l-user').value = user;
-  document.getElementById('l-pass').value = '';
-  showToast('✅ สร้างบัญชี Super Admin แล้ว — เข้าสู่ระบบได้เลย');
-}
+
+// Admin access is cloud-only (Firebase Auth). The former first-run "create a
+// local Super Admin" flow was removed: on a public static site it let any
+// visitor appoint themselves admin, which is not a real security boundary.
 
 function updateAdminUI() {
   if (!currentAdmin) return;
@@ -5345,7 +5288,8 @@ const ADMIN_MENU = [
   { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')",    perm:'canEditQ' },
   { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')", perm:'canEditQ' },
   { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')", perm:'canManagePos' },
-  { key:'collab',  label:'จัดการทีม',      action:"admGo('p-collab')",             perm:'canManageUsers' },
+  // 'จัดการทีม' (p-collab) removed: it managed local admin accounts, which no
+  // longer exist under cloud-only auth. Manage admins in the Firebase console.
   { key:'export',  label:'Export Excel',   action:"admExport(this)",               perm:'canExport' },
 ];
 function menuAllowed(m){
