@@ -4807,47 +4807,62 @@ async function saveUser() {
     return;
   }
 
-  // ── Add: create the Firebase Auth account + write the role entry ──
+  // ── Add: write the role entry, then create the login account ──
   const email = document.getElementById('nu-email').value.trim().toLowerCase();
   const pass  = document.getElementById('nu-pass').value;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('❌ อีเมลไม่ถูกต้อง'); return; }
   if (!pass || pass.length < 6) { showToast('❌ รหัสผ่านอย่างน้อย 6 ตัวอักษร'); return; }
   if (_adminRoster.find(u => (u.email || '').toLowerCase() === email)) { showToast('❌ อีเมลนี้อยู่ในทีมแล้ว'); return; }
 
-  showToast('⏳ กำลังสร้างบัญชี…');
-  // Create the auth account on a SECONDARY Firebase app so the current
-  // superadmin's session on the primary app is not swapped out.
-  let secondary = null;
-  try {
-    secondary = firebase.initializeApp(firebaseConfig, 'admincreate_' + Date.now());
-    const cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
-    try { await cred.user.updateProfile({ displayName: name }); } catch (_) {}
-    await secondary.auth().signOut();
-  } catch (e) {
-    const m = e.code === 'auth/email-already-in-use'
-        ? 'อีเมลนี้มีบัญชี Firebase อยู่แล้ว — ใช้บัญชีเดิมโดยเพิ่มบทบาทให้บัญชีนั้นแทน หรือลบใน Console ก่อน'
-      : e.code === 'auth/weak-password' ? 'รหัสผ่านอ่อนเกินไป (อย่างน้อย 6 ตัวอักษร)'
-      : e.code === 'auth/operation-not-allowed' ? 'ยังไม่ได้เปิด Email/Password provider ใน Firebase Console'
-      : ('สร้างบัญชีไม่สำเร็จ: ' + (e.code || e.message));
-    showToast('❌ ' + m, 7000);
-    if (secondary) { try { await secondary.delete(); } catch (_) {} }
-    return;
-  }
-  if (secondary) { try { await secondary.delete(); } catch (_) {} }
-
-  // Write the authorization role on the PRIMARY app (as the current superadmin).
+  showToast('⏳ กำลังบันทึก…');
+  // Order matters: write the ROLE first, then create the login account. If the
+  // role write is going to fail (e.g. Firestore rules for admin_roles not
+  // configured yet), it fails here — before any Firebase Auth account exists —
+  // so a failed add never leaves an orphan login behind.
   try {
     await db.collection('admin_roles').doc(email).set({
       name, email, role, addedAt: Date.now(),
       addedBy: (currentAdmin && currentAdmin.email) || ''
-    });
+    }, { merge: true });
   } catch (e) {
-    showToast('⚠️ สร้างบัญชีล็อกอินแล้ว แต่บันทึกบทบาทไม่สำเร็จ (ตรวจ Firestore Rules): ' + (e.code || e.message), 8000);
+    const m = e.code === 'permission-denied'
+        ? 'บันทึกบทบาทไม่สำเร็จ — ยังไม่ได้ตั้ง Firestore Rules ให้ admin_roles (ตั้งใน Firebase Console)'
+      : ('บันทึกบทบาทไม่สำเร็จ: ' + (e.code || e.message));
+    showToast('❌ ' + m, 8000);
     return;
   }
+
+  // Role saved. Create the login account on a SECONDARY Firebase app so the
+  // superadmin's own session on the primary app is not swapped out.
+  let secondary = null, adopted = false, authErr = null;
+  try {
+    secondary = firebase.initializeApp(firebaseConfig, 'admincreate_' + Date.now());
+    try {
+      const cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
+      try { await cred.user.updateProfile({ displayName: name }); } catch (_) {}
+    } catch (e) {
+      // Login already exists (console-created or a prior run) — fine, the role
+      // above authorizes it. Other auth errors are reported but the role entry
+      // stays, so retrying the same email just (re)creates the login.
+      if (e.code === 'auth/email-already-in-use') adopted = true;
+      else authErr = e;
+    }
+    try { await secondary.auth().signOut(); } catch (_) {}
+  } finally {
+    if (secondary) { try { await secondary.delete(); } catch (_) {} }
+  }
+
   closeModal('mod-adduser');
   await renderCollabPage();
-  showToast(`✅ เพิ่ม ${name} (${ROLE_INFO[role]?.label}) แล้ว — ล็อกอินด้วยอีเมล/รหัสผ่านนี้ได้ทุกเครื่อง`, 6000);
+  if (authErr) {
+    const m = authErr.code === 'auth/operation-not-allowed'
+        ? 'บันทึกบทบาทแล้ว แต่สร้างบัญชีล็อกอินไม่ได้ — เปิด Email/Password provider ใน Firebase Console แล้วเพิ่มอีเมลนี้อีกครั้ง'
+      : ('บันทึกบทบาทแล้ว แต่สร้างบัญชีล็อกอินไม่สำเร็จ: ' + (authErr.code || authErr.message) + ' — เพิ่มอีเมลเดิมอีกครั้งเพื่อลองใหม่');
+    showToast('⚠️ ' + m, 8000);
+    return;
+  }
+  const note = adopted ? ' (ใช้บัญชี Firebase เดิม — รหัสผ่านไม่เปลี่ยน)' : ' — ล็อกอินด้วยอีเมล/รหัสผ่านนี้ได้ทุกเครื่อง';
+  showToast(`✅ เพิ่ม ${name} (${ROLE_INFO[role]?.label}) แล้ว${note}`, 6000);
 }
 
 // Delete = revoke the role entry. The orphaned Firebase Auth account can no
