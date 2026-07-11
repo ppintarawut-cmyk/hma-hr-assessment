@@ -1023,12 +1023,18 @@ function examResultHTML(rec) {
     .map(k => {
       const code = k.replace('_score', '');
       const outcome = String(rec[code + '_outcome'] || '');
-      // เช็ค fail ก่อน — "ไม่ผ่าน" มี "ผ่าน" เป็น substring
-      const fail = /fail|ไม่ผ่าน/i.test(outcome);
-      const pass = !fail && /pass|ผ่าน/i.test(outcome);
+      // ระบบสอบเก็บ outcome เป็น 'P'/'NP' — รองรับทั้งรหัสนี้และข้อความเต็ม
+      // เช็ค fail ก่อน: 'NP' มี 'P' และ "ไม่ผ่าน" มี "ผ่าน" เป็น substring
+      const fail = /^NP$/i.test(outcome) || /fail|ไม่ผ่าน/i.test(outcome);
+      const pass = !fail && (/^P$/i.test(outcome) || /pass|ผ่าน/i.test(outcome));
       const cls = pass ? 'hit' : fail ? 'miss req' : 'miss';
-      const total = rec[code + '_total'] !== '' && rec[code + '_total'] != null ? '/' + rec[code + '_total'] : '';
-      return `<span class="chip ${cls}">${esc(TEST_LABELS[code] || code)}: ${esc(String(rec[k]))}${esc(String(total))}${pass ? ' ✓' : fail ? ' ✗' : ''}</span>`;
+      const has = v => v !== '' && v != null;
+      const correct = rec[code + '_correct'], total = rec[code + '_total'];
+      // ระบบสอบ: _score = เปอร์เซ็นต์, _correct/_total = คะแนนดิบ → "85% (20/24)"
+      // record เก่าที่ไม่มี _correct: คงรูปแบบ score/total เดิม
+      const scoreText = has(correct) && has(total) ? `${rec[k]}% (${correct}/${total})`
+                      : has(total) ? `${rec[k]}/${total}` : String(rec[k]);
+      return `<span class="chip ${cls}">${esc(TEST_LABELS[code] || code)}: ${esc(scoreText)}${pass ? ' ✓' : fail ? ' ✗' : ''}</span>`;
     }).join('');
   return `<div style="padding:8px 0; border-top:1px dashed var(--gray-200)">
     <div class="hint" style="margin-bottom:4px">${esc(rec.datetime || '')}${rec.position ? ' · ' + esc(rec.position) : ''}${rec.name ? ' · ' + esc(rec.name) : ''}</div>
