@@ -3262,11 +3262,11 @@ document.querySelector('#p-register .alert-info').style.display='flex';
 <!-- Add user modal -->
 <div class="overlay" id="mod-adduser">
   <div class="modal">
-    <div class="modal-head"><span style="font-weight:600">เพิ่ม/แก้ไขผู้ดูแลระบบ</span><button onclick="closeModal('mod-adduser')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-400)">✕</button></div>
+    <div class="modal-head"><span style="font-weight:600" id="mod-adduser-title">เพิ่มผู้ดูแลระบบ</span><button onclick="closeModal('mod-adduser')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--gray-400)">✕</button></div>
     <div class="modal-body">
       <div class="field"><label>ชื่อแสดง</label><input type="text" id="nu-name" placeholder="เช่น สมชาย ใจดี"></div>
-      <div class="field"><label>Username</label><input type="text" id="nu-user" placeholder="เช่น somchai"></div>
-      <div class="field"><label>Password</label><input type="password" id="nu-pass" placeholder="••••••••"></div>
+      <div class="field"><label>Email <span style="font-weight:400;color:var(--gray-400);font-size:11px">(ใช้ล็อกอิน)</span></label><input type="email" id="nu-email" placeholder="somchai@company.com"></div>
+      <div class="field" id="nu-pass-field"><label>Password <span style="font-weight:400;color:var(--gray-400);font-size:11px">(อย่างน้อย 6 ตัวอักษร)</span></label><input type="password" id="nu-pass" placeholder="••••••••"></div>
       <div class="field">
         <label>ระดับสิทธิ์</label>
         <select id="nu-role">
@@ -3276,7 +3276,8 @@ document.querySelector('#p-register .alert-info').style.display='flex';
           <option value="viewer">👁 Viewer</option>
         </select>
       </div>
-      <input type="hidden" id="nu-edit-idx" value="">
+      <div class="hint" style="margin-top:2px;font-size:11.5px;line-height:1.5">🔒 บัญชีถูกสร้างบน Firebase Auth และเก็บบทบาทบน cloud — ล็อกอินได้ทุกเครื่อง · รหัสผ่านเปลี่ยน/รีเซ็ตได้ที่ Firebase Console</div>
+      <input type="hidden" id="nu-edit-email" value="">
     </div>
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal('mod-adduser')">ยกเลิก</button>
@@ -4511,34 +4512,9 @@ function applyRolePerms() {
 }
 applyRolePerms();
 
-// Local admin accounts are created via the first-run setup screen on the login
-// page. Only a salted SHA-256 hash of the password is ever stored (see
-// hashPassword()) — never the plaintext. The previously shipped default
-// passwords were removed; if they were reused on any other system, rotate them there.
-const DEFAULT_ADMIN_USERS = [];
-
-async function sha256Hex(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-function randomSaltHex(len = 16) {
-  const arr = new Uint8Array(len);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-async function hashPassword(password, salt) {
-  return sha256Hex(salt + ':' + password);
-}
-
-function getAdminUsers() {
-  try {
-    const saved = localStorage.getItem('hma_admin_users');
-    return saved ? JSON.parse(saved) : [...DEFAULT_ADMIN_USERS];
-  } catch(e) { return [...DEFAULT_ADMIN_USERS]; }
-}
-function saveAdminUsers(users) {
-  try { localStorage.setItem('hma_admin_users', JSON.stringify(users)); } catch(e) {}
-}
+// Admin auth is Firebase-only. Authorization (per-admin role) lives in the
+// cloud `admin_roles` collection, managed from the "จัดการทีม" page — see
+// cloudFetchAdminRoster() / saveUser(). No local password store exists.
 
 let currentAdmin = null;
 
@@ -4576,8 +4552,41 @@ function submitLogin() {
     return;
   }
   fbAuth.signInWithEmailAndPassword(u, p)
-    .then(cred => {
-      currentAdmin = { name: cred.user.email, username: cred.user.email, role: 'superadmin', cloud: true };
+    .then(async cred => {
+      // Authentication succeeded — now resolve AUTHORIZATION (role) from the
+      // cloud roster (admin_roles/{email}). This is what lets sub-admins exist
+      // across devices with the right permissions.
+      const email = (cred.user.email || '').toLowerCase();
+      let role, name = cred.user.email;
+      try {
+        const doc = await db.collection('admin_roles').doc(email).get();
+        if (doc.exists) {
+          role = doc.data().role || 'viewer';
+          name = doc.data().name || cred.user.email;
+        } else {
+          // No role entry: bootstrap the very first admin when the roster is
+          // still empty; otherwise this is an authenticated-but-unauthorized
+          // account and must be denied (an approved admin has to add it).
+          const any = await db.collection('admin_roles').limit(1).get();
+          if (any.empty) {
+            role = 'superadmin';
+            try { await db.collection('admin_roles').doc(email).set({ name, email, role: 'superadmin', addedAt: Date.now(), addedBy: 'bootstrap' }); } catch(_) {}
+          } else {
+            await fbAuth.signOut();
+            fail('บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าระบบแอดมิน — ให้ Super Admin เพิ่มบัญชีนี้ในหน้า “จัดการทีม”');
+            return;
+          }
+        }
+      } catch (e) {
+        // The roster isn't readable yet — typically because the Firestore rules
+        // for admin_roles haven't been added. Fall back to the prior behavior
+        // (treat the authenticated user as superadmin) so admin login keeps
+        // working during setup. Once rules allow reads, role-based access and
+        // the deny-non-member check above take effect automatically.
+        console.warn('admin_roles read failed; using legacy superadmin fallback — set Firestore rules for admin_roles:', e.code || e.message);
+        role = 'superadmin';
+      }
+      currentAdmin = { name, username: email, email, role, cloud: true };
       btn.innerHTML = 'เข้าสู่ระบบ'; btn.disabled = false;
       enterAdmin();
       cloudFetchAll();   // pull all candidate data
@@ -4616,13 +4625,47 @@ function toggleAdminSidebar(open){
 function admGo(pageId){ toggleAdminSidebar(false); nav(pageId); }
 function admExport(btn){ exportAdminPDF(btn); }
 
-function renderCollabPage() {
+// ── Cloud admin roster (Firestore `admin_roles`) ────────────────────────────
+// Authentication is Firebase Auth; this collection stores AUTHORIZATION — each
+// admin's role keyed by lowercased email — so sub-admins work across every
+// device. No password is kept here (that lives in Firebase Auth).
+let _adminRoster = [];
+
+async function cloudFetchAdminRoster() {
+  if (!cloudEnabled()) { _adminRoster = []; return _adminRoster; }
+  const qs = await db.collection('admin_roles').get();
+  _adminRoster = qs.docs
+    .map(d => ({ email: d.id, ...d.data() }))
+    .sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+  return _adminRoster;
+}
+
+async function renderCollabPage() {
   renderPermMatrix();
-  const users = getAdminUsers();
-  document.getElementById('collab-list').innerHTML = users.map((u, i) => {
+  const list = document.getElementById('collab-list');
+  if (!list) return;
+  if (!cloudEnabled()) {
+    list.innerHTML = '<div class="hint" style="padding:14px 0">ระบบ cloud ไม่พร้อมใช้งาน — การจัดการทีมต้องเชื่อมต่ออินเทอร์เน็ต</div>';
+    return;
+  }
+  list.innerHTML = '<div class="hint" style="padding:14px 0">⏳ กำลังโหลดรายชื่อทีมจาก cloud…</div>';
+  let roster;
+  try {
+    roster = await cloudFetchAdminRoster();
+  } catch (e) {
+    list.innerHTML = `<div class="hint" style="padding:14px 0;color:var(--red)">โหลดรายชื่อไม่สำเร็จ (ตรวจ Firestore Rules ให้ผู้ล็อกอินอ่าน admin_roles ได้): ${esc(e.code || e.message)}</div>`;
+    return;
+  }
+  if (!roster.length) {
+    list.innerHTML = '<div class="hint" style="padding:14px 0">ยังไม่มีบัญชีผู้ดูแลใน cloud — กด “＋ เพิ่มผู้ดูแล” เพื่อสร้างบัญชีแรก</div>';
+    return;
+  }
+  const canManage = !!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers);
+  list.innerHTML = roster.map(u => {
     const role = ROLE_INFO[u.role] || ROLE_INFO.viewer;
-    const isSelf = currentAdmin && u.username === currentAdmin.username;
-    const canEdit = currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers && !isSelf;
+    const isSelf = currentAdmin && (u.email || '').toLowerCase() === (currentAdmin.email || '').toLowerCase();
+    const canEdit = canManage && !isSelf;
+    const enc = encodeURIComponent(u.email || '');
     const chips = FEATURES.map(f =>
       role[f.key]
         ? `<span class="perm-chip">${f.icon} ${f.short}</span>`
@@ -4630,17 +4673,17 @@ function renderCollabPage() {
     ).join('');
     return `<div class="user-row">
       <div style="display:flex;align-items:flex-start;gap:10px;min-width:0">
-        <div class="avatar" style="background:var(--gray-100);color:var(--gray-500);width:34px;height:34px;font-size:14px;margin-top:1px">${esc(u.name.charAt(0))}</div>
+        <div class="avatar" style="background:var(--gray-100);color:var(--gray-500);width:34px;height:34px;font-size:14px;margin-top:1px">${esc((u.name || u.email || '?').charAt(0).toUpperCase())}</div>
         <div style="min-width:0">
-          <div style="font-weight:600;font-size:13px">${esc(u.name)} ${isSelf ? '<span style="font-size:11px;color:var(--teal)">(คุณ)</span>' : ''}</div>
-          <div style="font-size:12px;color:var(--gray-400)">@${esc(u.username)}</div>
+          <div style="font-weight:600;font-size:13px">${esc(u.name || '')} ${isSelf ? '<span style="font-size:11px;color:var(--teal)">(คุณ)</span>' : ''}</div>
+          <div style="font-size:12px;color:var(--gray-400)">${esc(u.email || '')}</div>
           <div class="permission-tag">${chips}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <span class="role-badge ${role.cls}">${role.label}</span>
-        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="editUser(${i})">แก้ไข</button>
-        <button class="btn btn-sm" style="background:var(--red-l);color:var(--red)" onclick="deleteUser(${i})">ลบ</button>` : ''}
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="editUser('${enc}')">แก้ไข</button>
+        <button class="btn btn-sm" style="background:var(--red-l);color:var(--red)" onclick="deleteUser('${enc}')">ลบ</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -4715,61 +4758,113 @@ function resetRolePerms() {
 }
 
 function openAddUser() {
+  if (!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers)) { showToast('❌ ไม่มีสิทธิ์จัดการผู้ดูแล'); return; }
+  if (!cloudEnabled()) { showToast('❌ การเพิ่มผู้ดูแลต้องเชื่อมต่อ cloud'); return; }
+  document.getElementById('mod-adduser-title').textContent = 'เพิ่มผู้ดูแลระบบ';
   document.getElementById('nu-name').value = '';
-  document.getElementById('nu-user').value = '';
+  const em = document.getElementById('nu-email');
+  em.value = ''; em.disabled = false;
   document.getElementById('nu-pass').value = '';
-  document.getElementById('nu-pass').placeholder = '••••••••';
+  document.getElementById('nu-pass-field').style.display = '';
   document.getElementById('nu-role').value = 'hr';
-  document.getElementById('nu-edit-idx').value = '';
+  document.getElementById('nu-edit-email').value = '';
   openModal('mod-adduser');
 }
 
-function editUser(i) {
-  const u = getAdminUsers()[i];
-  document.getElementById('nu-name').value = u.name;
-  document.getElementById('nu-user').value = u.username;
-  // Passwords are stored as salted hashes and cannot be reversed to display —
-  // leave blank; the placeholder tells the admin how to keep it unchanged.
+// Edit only touches name + role. Email is the account id and the password lives
+// in Firebase Auth, so neither is editable here (reset password in the console).
+function editUser(encEmail) {
+  const email = decodeURIComponent(encEmail);
+  const u = _adminRoster.find(x => (x.email || '').toLowerCase() === email.toLowerCase());
+  if (!u) return;
+  document.getElementById('mod-adduser-title').textContent = 'แก้ไขบทบาทผู้ดูแล';
+  document.getElementById('nu-name').value = u.name || '';
+  const em = document.getElementById('nu-email');
+  em.value = u.email || ''; em.disabled = true;
   document.getElementById('nu-pass').value = '';
-  document.getElementById('nu-pass').placeholder = 'เว้นว่างไว้เพื่อคงรหัสผ่านเดิม';
-  document.getElementById('nu-role').value = u.role;
-  document.getElementById('nu-edit-idx').value = i;
+  document.getElementById('nu-pass-field').style.display = 'none';
+  document.getElementById('nu-role').value = u.role || 'hr';
+  document.getElementById('nu-edit-email').value = u.email || '';
   openModal('mod-adduser');
 }
 
 async function saveUser() {
-  const name = document.getElementById('nu-name').value.trim();
-  const user = document.getElementById('nu-user').value.trim();
-  const pass = document.getElementById('nu-pass').value;
-  const role = document.getElementById('nu-role').value;
-  const idx  = document.getElementById('nu-edit-idx').value;
-  if (!name || !user) { showToast('❌ กรอกข้อมูลให้ครบ'); return; }
-  const users = getAdminUsers();
-  if (idx !== '') {
-    const existing = users[Number(idx)];
-    let salt = existing.salt, passwordHash = existing.passwordHash;
-    if (pass) { salt = randomSaltHex(); passwordHash = await hashPassword(pass, salt); }
-    users[Number(idx)] = { name, username:user, role, salt, passwordHash };
-  } else {
-    if (!pass) { showToast('❌ กรุณาตั้งรหัสผ่าน'); return; }
-    if (users.find(u => u.username === user)) { showToast('❌ Username นี้มีแล้ว'); return; }
-    const salt = randomSaltHex();
-    const passwordHash = await hashPassword(pass, salt);
-    users.push({ name, username:user, role, salt, passwordHash });
+  if (!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers)) { showToast('❌ ไม่มีสิทธิ์'); return; }
+  if (!cloudEnabled()) { showToast('❌ ระบบ cloud ไม่พร้อมใช้งาน'); return; }
+  const name  = document.getElementById('nu-name').value.trim();
+  const role  = document.getElementById('nu-role').value;
+  const editEmail = document.getElementById('nu-edit-email').value;
+  if (!name) { showToast('❌ กรอกชื่อแสดง'); return; }
+
+  // ── Edit: update name + role only ──
+  if (editEmail) {
+    try {
+      await db.collection('admin_roles').doc(editEmail.toLowerCase()).set({ name, role }, { merge: true });
+    } catch (e) { showToast('❌ บันทึกไม่สำเร็จ (ตรวจ Firestore Rules): ' + (e.code || e.message), 6000); return; }
+    closeModal('mod-adduser');
+    await renderCollabPage();
+    showToast(`✅ อัปเดต ${name} (${ROLE_INFO[role]?.label}) แล้ว`);
+    return;
   }
-  saveAdminUsers(users);
+
+  // ── Add: create the Firebase Auth account + write the role entry ──
+  const email = document.getElementById('nu-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('nu-pass').value;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('❌ อีเมลไม่ถูกต้อง'); return; }
+  if (!pass || pass.length < 6) { showToast('❌ รหัสผ่านอย่างน้อย 6 ตัวอักษร'); return; }
+  if (_adminRoster.find(u => (u.email || '').toLowerCase() === email)) { showToast('❌ อีเมลนี้อยู่ในทีมแล้ว'); return; }
+
+  showToast('⏳ กำลังสร้างบัญชี…');
+  // Create the auth account on a SECONDARY Firebase app so the current
+  // superadmin's session on the primary app is not swapped out.
+  let secondary = null;
+  try {
+    secondary = firebase.initializeApp(firebaseConfig, 'admincreate_' + Date.now());
+    const cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
+    try { await cred.user.updateProfile({ displayName: name }); } catch (_) {}
+    await secondary.auth().signOut();
+  } catch (e) {
+    const m = e.code === 'auth/email-already-in-use'
+        ? 'อีเมลนี้มีบัญชี Firebase อยู่แล้ว — ใช้บัญชีเดิมโดยเพิ่มบทบาทให้บัญชีนั้นแทน หรือลบใน Console ก่อน'
+      : e.code === 'auth/weak-password' ? 'รหัสผ่านอ่อนเกินไป (อย่างน้อย 6 ตัวอักษร)'
+      : e.code === 'auth/operation-not-allowed' ? 'ยังไม่ได้เปิด Email/Password provider ใน Firebase Console'
+      : ('สร้างบัญชีไม่สำเร็จ: ' + (e.code || e.message));
+    showToast('❌ ' + m, 7000);
+    if (secondary) { try { await secondary.delete(); } catch (_) {} }
+    return;
+  }
+  if (secondary) { try { await secondary.delete(); } catch (_) {} }
+
+  // Write the authorization role on the PRIMARY app (as the current superadmin).
+  try {
+    await db.collection('admin_roles').doc(email).set({
+      name, email, role, addedAt: Date.now(),
+      addedBy: (currentAdmin && currentAdmin.email) || ''
+    });
+  } catch (e) {
+    showToast('⚠️ สร้างบัญชีล็อกอินแล้ว แต่บันทึกบทบาทไม่สำเร็จ (ตรวจ Firestore Rules): ' + (e.code || e.message), 8000);
+    return;
+  }
   closeModal('mod-adduser');
-  renderCollabPage();
-  showToast(`✅ บันทึก ${name} (${ROLE_INFO[role]?.label}) แล้ว`);
+  await renderCollabPage();
+  showToast(`✅ เพิ่ม ${name} (${ROLE_INFO[role]?.label}) แล้ว — ล็อกอินด้วยอีเมล/รหัสผ่านนี้ได้ทุกเครื่อง`, 6000);
 }
 
-function deleteUser(i) {
-  const users = getAdminUsers();
-  if (!confirm(`ลบ ${users[i].name}?`)) return;
-  users.splice(i, 1);
-  saveAdminUsers(users);
-  renderCollabPage();
-  showToast('✅ ลบผู้ดูแลแล้ว');
+// Delete = revoke the role entry. The orphaned Firebase Auth account can no
+// longer reach the admin portal (login denies accounts not in the roster);
+// remove it permanently in the Firebase Console if desired.
+async function deleteUser(encEmail) {
+  if (!(currentAdmin && ROLE_INFO[currentAdmin.role]?.canManageUsers)) { showToast('❌ ไม่มีสิทธิ์'); return; }
+  if (!cloudEnabled()) { showToast('❌ ระบบ cloud ไม่พร้อมใช้งาน'); return; }
+  const email = decodeURIComponent(encEmail);
+  const u = _adminRoster.find(x => (x.email || '').toLowerCase() === email.toLowerCase());
+  if (!u) return;
+  if (!confirm(`เพิกถอนสิทธิ์แอดมินของ ${u.name || email}?\n\nบัญชีนี้จะเข้าหน้าแอดมินไม่ได้อีก (บัญชี Firebase Auth ยังอยู่ — ลบถาวรได้ใน Firebase Console)`)) return;
+  try {
+    await db.collection('admin_roles').doc(email.toLowerCase()).delete();
+  } catch (e) { showToast('❌ ลบไม่สำเร็จ (ตรวจ Firestore Rules): ' + (e.code || e.message), 6000); return; }
+  await renderCollabPage();
+  showToast('✅ เพิกถอนสิทธิ์แล้ว');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5288,8 +5383,7 @@ const ADMIN_MENU = [
   { key:'editq',   label:'จัดการข้อสอบ',   action:"admGo('p-question-editor')",    perm:'canEditQ' },
   { key:'instr',   label:'จัดการคำแนะนำ',  action:"admGo('p-instruction-editor')", perm:'canEditQ' },
   { key:'postype', label:'ชุดสอบ/ตำแหน่ง', action:"admGo('p-position-editor')", perm:'canManagePos' },
-  // 'จัดการทีม' (p-collab) removed: it managed local admin accounts, which no
-  // longer exist under cloud-only auth. Manage admins in the Firebase console.
+  { key:'collab',  label:'จัดการทีม',      action:"admGo('p-collab')",             perm:'canManageUsers' },
   { key:'export',  label:'Export Excel',   action:"admExport(this)",               perm:'canExport' },
 ];
 function menuAllowed(m){
