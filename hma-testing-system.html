@@ -570,6 +570,42 @@ textarea.q-inp:focus{border-color:var(--teal)}
 /* ── Candidate completion (thank-you) screen ── */
 .thankyou-wrap{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 22px}
 .thankyou-badge{width:96px;height:96px;border-radius:50%;background:var(--grad-hino);display:flex;align-items:center;justify-content:center;font-size:46px;color:#fff;box-shadow:0 10px 30px rgba(200,16,46,.32);margin-bottom:22px}
+
+/* ═══ Phone / tablet — candidate exam-taking on touch devices ═══
+   Layout is already fluid (no horizontal overflow); these rules fix the
+   touch-specific rough edges: iOS input zoom, misleading keyboard hints,
+   tap-target sizes, floating buttons overlapping content, and cramped bars. */
+
+/* Keyboard-only hints ("← → เลื่อน · A B C D ตอบ") make no sense on a
+   touchscreen and only add clutter — hide them where there's no fine pointer. */
+@media (pointer:coarse){ .kbd-hint{display:none} }
+
+@media (max-width:640px){
+  /* iOS Safari auto-zooms when focusing an input whose text is <16px — very
+     disruptive mid-exam. 16px keeps the viewport put while typing. */
+  input, select, textarea { font-size:16px !important; }
+
+  /* Also hide the keyboard hint by width — a phone is narrow AND touch, and
+     width detection is more reliable than pointer emulation. */
+  .kbd-hint{display:none}
+
+  /* Tighter chrome so the header doesn't eat the small screen, and wrap
+     gracefully instead of colliding brand + status. */
+  .topbar{padding:9px 14px;gap:8px;flex-wrap:wrap}
+  .main, .main-wide{padding:18px 14px 104px}   /* bottom room clears the FABs */
+
+  /* Comfortable tap targets on the test navigator. */
+  .qdot{width:34px;height:34px;font-size:12px}
+  #btn-prev, #btn-next, #btn-submit-last{min-height:42px}
+
+  /* Slimmer floating action buttons; keep them clear of the thumb zone. */
+  .dm-fab{width:42px;height:42px;bottom:64px;right:10px}
+  .lang-fab{bottom:112px}
+  .dm-fab-icon{font-size:16px}
+  .dm-fab-label{font-size:7px}
+  .fab{bottom:12px;right:12px}
+  .home-fab{bottom:12px;left:12px}
+}
 </style>
 </head>
 <body>
@@ -809,7 +845,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
     <!-- Navigation -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <button class="btn btn-secondary btn-sm" id="btn-prev" data-i18n="t_prev" onclick="moveQ(-1)">← ก่อนหน้า</button>
-      <span style="font-size:11px;color:var(--gray-400)">← → เลื่อน · A B C D ตอบ</span>
+      <span class="kbd-hint" style="font-size:11px;color:var(--gray-400)">← → เลื่อน · A B C D ตอบ</span>
       <button class="btn btn-secondary btn-sm" id="btn-next" data-i18n="t_next" onclick="moveQ(1)">ถัดไป →</button>
       <button class="btn btn-primary btn-sm" id="btn-submit-last" style="display:none" onclick="openConfirm()">✓ ส่งคำตอบ</button>
     </div>
