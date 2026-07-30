@@ -332,7 +332,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
     <div class="tbl-wrap" id="candTableWrap">
       <table id="candTable">
         <thead><tr>
-          <th>#</th><th>ผู้สมัคร</th><th>ตำแหน่ง</th><th>คะแนน Match</th><th>ทักษะ</th><th>ประสบการณ์</th><th>สถานะ</th><th>วันที่</th><th></th>
+          <th>#</th><th>ผู้สมัคร</th><th>ตำแหน่ง</th><th>คะแนน Match</th><th>สัมภาษณ์</th><th>ทักษะ</th><th>ประสบการณ์</th><th>สถานะ</th><th>วันที่</th><th></th>
         </tr></thead>
         <tbody id="candBody"></tbody>
       </table>
@@ -987,6 +987,22 @@ function scoreBar(n) {
 /* คะแนน + ปุ่ม ! อธิบายที่มาของคะแนน (ใช้ทั้งตาราง/บอร์ด/ผลสแกน) */
 function scoreCell(id, score) {
   return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(score)}<button class="info-btn" onclick="event.stopPropagation();showScoreInfo('${id}')" title="ที่มาของคะแนน — คลิกดูรายละเอียด">!</button></div>`;
+}
+/* คะแนนสัมภาษณ์รอบล่าสุด — ยังไม่ประเมินต้องเป็น "—" ไม่ใช่ 0
+   (0 อ่านว่า "สัมภาษณ์แล้วได้ศูนย์" ซึ่งคนละความหมาย) */
+function scorecardCell(c) {
+  const list = (c.scorecards || []);
+  const sc = latestScorecard(c);
+  if (!sc || sc.total == null) return '<span style="color:var(--gray-300)">—</span>';
+  const rounds = list.length > 1 ? ` <span class="hint">·${list.length}</span>` : '';
+  return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(sc.total)}${rounds}</div>`;
+}
+function scorecardChip(c) {
+  const sc = latestScorecard(c);
+  if (!sc || sc.total == null) return '';
+  const cls = scoreClass(sc.total);
+  const badge = cls === 'hi' ? 'pass' : cls === 'mid' ? 'pend' : 'fail';
+  return `<span class="badge ${badge}" title="คะแนนสัมภาษณ์รอบล่าสุด">🗣 ${sc.total}</span>`;
 }
 function findRecord(id) {
   return DB.candidates.find(x => x.id === id) || (typeof scanResults !== 'undefined' ? scanResults.find(x => x.id === id) : null) || null;
@@ -1743,6 +1759,7 @@ function renderCandTable() {
       <td class="name-cell">${esc(c.name)}<div class="hint">${esc(c.email) || ''}</div></td>
       <td>${esc(job ? job.title : '—')}</td>
       <td>${scoreCell(c.id, c.score)}</td>
+      <td>${scorecardCell(c)}</td>
       <td>${(c.matched || []).length}/${(c.matched || []).length + (c.missing || []).length}${reqMiss}</td>
       <td>${c.expYears || 0} ปี</td>
       <td><select class="inline" onchange="setStage('${c.id}', this.value)">
@@ -1766,7 +1783,7 @@ function candCardHTML(c) {
   return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
     <div class="kc-name">${esc(c.name)}${reqMiss}</div>
     <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
-    <div class="kc-foot">${scoreCell(c.id, c.score)}
+    <div class="kc-foot">${scoreCell(c.id, c.score)}${scorecardChip(c)}
       <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
     </div>
   </div>`;

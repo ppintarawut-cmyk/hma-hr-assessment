@@ -47,3 +47,38 @@ def test_new_candidate_starts_with_empty_scorecards(open_ats):
         {}, {score:0, breakdown:[], matched:[], missing:[], missingRequired:[]}, {}
     ).scorecards""")
     assert value == []
+
+
+from conftest import scorecard
+
+
+def test_table_shows_dash_when_never_evaluated(open_ats):
+    page = open_ats({"jobs": [], "candidates": [candidate()]})
+    cell = page.locator("#candBody tr td").nth(4)
+    assert cell.inner_text().strip() == "—"
+
+
+def test_table_shows_latest_round_score(open_ats):
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(scorecards=[scorecard(id="a", total=72),
+                              scorecard(id="b", total=85)])]})
+    cell = page.locator("#candBody tr td").nth(4)
+    text = cell.inner_text()
+    assert "85" in text            # รอบล่าสุด ไม่ใช่ 72 และไม่ใช่ค่าเฉลี่ย 78.5
+    assert "72" not in text
+    assert "2" in text             # ตัวกำกับจำนวนรอบ
+
+
+def test_kanban_card_shows_interview_chip(open_ats):
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(scorecards=[scorecard(total=85)])]})
+    page.evaluate("() => setCandView('board')")
+    card = page.locator("#candBoard .kanban-card").first
+    assert "85" in card.inner_text()
+
+
+def test_kanban_card_has_no_chip_when_never_evaluated(open_ats):
+    page = open_ats({"jobs": [], "candidates": [candidate()]})
+    page.evaluate("() => setCandView('board')")
+    card = page.locator("#candBoard .kanban-card").first
+    assert "🗣" not in card.inner_text()
