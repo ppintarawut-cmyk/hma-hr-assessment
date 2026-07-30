@@ -916,13 +916,40 @@ const DEFAULT_EMAIL_TEMPLATES = [
     body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจและสละเวลาสมัครตำแหน่ง {position} กับ {company}\nหลังจากพิจารณาอย่างรอบคอบแล้ว ในครั้งนี้เรายังไม่สามารถเสนอตำแหน่งดังกล่าวให้กับคุณได้\nเราประทับใจในคุณสมบัติของคุณ และจะเก็บข้อมูลไว้พิจารณาสำหรับตำแหน่งที่เหมาะสมในอนาคต (ตามระยะเวลาที่นโยบายกำหนด)\nขอให้คุณประสบความสำเร็จในการสมัครงานครั้งต่อไป\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
 ];
 function seedEmailTemplates() { return DEFAULT_EMAIL_TEMPLATES.map(t => Object.assign({ id: uid('t') }, t)); }
+/* เกณฑ์ประเมินสัมภาษณ์ — ชุดกลางชุดเดียวใช้ทุกตำแหน่ง แก้ได้ในโมดัลตั้งค่า */
+const SC_DEFAULT_CRITERIA = [
+  { id: 'c1', label: 'ความรู้ทางเทคนิค / ตรงสายงาน', weight: 3 },
+  { id: 'c2', label: 'การสื่อสาร',                    weight: 2 },
+  { id: 'c3', label: 'ทัศนคติ & ความรับผิดชอบ',        weight: 2 },
+  { id: 'c4', label: 'ความเหมาะสมกับทีม',              weight: 2 },
+  { id: 'c5', label: 'การแก้ปัญหา',                   weight: 1 },
+];
+function seedScorecardCriteria() { return SC_DEFAULT_CRITERIA.map(c => Object.assign({}, c)); }
+/* คิดคะแนนจากหัวข้อที่ให้คะแนนจริงเท่านั้น — หัวข้อที่เว้นไว้ถูกตัดออกทั้งเศษและส่วน
+   คืน null เมื่อไม่มีหัวข้อไหนถูกให้คะแนนเลย (ต่างจาก 0 ซึ่งแปลว่า "ประเมินแล้วได้ศูนย์") */
+function calcScorecardTotal(ratings, criteria) {
+  let earned = 0, possible = 0;
+  (criteria || []).forEach(c => {
+    const r = ratings ? ratings[c.id] : undefined;
+    if (r == null) return;
+    earned   += r * c.weight;
+    possible += 5 * c.weight;
+  });
+  return possible ? Math.round(earned / possible * 100) : null;
+}
+/* "รอบล่าสุด" = ใบที่เพิ่มล่าสุด (ท้าย array) — ฟอร์มไม่ให้แก้วันที่ ลำดับการเพิ่มจึงคือลำดับเวลา */
+function latestScorecard(c) {
+  const list = (c && c.scorecards) || [];
+  return list.length ? list[list.length - 1] : null;
+}
 function loadDB() {
-  let d = { jobs: [], candidates: [], emailTemplates: seedEmailTemplates() };
+  let d = { jobs: [], candidates: [], emailTemplates: seedEmailTemplates(), scorecardCriteria: seedScorecardCriteria() };
   try {
     const p = JSON.parse(localStorage.getItem(ATS_KEY));
     if (p && Array.isArray(p.jobs) && Array.isArray(p.candidates)) d = p;
   } catch (e) { /* corrupt → start fresh */ }
   if (!Array.isArray(d.emailTemplates) || !d.emailTemplates.length) d.emailTemplates = seedEmailTemplates();  // migration/safety
+  if (!Array.isArray(d.scorecardCriteria) || !d.scorecardCriteria.length) d.scorecardCriteria = seedScorecardCriteria();  // migration/safety
   return d;
 }
 let DB = loadDB();
@@ -1375,6 +1402,7 @@ function makeCandidate(parsed, scored, extras) {
     score: scored.score, breakdown: scored.breakdown,
     matched: scored.matched, missing: scored.missing, missingRequired: scored.missingRequired,
     stage: 'Applied', addedAt: new Date().toISOString(),
+    scorecards: [],
   }, extras || {});
 }
 function scanToCandidate(r) {
