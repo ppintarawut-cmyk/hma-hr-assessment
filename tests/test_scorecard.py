@@ -234,3 +234,45 @@ def test_saved_scorecard_survives_reload(open_ats):
     page.reload()
     page.wait_for_function("typeof DB !== 'undefined'")
     assert page.evaluate("() => DB.candidates[0].scorecards.length") == 1
+
+
+def test_criteria_manager_lists_current_criteria(open_ats):
+    page = open_ats()
+    page.evaluate("() => openCriteriaManager()")
+    assert page.locator("#critModalBg").get_attribute("class").find("open") >= 0
+    assert page.locator("#critList .sc-crit").count() == 5
+
+
+def test_criteria_manager_warns_change_is_not_retroactive(open_ats):
+    page = open_ats()
+    page.evaluate("() => openCriteriaManager()")
+    assert "หลังจากนี้" in page.locator("#critModalBg").inner_text()
+
+
+def test_add_and_delete_criterion(open_ats):
+    page = open_ats()
+    page.on("dialog", lambda d: d.accept())
+    page.evaluate("() => openCriteriaManager()")
+    page.evaluate("() => addCriterion()")
+    assert page.evaluate("() => DB.scorecardCriteria.length") == 6
+    page.evaluate("() => deleteCriterion(DB.scorecardCriteria[5].id)")
+    assert page.evaluate("() => DB.scorecardCriteria.length") == 5
+
+
+def test_changing_weight_does_not_move_saved_totals(open_ats):
+    """หัวใจของดีไซน์ — คะแนนที่บันทึกแล้วต้องนิ่ง"""
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(scorecards=[scorecard(id="a", total=78)])]})
+    page.evaluate("() => openCriteriaManager()")
+    page.evaluate("() => updateCriterion('c1', 'weight', 5)")
+    assert page.evaluate("() => DB.candidates[0].scorecards[0].total") == 78
+    assert page.evaluate("() => DB.candidates[0].scorecards[0].weightsUsed[0].weight") == 3
+
+
+def test_reset_restores_defaults(open_ats):
+    page = open_ats()
+    page.on("dialog", lambda d: d.accept())
+    page.evaluate("() => openCriteriaManager()")
+    page.evaluate("() => updateCriterion('c1', 'label', 'เปลี่ยนแล้ว')")
+    page.evaluate("() => resetCriteria()")
+    assert page.evaluate("() => DB.scorecardCriteria[0].label") == "ความรู้ทางเทคนิค / ตรงสายงาน"

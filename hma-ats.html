@@ -589,6 +589,30 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
   </div>
 </div>
 
+<!-- ============ SCORECARD CRITERIA MODAL ============ -->
+<div class="modal-bg" id="critModalBg">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>⚙ ตั้งค่าหัวข้อประเมินสัมภาษณ์</h2>
+      <button class="x-btn" data-close="critModalBg">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:10px">
+        หัวข้อชุดนี้ใช้กับทุกตำแหน่ง · น้ำหนัก 1–5 ยิ่งมากยิ่งมีผลต่อคะแนนรวม ·
+        <b>การแก้ไขมีผลกับใบที่ประเมินหลังจากนี้เท่านั้น</b> คะแนนที่บันทึกไปแล้วจะไม่เปลี่ยน
+      </p>
+      <div id="critList"></div>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="critAddBtn">＋ เพิ่มหัวข้อ</button>
+        <button class="btn btn-ghost btn-sm" id="critResetBtn">↺ คืนค่าเริ่มต้น</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close="critModalBg">ปิด</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ SCORE BREAKDOWN MODAL ============ -->
 <div class="modal-bg" id="scoreModalBg">
   <div class="modal" style="max-width:560px">
@@ -1647,6 +1671,58 @@ function deleteScorecard(id) {
   renderCandidates();
   toast('ลบใบประเมินแล้ว');
 }
+
+/* ── Scorecard criteria manager ──
+   แก้ที่นี่มีผลกับใบที่ประเมินหลังจากนี้เท่านั้น — ใบเก่าถือ weightsUsed + total
+   ของตัวเองไว้แล้ว ไม่มีฟังก์ชันในบล็อกนี้เขียนทับสองค่านั้น */
+function openCriteriaManager() {
+  renderCriteriaList();
+  document.getElementById('critModalBg').classList.add('open');
+}
+function renderCriteriaList() {
+  document.getElementById('critList').innerHTML = DB.scorecardCriteria.map(c => `
+    <div class="sc-crit">
+      <input value="${esc(c.label)}" style="flex:1; min-width:180px"
+             onchange="updateCriterion('${c.id}', 'label', this.value)">
+      <div style="display:flex; align-items:center; gap:6px">
+        <span class="hint">น้ำหนัก</span>
+        <select onchange="updateCriterion('${c.id}', 'weight', Number(this.value))"
+                style="padding:5px 8px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900); font-size:12px">
+          ${[1, 2, 3, 4, 5].map(n => `<option ${c.weight === n ? 'selected' : ''}>${n}</option>`).join('')}
+        </select>
+        <button class="btn btn-danger btn-sm" onclick="deleteCriterion('${c.id}')">ลบ</button>
+      </div>
+    </div>`).join('') || '<div class="hint">ยังไม่มีหัวข้อ — กด "เพิ่มหัวข้อ"</div>';
+}
+function updateCriterion(id, field, value) {
+  const c = DB.scorecardCriteria.find(x => x.id === id);
+  if (!c) return;
+  c[field] = value;
+  saveDB();
+  renderCriteriaList();
+  refreshScorecardSection();
+}
+function addCriterion() {
+  DB.scorecardCriteria.push({ id: uid('cr'), label: 'หัวข้อใหม่', weight: 1 });
+  saveDB();
+  renderCriteriaList();
+  refreshScorecardSection();
+}
+function deleteCriterion(id) {
+  if (!confirm('ลบหัวข้อนี้? ใบที่ประเมินไปแล้วจะยังแสดงหัวข้อนี้ได้ตามเดิม')) return;
+  DB.scorecardCriteria = DB.scorecardCriteria.filter(x => x.id !== id);
+  saveDB();
+  renderCriteriaList();
+  refreshScorecardSection();
+}
+function resetCriteria() {
+  if (!confirm('คืนค่าหัวข้อทั้งหมดเป็นค่าเริ่มต้น?')) return;
+  DB.scorecardCriteria = seedScorecardCriteria();
+  saveDB();
+  renderCriteriaList();
+  refreshScorecardSection();
+  toast('คืนค่าหัวข้อเริ่มต้นแล้ว');
+}
 function detailHTML(r) {
   const job = jobById(r.jobId);
   const warn = (r.warnings && r.warnings.length)
@@ -2417,6 +2493,8 @@ document.getElementById('tplAddBtn').addEventListener('click', () => tplShowEdit
 document.getElementById('tplSaveBtn').addEventListener('click', tplSave);
 document.getElementById('tplCancelBtn').addEventListener('click', () => document.getElementById('tplEditor').style.display = 'none');
 document.getElementById('tplResetBtn').addEventListener('click', resetTemplates);
+document.getElementById('critAddBtn').addEventListener('click', addCriterion);
+document.getElementById('critResetBtn').addEventListener('click', resetCriteria);
 document.getElementById('em_copy').addEventListener('click', async () => {
   const text = 'หัวข้อ: ' + document.getElementById('em_subject').value + '\n\n' + document.getElementById('em_body').value;
   try { await navigator.clipboard.writeText(text); toast('คัดลอกข้อความแล้ว'); }
