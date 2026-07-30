@@ -120,8 +120,11 @@ def open_ats(browser, server):
         ctx = browser.new_context()
         contexts.append(ctx)
         if db is not None:
+            # seed ค่าตั้งต้นเท่านั้น — add_init_script รันทุกครั้งที่ navigate รวมถึง
+            # page.reload() ถ้าเขียนทับทุกครั้ง เทสต์ persistence จะผ่านไม่ได้เลย
             payload = json.dumps(json.dumps(db))
-            ctx.add_init_script(f"localStorage.setItem('hma_ats_v1', {payload})")
+            ctx.add_init_script(
+                f"if (!localStorage.getItem('hma_ats_v1')) localStorage.setItem('hma_ats_v1', {payload})")
         page = ctx.new_page()
         page.goto(f"{server}/hma-ats.html")
         page.wait_for_function("typeof DB !== 'undefined'")
@@ -571,7 +574,7 @@ def test_edit_updates_in_place_without_adding_a_round(open_ats):
     cards = page.evaluate("() => DB.candidates[0].scorecards")
     assert len(cards) == 1
     assert cards[0]["id"] == "a"
-    assert cards[0]["total"] == 62           # (1*3+5*2+3*2+4*2+3*1)/50 = 31/50
+    assert cards[0]["total"] == 60           # (1*3+5*2+3*2+4*2+3*1)/50 = 30/50
 
 
 def test_delete_removes_the_round(open_ats):
