@@ -993,7 +993,7 @@ function scoreCell(id, score) {
 function scorecardCell(c) {
   const list = (c.scorecards || []);
   const sc = latestScorecard(c);
-  if (!sc || sc.total == null) return '<span style="color:var(--gray-300)">—</span>';
+  if (!sc || sc.total == null) return '<span style="color:var(--gray-400)">—</span>';
   const rounds = list.length > 1 ? ` <span class="hint">·${list.length}</span>` : '';
   return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(sc.total)}${rounds}</div>`;
 }
