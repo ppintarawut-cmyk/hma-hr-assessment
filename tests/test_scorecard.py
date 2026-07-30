@@ -203,6 +203,29 @@ def test_delete_removes_the_round(open_ats):
     assert ids == ["b"]
 
 
+def test_edit_form_scores_against_frozen_snapshot_not_live_criteria(open_ats):
+    """scFormCriteria() ต้องใช้ weightsUsed ที่ freeze ไว้ตอนบันทึก ไม่ใช่ DB.scorecardCriteria
+    ปัจจุบัน — ทดสอบนี้จงใจทำให้สองชุดต่างกันสุดขั้ว (5 หัวข้อ vs 1 หัวข้อ) เพื่อไม่ให้สับสนกัน
+    เลขคะแนนที่ discriminate: ใช้ weightsUsed (freeze) -> 1*3+5*2+3*2+4*2+3*1 = 30/50 = 60
+    ถ้าโค้ดพังแล้วหันไปใช้ DB.scorecardCriteria (c1 หัวข้อเดียว น้ำหนัก 1) แทน ->
+    readScForm() จะได้ {c1:1} เทียบกับน้ำหนัก 1 -> 1/5 = 20 ซึ่งไม่ตรงกับ 60
+    """
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(scorecards=[scorecard(id="a")])],
+        "scorecardCriteria": [{"id": "c1", "label": "เหลือหัวข้อเดียว", "weight": 1}]})
+    page.evaluate("() => showCandDetail('cand1')")
+    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
+    page.evaluate("() => editScorecard('a')")
+    # ฟอร์มต้องกาง 5 แถว (จาก weightsUsed ที่ freeze) ไม่ใช่ 1 แถว (จากเกณฑ์ปัจจุบัน)
+    assert page.locator("#scForm .sc-crit").count() == 5
+    page.click(".sc-pill[data-crit='c1'][data-val='1']")
+    page.evaluate("() => saveScorecard()")
+    cards = page.evaluate("() => DB.candidates[0].scorecards")
+    assert len(cards) == 1
+    assert cards[0]["id"] == "a"
+    assert cards[0]["total"] == 60           # (1*3+5*2+3*2+4*2+3*1)/50 = 30/50
+
+
 def test_saved_scorecard_survives_reload(open_ats):
     page = open_ats({"jobs": [], "candidates": [candidate()]})
     _open_form(page)
