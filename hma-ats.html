@@ -2155,12 +2155,17 @@ async function exportCSV() {
   if (FB.db && FB.user && !FB.records) { try { await fetchExamRecords(); } catch (e) { /* ปล่อยผ่าน */ } }
   const codes = examCodesInRecords();
 
-  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
+  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Interview Score', 'Interview Rounds', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
   codes.forEach(c => head.push((TEST_LABELS[c] || c) + ' Score', (TEST_LABELS[c] || c) + ' Result'));
   const rows = [head];
   rows0.forEach(c => {
     const job = jobById(c.jobId);
+    const sc = latestScorecard(c);
+    // ว่างไม่ใช่ 0 เมื่อยังไม่ได้ประเมิน — 0 อ่านว่า "สัมภาษณ์แล้วได้ศูนย์"
+    // แทรกก่อนคอลัมน์ผลสอบที่ต่อท้ายแบบ dynamic ด้านล่าง ไม่งั้นหัวตารางกับข้อมูลเหลื่อมกัน
     const row = [c.name, c.email, c.phone, job ? job.title : '', c.score,
+      (sc && sc.total != null) ? sc.total : '',
+      (c.scorecards || []).length || '',
       (c.matched || []).join('; '), (c.missing || []).join('; '),
       c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)];
     if (codes.length) {

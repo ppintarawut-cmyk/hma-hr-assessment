@@ -276,3 +276,27 @@ def test_reset_restores_defaults(open_ats):
     page.evaluate("() => updateCriterion('c1', 'label', 'เปลี่ยนแล้ว')")
     page.evaluate("() => resetCriteria()")
     assert page.evaluate("() => DB.scorecardCriteria[0].label") == "ความรู้ทางเทคนิค / ตรงสายงาน"
+
+
+def test_csv_includes_interview_columns(open_ats):
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(id="c1", name="มีคะแนน",
+                  scorecards=[scorecard(id="a", total=72), scorecard(id="b", total=85)]),
+        candidate(id="c2", name="ยังไม่ประเมิน", email="none@example.com")]})
+    rows = page.evaluate("""() => {
+        const out = [];
+        const orig = window.downloadCSV;
+        window.downloadCSV = r => out.push(r);
+        return Promise.resolve(exportCSV()).then(() => { window.downloadCSV = orig; return out[0]; });
+    }""")
+    head = rows[0]
+    i = head.index("Interview Score")
+    # ต้องอยู่ติดกับ Match Score และมาก่อนคอลัมน์ผลสอบที่ต่อท้ายแบบ dynamic
+    assert i == head.index("Match Score") + 1
+    assert head[i + 1] == "Interview Rounds"
+    # อ้างแถวด้วยชื่อ (คอลัมน์ 0) ไม่ใช่ลำดับ — ลำดับขึ้นกับ sort ที่เปิดอยู่
+    body = {r[0]: r for r in rows[1:]}
+    assert body["มีคะแนน"][i] == 85          # รอบล่าสุด ไม่ใช่ 72 ไม่ใช่ค่าเฉลี่ย
+    assert body["มีคะแนน"][i + 1] == 2
+    assert body["ยังไม่ประเมิน"][i] == ""     # ยังไม่ประเมิน → ว่าง ไม่ใช่ 0
+    assert body["ยังไม่ประเมิน"][i + 1] == ""
