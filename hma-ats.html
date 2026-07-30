@@ -197,6 +197,13 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .break-row { display: grid; grid-template-columns: 170px 1fr 90px; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--gray-200); font-size: 13px; }
 .break-row:first-of-type { border-top: none; }
 .break-pts { text-align: right; font-weight: 700; }
+.sc-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--gray-100); cursor: pointer; }
+.sc-detail { padding: 4px 0 10px; }
+.sc-crit { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
+.sc-pills { display: flex; gap: 4px; }
+.sc-pill { min-width: 32px; padding: 5px 8px; border: 1px solid var(--gray-300); background: transparent; color: var(--gray-500); border-radius: var(--radius); cursor: pointer; font-weight: 700; font-size: 12px; }
+.sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+.sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
 .kv { font-size: 13px; }
 .kv td { border: none; padding: 4px 8px 4px 0; }
@@ -1482,6 +1489,164 @@ function jobRefHTML(job) {
   return html ? `<div class="section-title">รายละเอียดตำแหน่ง (${esc(job.title)})</div>${html}` : '';
 }
 
+/* ── Scorecard section (ในโมดัลรายละเอียดผู้สมัคร) ── */
+const SC_OPEN_KEY = 'hma_ats_sc_open';
+function scOpen() { return localStorage.getItem(SC_OPEN_KEY) === '1'; }
+function toggleScSection() {
+  localStorage.setItem(SC_OPEN_KEY, scOpen() ? '0' : '1');
+  refreshScorecardSection();
+}
+function refreshScorecardSection() {
+  const el = document.getElementById('scSection');
+  if (el && currentDetail) el.innerHTML = scorecardSectionHTML(currentDetail);
+}
+function toggleScDetail(id) {
+  const el = document.getElementById('scd-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+/* กางรายหัวข้อจาก weightsUsed ที่ freeze ไว้ — ไม่ใช่จากเกณฑ์ปัจจุบัน
+   ใบประเมินจึงอ่านได้เสมอแม้หัวข้อจะถูกแก้หรือลบไปแล้ว */
+function scorecardBreakdownHTML(s) {
+  return (s.weightsUsed || []).map(w => {
+    const r = s.ratings ? s.ratings[w.id] : undefined;
+    return `<div class="break-row">
+      <b>${esc(w.label)}</b>
+      <span class="hint">น้ำหนัก ×${w.weight}</span>
+      <span class="break-pts">${r == null ? '—' : r + ' / 5'}</span>
+    </div>`;
+  }).join('') || '<div class="hint">ใบนี้ไม่มีข้อมูลหัวข้อ</div>';
+}
+function scorecardSectionHTML(c) {
+  const list = (c.scorecards || []);
+  const sc = latestScorecard(c);
+  const open = scOpen();
+  const summary = (sc && sc.total != null) ? `${sc.total} · ${list.length} รอบ` : 'ยังไม่ได้ประเมิน';
+  const head = `<div class="section-title" style="cursor:pointer" onclick="toggleScSection()">
+      🗣 ผลสัมภาษณ์ — ${esc(summary)} ${open ? '▾' : '▸'}
+    </div>`;
+  if (!open) return head;
+  const rows = list.slice().reverse().map(s => `
+    <div class="sc-row" onclick="toggleScDetail('${s.id}')">
+      <div>
+        <b>${esc(s.round)}</b> <span class="hint">· ${fmtDate(s.at)}</span>
+        ${s.note ? `<div class="hint" style="margin-top:2px">${esc(s.note)}</div>` : ''}
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        ${s.total == null ? '—' : scoreBar(s.total)}
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editScorecard('${s.id}')">แก้ไข</button>
+        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteScorecard('${s.id}')">ลบ</button>
+      </div>
+    </div>
+    <div id="scd-${s.id}" class="sc-detail" style="display:none">${scorecardBreakdownHTML(s)}</div>`).join('')
+    || '<div class="hint">ยังไม่มีใบประเมิน</div>';
+  return `${head}
+    <div class="sc-list">${rows}</div>
+    <div id="scForm"></div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+      <button class="btn btn-secondary btn-sm" onclick="openScorecardForm()">＋ เพิ่มรอบสัมภาษณ์</button>
+      <button class="btn btn-ghost btn-sm" onclick="openCriteriaManager()">⚙ ตั้งค่าหัวข้อประเมิน</button>
+    </div>`;
+}
+let scEditId = null;
+function openScorecardForm(id) {
+  scEditId = id || null;
+  const el = document.getElementById('scForm');
+  if (el) el.innerHTML = scorecardFormHTML(scEditId);
+  updateScTotal();
+}
+function editScorecard(id) { openScorecardForm(id); }
+/* ที่เดียวที่ตัดสินว่าฟอร์มนี้ใช้เกณฑ์ชุดไหน — ใบเก่าใช้ weightsUsed ที่ freeze ไว้
+   ใบใหม่ใช้เกณฑ์ปัจจุบัน คะแนนที่บันทึกแล้วจึงไม่ขยับตามการแก้เกณฑ์ */
+function scFormCriteria() {
+  const ex = scEditId ? ((currentDetail.scorecards || []).find(s => s.id === scEditId)) : null;
+  return (ex && ex.weightsUsed && ex.weightsUsed.length) ? ex.weightsUsed : DB.scorecardCriteria;
+}
+function scorecardFormHTML(id) {
+  const ex = id ? ((currentDetail.scorecards || []).find(s => s.id === id)) : null;
+  const crit = scFormCriteria();
+  const rows = crit.map(w => {
+    const cur = (ex && ex.ratings) ? ex.ratings[w.id] : undefined;
+    const pills = [1, 2, 3, 4, 5].map(n =>
+      `<button type="button" class="sc-pill ${cur === n ? 'on' : ''}" data-crit="${w.id}" data-val="${n}" onclick="pickRating(this)">${n}</button>`).join('');
+    return `<div class="sc-crit">
+      <div><b>${esc(w.label)}</b> <span class="hint">×${w.weight}</span></div>
+      <div class="sc-pills">${pills}<button type="button" class="sc-pill skip ${cur == null ? 'on' : ''}" data-crit="${w.id}" data-val="" onclick="pickRating(this)" title="ไม่ประเมินหัวข้อนี้">—</button></div>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:12px; border-top:1px solid var(--gray-200); padding-top:12px">
+    <div class="field"><label>ชื่อรอบ</label>
+      <input id="scRound" list="scRoundList" value="${esc(ex ? ex.round : '')}" placeholder="เช่น สัมภาษณ์ HR">
+      <datalist id="scRoundList">
+        <option value="สัมภาษณ์ HR"></option>
+        <option value="สัมภาษณ์หัวหน้างาน"></option>
+        <option value="สัมภาษณ์ผู้บริหาร"></option>
+      </datalist>
+    </div>
+    ${rows}
+    <div class="field"><label>บันทึกย่อ</label><textarea id="scNote" rows="2">${esc(ex ? ex.note : '')}</textarea></div>
+    <div style="display:flex; align-items:center; gap:10px; margin-top:8px">
+      <b>คะแนนรวม: <span id="scTotal">—</span></b>
+      <span style="flex:1"></span>
+      <button class="btn btn-primary btn-sm" onclick="saveScorecard()">บันทึก</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeScorecardForm()">ยกเลิก</button>
+    </div>
+  </div>`;
+}
+function pickRating(btn) {
+  btn.parentElement.querySelectorAll('.sc-pill').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  updateScTotal();
+}
+function readScForm() {
+  const ratings = {};
+  document.querySelectorAll('#scForm .sc-pill.on').forEach(b => {
+    if (b.dataset.val !== '') ratings[b.dataset.crit] = Number(b.dataset.val);
+  });
+  return ratings;
+}
+function updateScTotal() {
+  const el = document.getElementById('scTotal');
+  if (!el) return;
+  const t = calcScorecardTotal(readScForm(), scFormCriteria());
+  el.textContent = t == null ? '—' : t;
+}
+function closeScorecardForm() {
+  scEditId = null;
+  const el = document.getElementById('scForm');
+  if (el) el.innerHTML = '';
+}
+function saveScorecard() {
+  const crit = scFormCriteria();
+  const ratings = readScForm();
+  const total = calcScorecardTotal(ratings, crit);
+  if (total == null) { toast('ให้คะแนนอย่างน้อย 1 หัวข้อก่อนบันทึก'); return; }
+  const round = (document.getElementById('scRound').value || '').trim() || 'สัมภาษณ์';
+  const note  = (document.getElementById('scNote').value || '').trim();
+  const c = currentDetail;
+  if (!Array.isArray(c.scorecards)) c.scorecards = [];
+  if (scEditId) {
+    const s = c.scorecards.find(x => x.id === scEditId);
+    if (s) Object.assign(s, { round, note, ratings, total });
+  } else {
+    c.scorecards.push({
+      id: uid('sc'), round, at: new Date().toISOString(), ratings, note, total,
+      weightsUsed: crit.map(w => ({ id: w.id, label: w.label, weight: w.weight })),
+    });
+  }
+  scEditId = null;
+  saveDB();
+  refreshScorecardSection();
+  renderCandidates();
+  toast('บันทึกผลสัมภาษณ์แล้ว');
+}
+function deleteScorecard(id) {
+  if (!confirm('ลบใบประเมินนี้?')) return;
+  currentDetail.scorecards = (currentDetail.scorecards || []).filter(s => s.id !== id);
+  saveDB();
+  refreshScorecardSection();
+  renderCandidates();
+  toast('ลบใบประเมินแล้ว');
+}
 function detailHTML(r) {
   const job = jobById(r.jobId);
   const warn = (r.warnings && r.warnings.length)
@@ -1516,6 +1681,7 @@ function detailHTML(r) {
     ${jobRefHTML(job)}
     ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">✉ ร่างอีเมลถึงผู้สมัคร</button></div>` : ''}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
+    ${r.stage ? `<div id="scSection">${scorecardSectionHTML(r)}</div>` : ''}
     ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
     <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
     <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;

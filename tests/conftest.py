@@ -59,7 +59,13 @@ def open_ats(browser, server):
         contexts.append(ctx)
         if db is not None:
             payload = json.dumps(json.dumps(db))
-            ctx.add_init_script(f"localStorage.setItem('hma_ats_v1', {payload})")
+            # Seed once, on first navigation only — never overwrite state the page has
+            # since written. add_init_script re-fires on every navigation in this context
+            # (including page.reload()), so an unconditional setItem here would silently
+            # wipe anything saved before a reload, turning reload-persistence tests into
+            # no-ops regardless of whether the app actually persisted correctly.
+            ctx.add_init_script(
+                f"if (!localStorage.getItem('hma_ats_v1')) localStorage.setItem('hma_ats_v1', {payload})")
         page = ctx.new_page()
         # patchright's evaluate() defaults to an isolated JS world (its anti-detection patch —
         # see patchright METADATA: "avoids using Runtime.enable ... executing Javascript in
