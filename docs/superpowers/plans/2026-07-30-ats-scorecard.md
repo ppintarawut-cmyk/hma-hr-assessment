@@ -439,28 +439,27 @@ git commit -m "Show latest interview score in candidate table and Kanban card"
 
 ---
 
-### Task 3: Scorecard section in the candidate detail modal (read-only)
+### Task 3: Scorecard section and rating form in the candidate detail modal
 
 **Files:**
 - Modify: `hma-ats.html` (CSS near line 199, `detailHTML()` ~line 1441)
 - Test: `tests/test_scorecard.py`
 
 **Interfaces:**
-- Consumes: `latestScorecard(c)`, `scoreBar()`, `currentDetail` (module-level, set by `showCandDetail`)
+- Consumes: `calcScorecardTotal()`, `latestScorecard()`, `scoreBar()`, `currentDetail` (module-level, set by `showCandDetail`), `uid()`, `saveDB()`, `renderCandidates()`, `toast()`, `esc()`, `fmtDate()`
 - Produces:
   - `scorecardSectionHTML(c)` → HTML for the whole section
   - `scorecardBreakdownHTML(s)` → per-criterion rows for one scorecard, rendered from `s.weightsUsed`
   - `toggleScSection()`, `toggleScDetail(id)`, `refreshScorecardSection()`
-  - DOM contract: the section is wrapped in `<div id="scSection">`; per-round detail panes are `#scd-<scorecardId>`
+  - `openScorecardForm(id?)` — renders the form into `#scForm`; omit `id` to add, pass one to edit
+  - `scorecardFormHTML(id)`, `editScorecard(id)`, `pickRating(btn)`, `readScForm()`, `scFormCriteria()`, `updateScTotal()`, `saveScorecard()`, `closeScorecardForm()`, `deleteScorecard(id)`
+  - DOM contract: section wrapped in `<div id="scSection">`; per-round detail panes `#scd-<scorecardId>`; form container `#scForm`; `#scRound`, `#scNote`, `#scTotal`; rating buttons `.sc-pill[data-crit][data-val]`
 
-`openScorecardForm()`, `deleteScorecard()`, `editScorecard()` and `openCriteriaManager()` are referenced by buttons rendered here but are implemented in Tasks 4 and 5. Add these no-op stubs in this task so the buttons never throw, and replace them in the later tasks:
+`openCriteriaManager()` is referenced by a button rendered here but is implemented in Task 4. Because a missing global would throw on click, Task 4 must land before this feature is used; within this task the button is expected to be inert. Do **not** add a placeholder stub for it — Task 4 defines it.
 
-```js
-function openScorecardForm(id) { /* Task 4 */ }
-function editScorecard(id) { /* Task 4 */ }
-function deleteScorecard(id) { /* Task 4 */ }
-function openCriteriaManager() { /* Task 5 */ }
-```
+**Single source for "which criteria does this form use":** `scFormCriteria()` is the only place that decides between an existing scorecard's frozen `weightsUsed` and the current `DB.scorecardCriteria`. `scorecardFormHTML()` must call it rather than repeating the expression. This is safe because `openScorecardForm()` assigns `scEditId` before calling `scorecardFormHTML()`, so both see the same scorecard.
+
+Editing an existing scorecard scores against **that scorecard's `weightsUsed`**, not the current criteria — this is what keeps historical evaluations stable.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -520,13 +519,87 @@ def test_scan_result_detail_has_no_scorecard_section(open_ats):
         showScanDetail('s1');
     }""")
     assert page.locator("#scSection").count() == 0
+
+
+def _open_form(page):
+    page.evaluate("() => showCandDetail('cand1')")
+    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
+    page.evaluate("() => openScorecardForm()")
+
+
+def test_form_live_total_updates_as_you_rate(open_ats):
+    page = open_ats({"jobs": [], "candidates": [candidate()]})
+    _open_form(page)
+    page.click(".sc-pill[data-crit='c1'][data-val='4']")
+    page.click(".sc-pill[data-crit='c2'][data-val='5']")
+    page.click(".sc-pill[data-crit='c3'][data-val='3']")
+    page.click(".sc-pill[data-crit='c4'][data-val='4']")
+    page.click(".sc-pill[data-crit='c5'][data-val='3']")
+    assert page.locator("#scTotal").inner_text().strip() == "78"
+
+
+def test_save_persists_and_updates_table(open_ats):
+    page = open_ats({"jobs": [], "candidates": [candidate()]})
+    _open_form(page)
+    page.fill("#scRound", "สัมภาษณ์หัวหน้างาน")
+    page.click(".sc-pill[data-crit='c1'][data-val='4']")
+    page.fill("#scNote", "ตอบตรงประเด็น")
+    page.evaluate("() => saveScorecard()")
+    stored = page.evaluate("() => DB.candidates[0].scorecards")
+    assert len(stored) == 1
+    assert stored[0]["round"] == "สัมภาษณ์หัวหน้างาน"
+    assert stored[0]["total"] == 80          # 12/15
+    assert len(stored[0]["weightsUsed"]) == 5
+    assert "80" in page.locator("#candBody tr td").nth(4).inner_text()
+
+
+def test_save_refuses_when_nothing_rated(open_ats):
+    page = open_ats({"jobs": [], "candidates": [candidate()]})
+    _open_form(page)
+    page.evaluate("() => saveScorecard()")
+    assert page.evaluate("() => DB.candidates[0].scorecards.length") == 0
+
+
+def test_edit_updates_in_place_without_adding_a_round(open_ats):
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(scorecards=[scorecard(id="a", total=78)])]})
+    page.evaluate("() => showCandDetail('cand1')")
+    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
+    page.evaluate("() => editScorecard('a')")
+    page.click(".sc-pill[data-crit='c1'][data-val='1']")
+    page.evaluate("() => saveScorecard()")
+    cards = page.evaluate("() => DB.candidates[0].scorecards")
+    assert len(cards) == 1
+    assert cards[0]["id"] == "a"
+    assert cards[0]["total"] == 62           # (1*3+5*2+3*2+4*2+3*1)/50 = 31/50
+
+
+def test_delete_removes_the_round(open_ats):
+    page = open_ats({"jobs": [], "candidates": [
+        candidate(scorecards=[scorecard(id="a"), scorecard(id="b")])]})
+    page.on("dialog", lambda d: d.accept())
+    page.evaluate("() => showCandDetail('cand1')")
+    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
+    page.evaluate("() => deleteScorecard('a')")
+    ids = page.evaluate("() => DB.candidates[0].scorecards.map(s => s.id)")
+    assert ids == ["b"]
+
+
+def test_saved_scorecard_survives_reload(open_ats):
+    page = open_ats({"jobs": [], "candidates": [candidate()]})
+    _open_form(page)
+    page.click(".sc-pill[data-crit='c1'][data-val='4']")
+    page.evaluate("() => saveScorecard()")
+    page.reload()
+    page.wait_for_function("typeof DB !== 'undefined'")
+    assert page.evaluate("() => DB.candidates[0].scorecards.length") == 1
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `python -m pytest tests/test_scorecard.py -v -k "detail or round or scan"`
+Run: `python -m pytest tests/test_scorecard.py -v -k "detail or round or scan or form or save or edit or delete or survives"`
 
-Expected: 5 FAIL, each with a Playwright timeout or `count() == 0` mismatch because `#scSection` does not exist yet.
+Expected: 11 FAIL — Playwright timeouts or `count() == 0` mismatches because `#scSection` does not exist yet, plus `openScorecardForm is not defined`.
 
 - [ ] **Step 3: Add the CSS**
 
@@ -605,11 +678,6 @@ function scorecardSectionHTML(c) {
       <button class="btn btn-ghost btn-sm" onclick="openCriteriaManager()">⚙ ตั้งค่าหัวข้อประเมิน</button>
     </div>`;
 }
-/* stub — แทนที่จริงใน Task 4 และ Task 5 */
-function openScorecardForm(id) { /* Task 4 */ }
-function editScorecard(id) { /* Task 4 */ }
-function deleteScorecard(id) { /* Task 4 */ }
-function openCriteriaManager() { /* Task 5 */ }
 ```
 
 - [ ] **Step 5: Wire the section into `detailHTML()`**
@@ -629,126 +697,9 @@ to:
 
 The `r.stage` guard is the same one the email-draft button already uses: saved candidates have a `stage`, unsaved scan results do not.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 6: Add the rating form**
 
-Run: `python -m pytest tests/test_scorecard.py -v`
-
-Expected: 15 passed.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add hma-ats.html tests/test_scorecard.py
-git commit -m "Add read-only scorecard section to candidate detail modal"
-```
-
----
-
-### Task 4: Rating form — add, edit, delete a scorecard
-
-**Files:**
-- Modify: `hma-ats.html` (replace the Task 3 stubs `openScorecardForm`, `editScorecard`, `deleteScorecard`)
-- Test: `tests/test_scorecard.py`
-
-**Interfaces:**
-- Consumes: `calcScorecardTotal()`, `latestScorecard()`, `scorecardSectionHTML()`, `refreshScorecardSection()`, `currentDetail`, `uid()`, `saveDB()`, `renderCandidates()`, `toast()`
-- Produces:
-  - `openScorecardForm(id?)` — renders the form into `#scForm`; omit `id` to add, pass one to edit
-  - `scorecardFormHTML(id)` → form HTML
-  - `pickRating(btn)`, `readScForm()` → `ratings` object, `scFormCriteria()` → criteria array in use, `updateScTotal()`
-  - `saveScorecard()`, `closeScorecardForm()`, `deleteScorecard(id)`
-  - DOM contract: `#scRound` (round name), `#scNote` (note), `#scTotal` (live total), rating buttons `.sc-pill[data-crit][data-val]`
-
-Editing an existing scorecard scores against **that scorecard's `weightsUsed`**, not the current criteria — this is what keeps historical evaluations stable.
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `tests/test_scorecard.py`:
-
-```python
-def _open_form(page):
-    page.evaluate("() => showCandDetail('cand1')")
-    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
-    page.evaluate("() => openScorecardForm()")
-
-
-def test_form_live_total_updates_as_you_rate(open_ats):
-    page = open_ats({"jobs": [], "candidates": [candidate()]})
-    _open_form(page)
-    page.click(".sc-pill[data-crit='c1'][data-val='4']")
-    page.click(".sc-pill[data-crit='c2'][data-val='5']")
-    page.click(".sc-pill[data-crit='c3'][data-val='3']")
-    page.click(".sc-pill[data-crit='c4'][data-val='4']")
-    page.click(".sc-pill[data-crit='c5'][data-val='3']")
-    assert page.locator("#scTotal").inner_text().strip() == "78"
-
-
-def test_save_persists_and_updates_table(open_ats):
-    page = open_ats({"jobs": [], "candidates": [candidate()]})
-    _open_form(page)
-    page.fill("#scRound", "สัมภาษณ์หัวหน้างาน")
-    page.click(".sc-pill[data-crit='c1'][data-val='4']")
-    page.fill("#scNote", "ตอบตรงประเด็น")
-    page.evaluate("() => saveScorecard()")
-    stored = page.evaluate("() => DB.candidates[0].scorecards")
-    assert len(stored) == 1
-    assert stored[0]["round"] == "สัมภาษณ์หัวหน้างาน"
-    assert stored[0]["total"] == 80          # 12/15
-    assert len(stored[0]["weightsUsed"]) == 5
-    assert "80" in page.locator("#candBody tr td").nth(4).inner_text()
-
-
-def test_save_refuses_when_nothing_rated(open_ats):
-    page = open_ats({"jobs": [], "candidates": [candidate()]})
-    _open_form(page)
-    page.evaluate("() => saveScorecard()")
-    assert page.evaluate("() => DB.candidates[0].scorecards.length") == 0
-
-
-def test_edit_updates_in_place_without_adding_a_round(open_ats):
-    page = open_ats({"jobs": [], "candidates": [
-        candidate(scorecards=[scorecard(id="a", total=78)])]})
-    page.evaluate("() => showCandDetail('cand1')")
-    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
-    page.evaluate("() => editScorecard('a')")
-    page.click(".sc-pill[data-crit='c1'][data-val='1']")
-    page.evaluate("() => saveScorecard()")
-    cards = page.evaluate("() => DB.candidates[0].scorecards")
-    assert len(cards) == 1
-    assert cards[0]["id"] == "a"
-    assert cards[0]["total"] == 62           # (1*3+5*2+3*2+4*2+3*1)/50 = 31/50
-
-
-def test_delete_removes_the_round(open_ats):
-    page = open_ats({"jobs": [], "candidates": [
-        candidate(scorecards=[scorecard(id="a"), scorecard(id="b")])]})
-    page.on("dialog", lambda d: d.accept())
-    page.evaluate("() => showCandDetail('cand1')")
-    page.evaluate("() => { localStorage.setItem('hma_ats_sc_open','1'); refreshScorecardSection(); }")
-    page.evaluate("() => deleteScorecard('a')")
-    ids = page.evaluate("() => DB.candidates[0].scorecards.map(s => s.id)")
-    assert ids == ["b"]
-
-
-def test_saved_scorecard_survives_reload(open_ats):
-    page = open_ats({"jobs": [], "candidates": [candidate()]})
-    _open_form(page)
-    page.click(".sc-pill[data-crit='c1'][data-val='4']")
-    page.evaluate("() => saveScorecard()")
-    page.reload()
-    page.wait_for_function("typeof DB !== 'undefined'")
-    assert page.evaluate("() => DB.candidates[0].scorecards.length") == 1
-```
-
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run: `python -m pytest tests/test_scorecard.py -v -k "form or save or edit or delete or survives"`
-
-Expected: 6 FAIL — `openScorecardForm` is still the Task 3 stub, so `.sc-pill` selectors time out and `saveScorecard is not defined` is raised.
-
-- [ ] **Step 3: Replace the stubs with the real implementation**
-
-Delete the four stub lines added in Task 3 Step 4 and put this in their place:
+Directly after `scorecardSectionHTML()` from Step 4, add:
 
 ```js
 let scEditId = null;
@@ -759,14 +710,15 @@ function openScorecardForm(id) {
   updateScTotal();
 }
 function editScorecard(id) { openScorecardForm(id); }
-/* แก้ใบเก่าให้คิดคะแนนด้วย weightsUsed ของใบนั้น ไม่ใช่เกณฑ์ปัจจุบัน */
+/* ที่เดียวที่ตัดสินว่าฟอร์มนี้ใช้เกณฑ์ชุดไหน — ใบเก่าใช้ weightsUsed ที่ freeze ไว้
+   ใบใหม่ใช้เกณฑ์ปัจจุบัน คะแนนที่บันทึกแล้วจึงไม่ขยับตามการแก้เกณฑ์ */
 function scFormCriteria() {
   const ex = scEditId ? ((currentDetail.scorecards || []).find(s => s.id === scEditId)) : null;
   return (ex && ex.weightsUsed && ex.weightsUsed.length) ? ex.weightsUsed : DB.scorecardCriteria;
 }
 function scorecardFormHTML(id) {
   const ex = id ? ((currentDetail.scorecards || []).find(s => s.id === id)) : null;
-  const crit = (ex && ex.weightsUsed && ex.weightsUsed.length) ? ex.weightsUsed : DB.scorecardCriteria;
+  const crit = scFormCriteria();
   const rows = crit.map(w => {
     const cur = (ex && ex.ratings) ? ex.ratings[w.id] : undefined;
     const pills = [1, 2, 3, 4, 5].map(n =>
@@ -852,25 +804,26 @@ function deleteScorecard(id) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_scorecard.py -v`
 
 Expected: 21 passed.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add hma-ats.html tests/test_scorecard.py
-git commit -m "Add interview scorecard rating form with add, edit and delete"
+git commit -m "Add scorecard section and rating form to candidate detail modal"
 ```
 
 ---
 
-### Task 5: Criteria manager modal
+
+### Task 4: Criteria manager modal
 
 **Files:**
-- Modify: `hma-ats.html` (new modal markup after the email-template modal ~line 543, replace the `openCriteriaManager` stub)
+- Modify: `hma-ats.html` (new modal markup after the email-template modal ~line 543, new functions beside the Task 3 scorecard code)
 - Test: `tests/test_scorecard.py`
 
 **Interfaces:**
@@ -964,9 +917,9 @@ Directly after the closing `</div>` of the email-template manager modal (the blo
 </div>
 ```
 
-- [ ] **Step 4: Replace the `openCriteriaManager` stub**
+- [ ] **Step 4: Add the criteria manager functions**
 
-Delete the `function openCriteriaManager() { /* Task 5 */ }` stub and add:
+Task 3 rendered a button calling `openCriteriaManager()` but did not define it. Define it now, directly after the scorecard form functions from Task 3:
 
 ```js
 /* ── Scorecard criteria manager ── */
@@ -1044,7 +997,7 @@ git commit -m "Add scorecard criteria manager modal"
 
 ---
 
-### Task 6: CSV export columns
+### Task 5: CSV export columns
 
 **Files:**
 - Modify: `hma-ats.html` (`exportCSV()` ~line 1860)
@@ -1141,19 +1094,19 @@ git commit -m "Add interview score columns to candidate CSV export"
 | `DB.scorecardCriteria` + migration guard | 1 |
 | `candidate.scorecards` via `makeCandidate()` | 1 |
 | Weighted formula, unrated excluded, `null` when nothing rated | 1 |
-| Frozen `total` | 4 (written on save), 5 (proven stable) |
-| `weightsUsed` full snapshot incl. label | 1 (shape), 4 (written), 3 (rendered from it) |
+| Frozen `total` | 3 (written on save), 4 (proven stable) |
+| `weightsUsed` full snapshot incl. label | 1 (shape), 3 (written + rendered from it) |
 | Table column, `—` not `0`, round count | 2 |
 | Kanban chip | 2 |
 | Collapsible section, position after cloud section, state in localStorage | 3 |
 | Round list newest→oldest, per-round breakdown | 3 |
-| Inline form, 1–5 pills, `—` skip, live total, datalist | 4 |
-| Save refuses when nothing rated | 4 |
-| Edit reuses the form, delete with `confirm()` | 4 |
-| Criteria manager modal + non-retroactive warning | 5 |
-| CSV columns | 6 |
+| Inline form, 1–5 pills, `—` skip, live total, datalist | 3 |
+| Save refuses when nothing rated | 3 |
+| Edit reuses the form, delete with `confirm()` | 3 |
+| Criteria manager modal + non-retroactive warning | 4 |
+| CSV columns | 5 |
 | Old records without `scorecards` don't crash | 2 (`test_table_shows_dash_when_never_evaluated`) |
 | Scan results show no scorecard section | 3 |
 | Deleting a criterion keeps old cards readable | 3 (`test_round_breakdown_uses_frozen_labels`) |
-| Changing a weight doesn't move saved totals | 5 (`test_changing_weight_does_not_move_saved_totals`) |
-| Persistence across reload | 4 (`test_saved_scorecard_survives_reload`) |
+| Changing a weight doesn't move saved totals | 4 (`test_changing_weight_does_not_move_saved_totals`) |
+| Persistence across reload | 3 (`test_saved_scorecard_survives_reload`) |
