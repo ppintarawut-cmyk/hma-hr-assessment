@@ -815,7 +815,9 @@ def test_trust_panel_is_visible_before_any_form(open_exam):
 
 def test_trust_panel_warns_while_the_hr_contact_is_a_placeholder(open_exam):
     page = open_exam()
-    # ค่าเริ่มต้นยังเป็น placeholder — ต้องเตือนให้เห็นชัด ห้าม cutover
+    # ตั้งค่า placeholder เองแทนที่จะพึ่งค่าที่ ship มา — ไม่งั้นเทสต์ตัวนี้จะแดง
+    # ทันทีที่ Task 8 Step 1 ใส่ข้อมูล HR จริง
+    page.evaluate("() => { HR_CONTACT.name = 'ยังไม่ระบุ'; renderTrustPanel(); }")
     assert page.locator("#hr-contact-warning").is_visible()
 
 
@@ -884,7 +886,7 @@ function renderTrustPanel(){
 renderTrustPanel();
 ```
 
-เรียก `renderTrustPanel()` ที่ท้ายสคริปต์ ตำแหน่งเดียวกับที่มี `document.querySelector('#p-register .alert-info').style.display='flex';` (`index.html:3120`)
+วางบล็อกนี้ทั้งก้อนไว้ท้ายสคริปต์ ใกล้บรรทัด `document.querySelector('#p-register .alert-info').style.display='flex';` (`index.html:3120`) — บรรทัดสุดท้ายของบล็อกเรียก `renderTrustPanel()` ให้แล้ว **อย่าเติมการเรียกซ้ำอีก**
 
 - [ ] **Step 5: ให้ `privacy.html` เตือนแบบเดียวกัน — แก้สคริปต์ท้ายไฟล์**
 
