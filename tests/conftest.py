@@ -161,9 +161,15 @@ def exam_record(**over):
 
 
 def legacy_exam_record(**over):
-    """record รูปแบบเก่าที่ยังใช้เลขบัตรเป็น key — ใช้ทดสอบ read-compat"""
+    """record รูปแบบเก่าที่ยังใช้เลขบัตรเป็น key — ใช้ทดสอบ read-compat
+
+    ไม่มี email เพราะ candKey() ให้ email ชนะ national_id เสมอเมื่อมีทั้งคู่
+    (ตั้งใจ — record เก่าที่รู้ email แล้วควรรวมกับ identity ใหม่ทันที) ฟิกซ์เจอร์นี้
+    จำลอง record ที่ยังไม่รู้ email เลย ซึ่งเป็นเคสเดียวที่ fallback ไป national_id จริง ๆ
+    """
     base = exam_record()
     base.pop("candidate_key")
+    base.pop("email")
     base["national_id"] = "1234567890123"
     base.update(over)
     return base

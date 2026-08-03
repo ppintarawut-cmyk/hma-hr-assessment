@@ -2393,7 +2393,7 @@ function getLiveRows() {
     .map((s, i) => ({
       id:   'live_' + i,
       fn, ln,
-      nid:  applicant.nid,
+      candidate_key: (applicant.email || '').toLowerCase(),
       test: s.test.code,
       date: now,
       time: s.remainSecs != null
@@ -2415,7 +2415,7 @@ function getStoredRows() {
   try {
     const stored = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
     const rows = [];
-    // group by national_id + attempt เพื่อแสดงแต่ละการสอบแยกชุด
+    // group by candidate_key + attempt เพื่อแสดงแต่ละการสอบแยกชุด
     stored.forEach(rec => {
       const nameParts = (rec.name || '').split(' ');
       const fn = nameParts[0] || rec.name || '';
@@ -2426,9 +2426,9 @@ function getStoredRows() {
         const outcome = rec[`${code}_outcome`];
         if (score == null) return;          // ชุดนี้ยังไม่ได้สอบ
         rows.push({
-          id:       `stored_${rec.national_id}_${code}_${rec.attempt||1}`,
+          id:       `stored_${candKey(rec)}_${code}_${rec.attempt||1}`,
           fn, ln,
-          nid:      rec.national_id,
+          candidate_key: candKey(rec),
           test:     code,
           date:     rec.datetime || '',
           time:     rec[`${code}_time`] || '—',
@@ -2452,8 +2452,8 @@ function getAllRows() {
   const live    = getLiveRows();
   const stored  = getStoredRows();
   // deduplicate: live rows override stored rows สำหรับ session ปัจจุบัน
-  const liveKeys = new Set(live.map(r => `${r.nid}_${r.test}`));
-  const filteredStored = stored.filter(r => !liveKeys.has(`${r.nid}_${r.test}`));
+  const liveKeys = new Set(live.map(r => `${candKey(r)}_${r.test}`));
+  const filteredStored = stored.filter(r => !liveKeys.has(`${candKey(r)}_${r.test}`));
   return [...live, ...filteredStored, ...ADMIN_DATA];
 }
 
@@ -2472,7 +2472,7 @@ function renderAdmin() {
   const avg    = withScore.length ? Math.round(withScore.reduce((a,r)=>a+r.score,0)/withScore.length) : 0;
 
   // นับผู้สมัครไม่ซ้ำ (live + ADMIN_DATA มี id ต่างกัน)
-  const uniqueApplicants = new Set(all.map(r => r.fn + r.ln + r.nid)).size;
+  const uniqueApplicants = new Set(all.map(r => r.fn + r.ln + candKey(r))).size;
 
   document.getElementById('a-metrics').innerHTML = [
     {l:'ผู้สมัคร',v:uniqueApplicants,c:'var(--gray-900)'},
@@ -2506,6 +2506,16 @@ function renderAdmin() {
   filterAdmin();
 }
 
+// ── Candidate identity ──────────────────────────────────────────────
+// key คืออีเมลตัวพิมพ์เล็ก ซึ่งเป็น identity เดียวกับที่ ATS ใช้จับคู่ผลสอบ
+// (hma-ats.html:1135) record ที่บันทึกก่อน 2026-08 ใช้เลขบัตรเป็น key
+// (exam_records.national_id / result_snapshots.nid) จึง fallback ให้แถวเก่า
+// ยังแสดงผลได้หลังเปลี่ยน — ห้ามลบ fallback จนกว่า migration บน Firestore จะจบ
+function candKey(r){
+  return (r && (r.candidate_key || (r.email || '').toLowerCase()
+                || r.national_id || r.nid)) || '';
+}
+
 // ═══════════════════════════════════════════════════════════
 // CANDIDATE PROFILES — อ่านจาก localStorage hma_exam_records
 // ═══════════════════════════════════════════════════════════
@@ -2513,11 +2523,11 @@ function getCandidateProfiles() {
   const CODES = allTestCodes();
   try {
     const stored = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
-    // group by national_id — merge all attempts → latest data wins
+    // group by candidate_key — merge all attempts → latest data wins
     const byNid = {};
     stored.forEach(rec => {
-      const nid = rec.national_id;
-      if (!byNid[nid]) byNid[nid] = { ...rec, attempts: 0 };
+      const nid = candKey(rec);
+      if (!byNid[nid]) byNid[nid] = { ...rec, candidate_key: nid, attempts: 0 };
       byNid[nid].attempts++;
       // merge scores (latest attempt wins per test)
       CODES.forEach(c => {
@@ -2556,7 +2566,7 @@ function renderCandidates() {
     if (!applicant || !sessions.length) return null;
     const nameParts = applicant.name.split(' ');
     const profile = {
-      national_id: applicant.nid,
+      candidate_key: (applicant.email || '').toLowerCase(),
       name:        applicant.name,
       email:       applicant.email || '',
       phone:       applicant.phone || '',
@@ -2575,10 +2585,10 @@ function renderCandidates() {
     return profile;
   })();
 
-  // Merge: live overrides stored for same nid
+  // Merge: live overrides stored for same candidate_key
   let all = [...profiles];
   if (liveProfile) {
-    const existIdx = all.findIndex(p => p.national_id === liveProfile.national_id);
+    const existIdx = all.findIndex(p => candKey(p) === candKey(liveProfile));
     if (existIdx >= 0) {
       all[existIdx] = { ...all[existIdx], ...liveProfile };
     } else {
@@ -2601,7 +2611,7 @@ function renderCandidates() {
   }
 
   tbody.innerHTML = all.map(p => {
-    const ci    = ((p.name||'').charCodeAt(0) + (p.national_id||'').charCodeAt(0)) % 5;
+    const ci    = ((p.name||'').charCodeAt(0) + (candKey(p)||' ').charCodeAt(0)) % 5;
     const init  = (p.name||'?').charAt(0).toUpperCase();
     const taken = CODES.filter(c => p[c+'_score'] != null);
     const pass  = taken.filter(c => p[c+'_outcome'] === 'P');
@@ -2619,7 +2629,7 @@ function renderCandidates() {
       return `<span class="cand-test-pill ${out==='P'?'cand-pass':'cand-fail'}">${c} ${sc}</span>`;
     }).join(' ');
 
-    const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), nid:p.national_id });
+    const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), candKey:candKey(p) });
 
     return `<tr style="${p.isLive ? 'background:color-mix(in srgb,var(--teal-l) 35%,transparent)' : ''}">
       <td>
@@ -2627,7 +2637,7 @@ function renderCandidates() {
           <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(init)}</div>
           <div>
             <div style="font-weight:500;font-size:13px;white-space:nowrap">${liveTag}${esc(p.name || '—')}</div>
-            <div style="font-size:11px;color:var(--gray-400)">${esc(p.national_id || '—')}</div>
+            <div style="font-size:11px;color:var(--gray-400)">${esc(candKey(p) || '—')}</div>
           </div>
         </div>
       </td>
@@ -2651,7 +2661,7 @@ let candDir  = 'desc';        // 'asc' | 'desc'
 let candPage = 1;
 let candPageSize = 10;
 let candSearch = '';
-const candSelected = new Set();   // set of national_id
+const candSelected = new Set();   // set of candidate_key
 
 // Thai-locale datetime → timestamp (records saved before _ts existed). 0 when unknown.
 function parseThaiDatetime(s){
@@ -2662,15 +2672,15 @@ function parseThaiDatetime(s){
   return new Date(y, Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]), Number(m[6]||0)).getTime();
 }
 
-// One enriched row per candidate (grouped by national_id) with latest info + computed stats.
+// One enriched row per candidate (grouped by candidate_key) with latest info + computed stats.
 function getCandidateList(){
   const CODES = allTestCodes();
   let recs = [];
   try { recs = JSON.parse(localStorage.getItem('hma_exam_records') || '[]'); } catch(e){ recs = []; }
   const byNid = {};
   recs.forEach(rec => {
-    const nid = rec.national_id || '—';
-    if (!byNid[nid]) byNid[nid] = { national_id:nid, attempts:0, _ts:0, datetime:'' };
+    const nid = candKey(rec) || '—';
+    if (!byNid[nid]) byNid[nid] = { candidate_key:nid, attempts:0, _ts:0, datetime:'' };
     const o = byNid[nid];
     o.attempts++;
     const ts = (rec._ts != null) ? Number(rec._ts) : parseThaiDatetime(rec.datetime);
@@ -2700,7 +2710,7 @@ function getCandidateList(){
 function getCandidateView(){
   let list = getCandidateList();
   const q = candSearch.trim().toLowerCase();
-  if (q) list = list.filter(p => `${p.name||''} ${p.position||''} ${p.national_id||''}`.toLowerCase().includes(q));
+  if (q) list = list.filter(p => `${p.name||''} ${p.position||''} ${p.email||''}`.toLowerCase().includes(q));
   const dir = candDir === 'asc' ? 1 : -1;
   const cmpStr = (a,b) => a < b ? -1*dir : a > b ? 1*dir : 0;
   list.sort((a,b) => {
@@ -2738,7 +2748,7 @@ function renderCandidatesPage(){
     tb.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray-400);font-size:13px">ยังไม่มีข้อมูลผู้สมัคร</td></tr>`;
   } else {
     tb.innerHTML = pageRows.map(p => {
-      const nid  = p.national_id;
+      const nid  = candKey(p);
       const init = (p.name||'?').charAt(0).toUpperCase();
       const ci   = ((p.name||'').charCodeAt(0) + (nid||'').charCodeAt(0)) % 5;
       const checked = candSelected.has(nid) ? 'checked' : '';
@@ -2747,7 +2757,7 @@ function renderCandidatesPage(){
         if (sc == null) return `<span class="cand-test-pill cand-pend">${c}</span>`;
         return `<span class="cand-test-pill ${out==='P'?'cand-pass':'cand-fail'}">${c} ${sc}</span>`;
       }).join(' ');
-      const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), nid });
+      const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), candKey:nid });
       const delBtn = canDelete
         ? `<button class="btn btn-sm" style="background:var(--red-l);color:var(--red);font-size:11px;padding:3px 8px" onclick="deleteApplicantData('${encodeURIComponent(rowKey)}')" title="ลบผู้สมัครนี้">🗑</button>`
         : '';
@@ -2770,7 +2780,7 @@ function renderCandidatesPage(){
   }
 
   const selAll = document.getElementById('cand-selall');
-  if (selAll){ const nids = pageRows.map(p=>p.national_id); selAll.checked = nids.length>0 && nids.every(n=>candSelected.has(n)); }
+  if (selAll){ const nids = pageRows.map(p=>candKey(p)); selAll.checked = nids.length>0 && nids.every(n=>candSelected.has(n)); }
 
   const info = document.getElementById('cand-pginfo');
   if (info) info.textContent = total ? `${start+1}–${Math.min(start+candPageSize,total)} จาก ${total} คน` : '0 คน';
@@ -2813,7 +2823,7 @@ function syncCandDirLabel(){ const b = document.getElementById('cand-dir'); if (
 function toggleCandSelect(nid){ candSelected.has(nid) ? candSelected.delete(nid) : candSelected.add(nid); renderCandidatesPage(); }
 function toggleCandSelectAll(cb){
   const start = (candPage-1)*candPageSize;
-  getCandidateView().slice(start, start+candPageSize).forEach(p => cb.checked ? candSelected.add(p.national_id) : candSelected.delete(p.national_id));
+  getCandidateView().slice(start, start+candPageSize).forEach(p => cb.checked ? candSelected.add(candKey(p)) : candSelected.delete(candKey(p)));
   renderCandidatesPage();
 }
 function clearCandSelection(){ candSelected.clear(); renderCandidatesPage(); }
@@ -2831,10 +2841,10 @@ function bulkDeleteCandidates(){
   if (!nids.length){ showToast('เลือกผู้สมัครก่อน'); return; }
   if (!confirm(`⚠️ ลบข้อมูลผู้สมัคร ${nids.length} คนที่เลือก?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
   const nidSet = new Set(nids);
-  try { const s = JSON.parse(localStorage.getItem('hma_exam_records')||'[]');   localStorage.setItem('hma_exam_records',   JSON.stringify(s.filter(r => !nidSet.has(r.national_id)))); } catch(e){}
-  try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !nidSet.has(x.nid)))); } catch(e){}
+  try { const s = JSON.parse(localStorage.getItem('hma_exam_records')||'[]');   localStorage.setItem('hma_exam_records',   JSON.stringify(s.filter(r => !nidSet.has(candKey(r))))); } catch(e){}
+  try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !nidSet.has(candKey(x))))); } catch(e){}
   nids.forEach(nid => cloudDeleteCandidate(nid));
-  if (applicant && nidSet.has(applicant.nid)){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
+  if (applicant && nidSet.has((applicant.email||'').toLowerCase())){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
   candSelected.clear();
   showToast(`✅ ลบข้อมูล ${nids.length} คนแล้ว`);
   renderCandidatesPage();
@@ -2845,7 +2855,7 @@ let compareChart = null;
 let compareData  = [];   // candidates currently being compared
 
 function openCompare(){
-  const list = getCandidateList().filter(p => candSelected.has(p.national_id));
+  const list = getCandidateList().filter(p => candSelected.has(candKey(p)));
   if (list.length < 2){ showToast('เลือกอย่างน้อย 2 คนเพื่อเปรียบเทียบ'); return; }
   if (list.length > 6){ showToast('เปรียบเทียบได้สูงสุด 6 คน'); return; }
   compareData = list;
@@ -3017,7 +3027,7 @@ function filterAdmin() {
   const textc =['#085041','#633806','#0C447C','#791F1F','#27500A'];
   const storedRecs = (() => { try { return JSON.parse(localStorage.getItem('hma_exam_records')||'[]'); } catch(e){return [];} })();
   const attemptMap = {};
-  storedRecs.forEach(r => { attemptMap[r.national_id] = (attemptMap[r.national_id]||0) + 1; });
+  storedRecs.forEach(r => { const k = candKey(r); attemptMap[k] = (attemptMap[k]||0) + 1; });
   const canDelete = currentAdmin && ROLE_INFO[currentAdmin.role]?.canDelete;
 
   document.getElementById('a-tbody').innerHTML = filtered.map((r,i)=>{
@@ -3025,8 +3035,8 @@ function filterAdmin() {
     const ci = (r.fn.charCodeAt(0) + r.ln.charCodeAt(0)) % 5;
     const pill=r.out==='P'?'<span class="badge b-pass">✓ P</span>':'<span class="badge b-fail">✗ NP</span>';
     const sc=`<span style="font-weight:600;color:${r.out==='P'?'var(--teal)':'var(--red)'}">${r.score}</span><span style="color:var(--gray-400);font-size:11px">/100</span>`;
-    const rowKey = JSON.stringify({fn:r.fn,ln:r.ln,nid:r.nid});
-    const attempts = attemptMap[r.nid] || 0;
+    const rowKey = JSON.stringify({fn:r.fn,ln:r.ln,candKey:candKey(r)});
+    const attempts = attemptMap[candKey(r)] || 0;
     const attemptTag = attempts > 1
       ? `<span style="font-size:10px;background:var(--amber-l);color:var(--amber);padding:1px 6px;border-radius:8px;margin-left:4px">ครั้งที่ ${attempts}</span>`
       : attempts===1 ? `<span style="font-size:10px;background:var(--gray-100);color:var(--gray-500);padding:1px 6px;border-radius:8px;margin-left:4px">ครั้งที่ 1</span>` : '';
@@ -3038,7 +3048,7 @@ function filterAdmin() {
         <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(r.fn.charAt(0))}</div>
         <div>
           <div style="font-weight:500;white-space:nowrap">${liveTag}${esc(r.fn)} ${esc(r.ln)}${attemptTag}</div>
-          <div style="font-size:11px;color:var(--gray-400)">${esc(r.nid)}</div>
+          <div style="font-size:11px;color:var(--gray-400)">${esc(candKey(r))}</div>
         </div>
       </div></td>
       <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="white-space:nowrap">${esc(r.test)}</td>
@@ -3061,7 +3071,7 @@ function resetFilter(){
 function showDetailByKey(encodedKey) {
   const key = JSON.parse(decodeURIComponent(encodedKey));
   const all = getAllRows();
-  const rows = all.filter(r => r.fn===key.fn && r.ln===key.ln && r.nid===key.nid);
+  const rows = all.filter(r => r.fn===key.fn && r.ln===key.ln && candKey(r)===key.candKey);
   if (!rows.length) return;
   const r = rows[0];
   const ci = (r.fn.charCodeAt(0) + r.ln.charCodeAt(0)) % 5;
@@ -3070,7 +3080,7 @@ function showDetailByKey(encodedKey) {
   document.getElementById('mod-av').textContent=r.fn.charAt(0);
   document.getElementById('mod-av').style.cssText=`background:${colors[ci]};color:${textc[ci]};width:36px;height:36px;font-size:14px`;
   document.getElementById('mod-name').textContent=`${r.fn} ${r.ln}`;
-  document.getElementById('mod-sub').textContent=`${r.nid} · ${r.pos}${r.isLive?' · ✦ สอบเมื่อกี้':''}`;
+  document.getElementById('mod-sub').textContent=`${candKey(r)} · ${r.pos}${r.isLive?' · ✦ สอบเมื่อกี้':''}`;
   document.getElementById('mod-body').innerHTML = rows.map(s=>{
     const pill=s.out==='P'?'<span class="badge b-pass">✓ ผ่าน</span>':'<span class="badge b-fail">✗ ไม่ผ่าน</span>';
     const c=s.out==='P'?'var(--teal)':'var(--red)';
@@ -3101,7 +3111,7 @@ function showDetailByKey(encodedKey) {
 function showDetail(id) {
   const rows = ADMIN_DATA.filter(r=>r.id===id);
   if (!rows.length) return;
-  const key = JSON.stringify({fn:rows[0].fn, ln:rows[0].ln, nid:rows[0].nid});
+  const key = JSON.stringify({fn:rows[0].fn, ln:rows[0].ln, candKey:candKey(rows[0])});
   showDetailByKey(encodeURIComponent(key));
 }
 
@@ -3294,7 +3304,7 @@ document.querySelector('#p-register .alert-info').style.display='flex';
     <div class="modal-foot">
       <button class="btn btn-secondary" onclick="closeModal('mod-indiv-pdf')">ปิด</button>
       <button class="btn btn-secondary" onclick="downloadIndivCSV()" id="ipdf-dl-btn">⬇ Excel</button>
-      <button class="btn btn-secondary" onclick="adminOpenScoreDash(indivExportData.rows[0].nid)" id="ipdf-dash-btn">📊 แดชบอร์ดคะแนน</button>
+      <button class="btn btn-secondary" onclick="adminOpenScoreDash(candKey(indivExportData.rows[0]))" id="ipdf-dash-btn">📊 แดชบอร์ดคะแนน</button>
       <button class="btn btn-primary" onclick="exportIndivPDF(this)" id="ipdf-pdf-btn">📄 ดาวน์โหลด PDF</button>
     </div>
   </div>
@@ -3502,7 +3512,7 @@ function buildExamRecord() {
   const row = {
     datetime:     now.toLocaleString('th-TH'),
     _ts:          now.getTime(),   // sortable timestamp (Thai-locale string above isn't reliably parseable)
-    national_id:  applicant.nid,
+    candidate_key: (applicant.email || '').toLowerCase(),
     name:         applicant.name,
     email:        applicant.email || '',
     phone:        applicant.phone || '',
@@ -3538,14 +3548,11 @@ function saveExamData() {
     const key      = 'hma_exam_records';
     const existing = JSON.parse(localStorage.getItem(key) || '[]');
 
-    // หา record ของ nid เดิมที่ยังไม่ครบทุกชุด (session ปัจจุบัน)
+    // หา record ของ candidate_key เดิมที่ยังไม่ครบทุกชุด (session ปัจจุบัน)
     // ถ้ามีการสอบครบทั้งหมดก่อนหน้านี้แล้ว ให้ push ใหม่ (attempt ใหม่)
-    const prevFull = existing.filter(r =>
-      r.national_id === rec.national_id && r._complete
-    );
-    const pendingIdx = existing.findIndex(r =>
-      r.national_id === rec.national_id && !r._complete
-    );
+    const recKey = candKey(rec);
+    const prevFull = existing.filter(r => candKey(r) === recKey && r._complete);
+    const pendingIdx = existing.findIndex(r => candKey(r) === recKey && !r._complete);
 
     // เช็คว่า session ปัจจุบันสำเร็จครบทุกชุดแล้วหรือยัง
     const allDone = sessions.length > 0 && sessions.every(s => s.status === 'completed');
@@ -3572,30 +3579,30 @@ function deleteApplicantData(encodedKey) {
   }
   const key = JSON.parse(decodeURIComponent(encodedKey));
   const name = `${key.fn} ${key.ln}`;
-  if (!confirm(`⚠️ ลบข้อมูลทั้งหมดของ "${name}" (${key.nid})?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
+  if (!confirm(`⚠️ ลบข้อมูลทั้งหมดของ "${name}" (${key.candKey})?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
 
   // ลบจาก localStorage (exam records + result snapshots)
   try {
     const stored = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
-    localStorage.setItem('hma_exam_records', JSON.stringify(stored.filter(r => r.national_id !== key.nid)));
+    localStorage.setItem('hma_exam_records', JSON.stringify(stored.filter(r => candKey(r) !== key.candKey)));
   } catch(e) {}
   try {
     const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]');
-    localStorage.setItem('hma_result_snapshots', JSON.stringify(snaps.filter(s => s.nid !== key.nid)));
+    localStorage.setItem('hma_result_snapshots', JSON.stringify(snaps.filter(s => candKey(s) !== key.candKey)));
   } catch(e) {}
 
   // ลบจาก cloud ด้วย (ไม่งั้นรอบ sync ถัดไปจะดึงกลับมา) — ต้องเป็น admin ที่ล็อกอิน
-  cloudDeleteCandidate(key.nid);
+  cloudDeleteCandidate(key.candKey);
 
   // ถ้าเป็น applicant ปัจจุบัน ให้ reset session ด้วย
-  if (applicant && applicant.nid === key.nid) {
+  if (applicant && (applicant.email||'').toLowerCase() === key.candKey) {
     applicant = null;
     sessions  = [];
     curSess   = null;
     clearPersistedSession();
   }
 
-  candSelected.delete(key.nid);
+  candSelected.delete(key.candKey);
   showToast(`✅ ลบข้อมูล ${name} แล้ว`);
   filterAdmin(); // refresh admin overview table
   if (document.getElementById('p-candidates')?.classList.contains('active')) renderCandidatesPage();
@@ -3605,7 +3612,7 @@ function deleteApplicantData(encodedKey) {
 async function cloudDeleteCandidate(nid){
   if (!cloudEnabled() || !cloudSignedIn()) return;
   try {
-    for (const [coll, field] of [['exam_records','national_id'], ['result_snapshots','nid']]) {
+    for (const [coll, field] of [['exam_records','candidate_key'], ['result_snapshots','candidate_key']]) {
       const qs = await db.collection(coll).where(field, '==', nid).get();
       await Promise.all(qs.docs.map(d => d.ref.delete()));
     }
@@ -3638,7 +3645,7 @@ function buildExportData() {
   const fromStored = stored.map(r => {
     const obj = {
       'วันที่/เวลา':    r.datetime     || '',
-      'เลขประชาชน':    r.national_id  || '',
+      'เลขประชาชน':    candKey(r)     || '',
       'ชื่อ-สกุล':     r.name         || '',
       'Email':           r.email        || '',
       'โทรศัพท์':       r.phone        || '',
@@ -3661,12 +3668,13 @@ function buildExportData() {
 
   const byNid = {};
   ADMIN_DATA.forEach(r => {
-    if (!byNid[r.nid]) byNid[r.nid] = {nid:r.nid, name:`${r.fn} ${r.ln}`, pos:r.pos, tests:{}};
-    byNid[r.nid].tests[r.test] = {score:r.score, out:r.out};
+    const k = candKey(r);
+    if (!byNid[k]) byNid[k] = {key:k, name:`${r.fn} ${r.ln}`, pos:r.pos, tests:{}};
+    byNid[k].tests[r.test] = {score:r.score, out:r.out};
   });
   const fromDemo = Object.values(byNid).map(p => {
     const obj = {
-      'วันที่/เวลา':'(ตัวอย่าง)','เลขประชาชน':p.nid,'ชื่อ-สกุล':p.name,
+      'วันที่/เวลา':'(ตัวอย่าง)','เลขประชาชน':p.key,'ชื่อ-สกุล':p.name,
       'Email':'','โทรศัพท์':'','อายุ':'','ประสบการณ์(ปี)':'','ตำแหน่ง':p.pos,'ครั้งที่':1,
     };
     CODES.forEach(c => {
@@ -5050,7 +5058,7 @@ let indivExportData = null;
 function showIndivPdf(encodedKey) {
   const key = JSON.parse(decodeURIComponent(encodedKey));
   const all  = getAllRows();
-  const rows = all.filter(r => r.fn===key.fn && r.ln===key.ln && r.nid===key.nid);
+  const rows = all.filter(r => r.fn===key.fn && r.ln===key.ln && candKey(r)===key.candKey);
   if (!rows.length) return;
   indivExportData = { key, rows };
   const name = `${rows[0].fn} ${rows[0].ln}`;
@@ -5067,7 +5075,7 @@ function showIndivPdf(encodedKey) {
       <div class="avatar" style="background:${colors[ci]};color:${textc[ci]};width:44px;height:44px;font-size:16px">${esc(rows[0].fn.charAt(0))}</div>
       <div>
         <p style="font-weight:600;font-size:15px">${esc(name)}</p>
-        <p style="font-size:12px;color:var(--gray-400)">${esc(rows[0].nid)} · ${esc(rows[0].pos)}</p>
+        <p style="font-size:12px;color:var(--gray-400)">${esc(candKey(rows[0]))} · ${esc(rows[0].pos)}</p>
       </div>
     </div>
     <div class="grid3" style="margin-bottom:16px">
@@ -5121,10 +5129,10 @@ function downloadIndivCSV() {
     const wb  = window.XLSX.utils.book_new();
     const aoa = [
       [person + ' — ผลการสอบ','','','','','','',''],
-      ['เลขประชาชน: ' + rows[0].nid,'','','','','','',''],
+      ['เลขประชาชน: ' + candKey(rows[0]),'','','','','','',''],
       [],
       ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ-สกุล','เลขประชาชน','ตำแหน่ง'],
-      ...rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]),
+      ...rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, candKey(r), r.pos]),
     ];
     const ws = window.XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{wch:10},{wch:18},{wch:12},{wch:8},{wch:10},{wch:6},{wch:12},{wch:20},{wch:14},{wch:18}];
@@ -5134,7 +5142,7 @@ function downloadIndivCSV() {
     showToast('✅ Export Excel ' + person + ' สำเร็จ');
   } else {
     const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ','เลขประชาชน','ตำแหน่ง'];
-    const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, r.nid, r.pos]);
+    const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, candKey(r), r.pos]);
     const csv = [headers,...csvRows].map(row=>row.map(csvCell).join(',')).join('\n');
     const blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -5430,7 +5438,7 @@ function saveResultSnapshot(){
   const done = sessions.filter(s => s.status === 'completed');
   if (!done.length) return;
   const snap = {
-    nid:  applicant.nid,
+    candidate_key: (applicant.email || '').toLowerCase(),
     name: applicant.name,
     pos:  applicant.pos,
     exp:  applicant.exp ?? '',
@@ -5446,7 +5454,7 @@ function saveResultSnapshot(){
   };
   try {
     const all = getResultSnapshots();
-    const i = all.findIndex(x => x.nid === snap.nid && !x._sealed);
+    const i = all.findIndex(x => candKey(x) === candKey(snap) && !x._sealed);
     const allDone = sessions.every(s => s.status === 'completed');
     if (i >= 0) {
       all[i] = { ...all[i], ...snap };
@@ -5463,15 +5471,15 @@ function saveResultSnapshot(){
 
 // ── Admin: open the rich score dashboard (read-only) for a candidate ──
 var adminViewingResults = false;
-function adminHasScoreDash(nid){ return getResultSnapshots().some(x => x.nid === nid); }
+function adminHasScoreDash(nid){ return getResultSnapshots().some(x => candKey(x) === nid); }
 function adminOpenScoreDash(nid){
-  const snaps = getResultSnapshots().filter(x => x.nid === nid);
+  const snaps = getResultSnapshots().filter(x => candKey(x) === nid);
   if (!snaps.length){
     showToast('❌ ยังไม่มีข้อมูลแดชบอร์ดคะแนนของผู้สมัครนี้');
     return;
   }
   const snap = snaps[snaps.length - 1];
-  applicant = { name: snap.name, pos: snap.pos, nid: snap.nid, exp: snap.exp ?? '' };
+  applicant = { name: snap.name, pos: snap.pos, nid: candKey(snap), exp: snap.exp ?? '' };
   sessions = snap.sessions.map(s => ({
     test: (typeof TESTS !== 'undefined' && TESTS.find(t => t.code === s.code)) ||
           { code:s.code, name:s.name, nameTH:s.nameTH, passing:s.passing, mins:s.mins },
@@ -5504,8 +5512,8 @@ var _cloudSettingsLoaded = false;   // config/settings read succeeded (doc may o
 var _cloudBankLoaded     = false;   // config/bank read succeeded
 
 // Dedup keys (cloud records originate from local, so keys line up)
-function _recKey(r){ return (r.national_id||'') + '|' + (r.attempt||1) + '|' + (r.datetime||''); }
-function _snapKey(s){ return (s.nid||'') + '|' + (s.datetime||''); }
+function _recKey(r){ return candKey(r) + '|' + (r.attempt||1) + '|' + (r.datetime||''); }
+function _snapKey(s){ return candKey(s) + '|' + (s.datetime||''); }
 function _mergeIntoLocal(key, incoming, keyFn){
   try {
     const cur  = JSON.parse(localStorage.getItem(key) || '[]');
@@ -5521,11 +5529,11 @@ function _mergeIntoLocal(key, incoming, keyFn){
 async function cloudPushOnComplete(){
   if (!cloudEnabled()) return;
   if (!sessions.length || !sessions.every(s => s.status === 'completed')) return;
-  const nid = applicant && applicant.nid;
+  const nid = applicant && (applicant.email || '').toLowerCase();
   if (!nid) return;
   try {
-    const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => r.national_id === nid);
-    const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => s.nid === nid);
+    const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => candKey(r) === nid);
+    const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => candKey(s) === nid);
     const rec   = recs[recs.length - 1];
     const snap  = snaps[snaps.length - 1];
     const stamp = firebase.firestore.FieldValue.serverTimestamp();
@@ -5536,8 +5544,8 @@ async function cloudPushOnComplete(){
     console.warn('cloud push failed:', e);
     // Don't lose the result: queue it and tell the candidate it will retry.
     try {
-      const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => r.national_id === nid);
-      const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => s.nid === nid);
+      const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => candKey(r) === nid);
+      const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => candKey(s) === nid);
       const q = JSON.parse(localStorage.getItem('hma_cloud_pending') || '[]');
       q.push({ rec: recs[recs.length-1], snap: snaps[snaps.length-1], nid, at: Date.now() });
       localStorage.setItem('hma_cloud_pending', JSON.stringify(q));
