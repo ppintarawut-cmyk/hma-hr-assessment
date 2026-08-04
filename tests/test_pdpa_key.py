@@ -670,3 +670,30 @@ def test_trust_panel_follows_the_language_toggle(open_exam):
     assert "This assessment belongs to" in page.inner_text("#trust-panel")
     page.click("#lang-fab")
     assert "แบบทดสอบนี้เป็นของ" in page.inner_text("#trust-panel")
+
+
+# ── Task 6: เครื่องมือ migrate Firestore ──
+
+
+def test_migration_tool_ships_with_the_destructive_button_disabled(open_exam, server):
+    # กันไม่ให้กด "ลงมือจริง" ได้ก่อนรัน dry-run — เป็น attribute ใน markup
+    # จึงจริงแม้ Firebase SDK จะโหลดไม่ได้
+    page = open_exam()
+    page.goto(f"{server}/tools/migrate-candidate-key.html")
+    assert page.locator("#btn-run").is_disabled()
+    assert page.locator("#btn-dry").is_enabled()
+    body = page.inner_text("body")
+    assert "export Firestore สำรองไว้ก่อน" in body
+    assert "ตรวจสอบอย่างเดียว" in body
+
+
+def test_migration_tool_refuses_to_run_before_login(open_exam, server):
+    page = open_exam()
+    page.goto(f"{server}/tools/migrate-candidate-key.html")
+    if page.evaluate("() => typeof firebase === 'undefined'"):
+        import pytest
+        pytest.skip("Firebase SDK ไม่ได้โหลด (ไม่มีเน็ต) — ข้ามการตรวจ guard")
+    page.click("#btn-dry")
+    assert "ต้องเข้าสู่ระบบก่อน" in page.inner_text("#log")
+    # ปุ่มอันตรายต้องยังล็อกอยู่
+    assert page.locator("#btn-run").is_disabled()
