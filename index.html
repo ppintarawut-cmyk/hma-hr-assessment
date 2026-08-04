@@ -653,7 +653,9 @@ textarea.q-inp:focus{border-color:var(--teal)}
         <div style="font-size:10.5px;font-weight:700;letter-spacing:.18em;color:var(--teal);text-transform:uppercase;margin-top:2px">HMA Testing System</div>
       </div>
     </div>
-    <div style="width:48px;height:3px;background:var(--grad-hino);border-radius:2px;margin-bottom:34px"></div>
+    <div style="width:48px;height:3px;background:var(--grad-hino);border-radius:2px;margin-bottom:24px"></div>
+
+    <div id="trust-panel" style="max-width:380px;width:100%;margin-bottom:22px;font-size:12px;line-height:1.75;color:var(--gray-700);background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);padding:14px 16px"></div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:380px;width:100%">
 
@@ -1396,6 +1398,11 @@ const I18N = {
   pdpa_info:     { th:'ข้อมูลของท่านเก็บรักษาตาม <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">นโยบายความเป็นส่วนตัว</a> และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น', en:'Your data is handled under our <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">privacy notice</a> and used solely for recruitment consideration.' },
   pdpa_consent:  { th:'ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร ผลการทดสอบ และบันทึกการออกจากหน้าต่างแบบทดสอบ (สลับแท็บ/หน้าต่าง) หรือพยายามคัดลอกข้อความระหว่างทำแบบทดสอบ ซึ่งฝ่ายทรัพยากรบุคคลจะเห็นข้อมูลนี้ เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562 โดยเก็บไว้ไม่เกิน 2 ปี', en:'I consent to HMA (Hino Motors Asia) collecting and using my personal data — full name, email, phone number, age, work experience, position applied for, test results, and a log of when I switch away from the exam window (tab/window switching) or attempt to copy text during the test, which is visible to HR — for recruitment purposes, in accordance with the Personal Data Protection Act (PDPA) B.E. 2562, retained for no longer than 2 years.' },
   reg_btn:       { th:'ยืนยันและเริ่มทดสอบ →', en:'Confirm & start →' },
+  trust_owner:   { th:'แบบทดสอบนี้เป็นของ Hino Motors Asia Ltd.', en:'This assessment belongs to Hino Motors Asia Ltd.' },
+  trust_purpose: { th:'ใช้ประกอบการพิจารณาใบสมัครงานเท่านั้น ข้อมูลของท่านเก็บไว้ไม่เกิน 2 ปี', en:'Used solely to support your job application. Your data is kept for no longer than 2 years.' },
+  trust_contact: { th:'ผู้รับผิดชอบ', en:'Responsible officer' },
+  trust_verify:  { th:'ไม่แน่ใจว่าลิงก์นี้ของจริง? โทรหาเบอร์ข้างต้นเพื่อยืนยันก่อนกรอกข้อมูล — เราจะไม่ขอรหัสผ่านหรือข้อมูลทางการเงินจากท่าน', en:'Not sure this link is genuine? Call the number above to verify before entering anything — we will never ask you for a password or financial details.' },
+  trust_privacy_link: { th:'อ่านนโยบายความเป็นส่วนตัว →', en:'Read the privacy notice →' },
   confirm_email_lead: { th:'ผลการทดสอบจะถูกส่งไปที่อีเมลนี้ กรุณาตรวจสอบให้ถูกต้อง', en:'Your results will be sent to this address. Please check that it is correct.' },
   confirm_email_yes:  { th:'ถูกต้อง เริ่มทดสอบ →', en:'Correct — start the test →' },
   confirm_email_edit: { th:'แก้ไขอีเมล',           en:'Edit email' },
@@ -1585,6 +1592,9 @@ function applyLang(){
   if (lt) lt.textContent = LANG==='th' ? 'EN' : 'ไทย';
   // refresh the position-type dropdown labels if present
   if (typeof populatePositionTypes === 'function') populatePositionTypes();
+  // แผงยืนยันตัวตนสร้างด้วย innerHTML ใน JS ไม่ได้ใช้ data-i18n จึงต้องวาดใหม่เอง
+  // ไม่งั้นผู้สมัครที่กด EN จะเห็นแผงค้างเป็นภาษาไทย
+  if (typeof renderTrustPanel === 'function') renderTrustPanel();
   // re-render whichever dynamic screen is active
   const active = document.querySelector('.page.active');
   const id = active ? active.id : '';
@@ -3273,6 +3283,46 @@ document.querySelectorAll('.overlay').forEach(el => {
 
 // show PDPA box on register page
 document.querySelector('#p-register .alert-info').style.display='flex';
+
+// ── ผู้รับผิดชอบระบบ ────────────────────────────────────────────────
+// ค่าเหล่านี้ต้องเป็นข้อมูลจริงทั้งสามค่าก่อนเปลี่ยนไปใช้ domain บริษัท
+// ตราบใดที่ค่าไหนยังขึ้นต้นด้วย 'ยังไม่ระบุ' หน้าแรกจะขึ้นแถบเตือนสีแดง
+// ต้องแก้ให้ตรงกันทั้งที่นี่และใน privacy.html — เทสต์
+// test_privacy_page_shares_the_same_contact_details คุมไว้ว่าห้ามหลุดจากกัน
+const HR_CONTACT = {
+  name:  'ยังไม่ระบุ — ต้องใส่ก่อน cutover',
+  email: 'ยังไม่ระบุ@hinomotorsasia.com',
+  phone: 'ยังไม่ระบุ',
+};
+
+function hrContactIsPlaceholder(){
+  return Object.values(HR_CONTACT).some(v => String(v).startsWith('ยังไม่ระบุ'));
+}
+
+// แผงยืนยันตัวตนบนหน้าแรก — ผู้สมัครต้องตรวจสอบได้ว่าลิงก์นี้ของจริงก่อนกรอกอะไร
+// หัวใจคือชื่อ/อีเมล/เบอร์ของคนจริงที่โทรถามได้ ไม่ใช่แค่หน้าตาน่าเชื่อถือ
+function renderTrustPanel(){
+  const el = document.getElementById('trust-panel');
+  if (!el) return;
+  const warn = hrContactIsPlaceholder()
+    ? `<div id="hr-contact-warning" style="background:#fcebeb;border:1px solid #e84060;color:#791f1f;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-weight:600">
+         ⚠️ ยังไม่ได้ใส่ข้อมูลผู้รับผิดชอบจริง — ห้ามส่งลิงก์นี้ให้ผู้สมัคร
+       </div>`
+    : '';
+  // esc() ทุกค่า: HR_CONTACT มาจากคนกรอก ไม่ใช่ผู้สมัคร แต่ก็ยังเป็น string
+  // ที่ถูกต่อเข้า HTML — ชื่อที่มี < > จะทำ markup พังถ้าไม่ escape
+  el.innerHTML = warn + `
+    <div style="font-weight:700;color:var(--gray-900);margin-bottom:4px">${t18n('trust_owner')}</div>
+    <div>${t18n('trust_purpose')}</div>
+    <div style="margin-top:8px">
+      <div><strong>${t18n('trust_contact')}:</strong> ${esc(HR_CONTACT.name)}</div>
+      <div><strong>${t18n('f_email')}:</strong> <a href="mailto:${encodeURIComponent(HR_CONTACT.email)}" style="color:var(--teal)">${esc(HR_CONTACT.email)}</a></div>
+      <div><strong>${t18n('f_phone')}:</strong> ${esc(HR_CONTACT.phone)}</div>
+    </div>
+    <div style="margin-top:8px;color:var(--gray-400)">${t18n('trust_verify')}</div>
+    <div style="margin-top:8px"><a href="privacy.html" target="_blank" style="color:var(--teal)">${t18n('trust_privacy_link')}</a></div>`;
+}
+renderTrustPanel();
 </script>
 <!-- ═══════════════════════════════════════════
      QUESTION EDITOR (Admin)

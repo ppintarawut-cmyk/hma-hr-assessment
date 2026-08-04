@@ -599,3 +599,74 @@ def test_export_data_identity_column_holds_the_candidate_key(open_exam):
     values = list(row.values())
     assert "somchai@example.com" in values
     assert "1234567890123" not in values
+
+
+# ── Task 5: แผงยืนยันตัวตนบนหน้าแรก ──
+#
+# ผู้สมัครไม่กล้ากดลิงก์เพราะระบบพิสูจน์ตัวเองไม่ได้ แผงนี้ต้องอยู่บนหน้าแรก
+# ก่อนกรอกข้อมูลใด ๆ และต้องพาไปหา "คนจริง" ที่โทรถามได้
+
+
+def test_trust_panel_is_visible_before_any_form(open_exam):
+    page = open_exam()
+    assert page.locator("#trust-panel").is_visible()
+    panel = page.inner_text("#trust-panel")
+    assert "Hino Motors Asia" in panel
+    assert "privacy.html" in page.inner_html("#trust-panel")
+
+
+def test_trust_panel_warns_while_the_hr_contact_is_a_placeholder(open_exam):
+    page = open_exam()
+    # ตั้งค่า placeholder เองแทนที่จะพึ่งค่าที่ ship มา — ไม่งั้นเทสต์ตัวนี้จะแดง
+    # ทันทีที่ Task 8 Step 1 ใส่ข้อมูล HR จริง
+    page.evaluate("() => { HR_CONTACT.name = 'ยังไม่ระบุ'; renderTrustPanel(); }")
+    assert page.locator("#hr-contact-warning").is_visible()
+
+
+def test_warning_disappears_once_real_contact_details_are_set(open_exam):
+    page = open_exam()
+    page.evaluate("""() => {
+        HR_CONTACT.name  = 'ภัทราวุธ ย.';
+        HR_CONTACT.email = 'pattarawut_y@hinomotorsasia.com';
+        HR_CONTACT.phone = '02-000-0000';
+        renderTrustPanel();
+    }""")
+    assert page.locator("#hr-contact-warning").count() == 0
+    assert "pattarawut_y@hinomotorsasia.com" in page.inner_text("#trust-panel")
+
+
+def test_trust_panel_escapes_contact_values(open_exam):
+    # HR_CONTACT ถูกกรอกโดยคน ไม่ใช่ผู้สมัคร แต่ renderTrustPanel สร้าง HTML ด้วย
+    # string template — ถ้าไม่ escape ชื่อที่มี < > จะพัง markup
+    page = open_exam()
+    page.evaluate("""() => {
+        HR_CONTACT.name  = '<img src=x onerror="window.__trust_xss=1">';
+        HR_CONTACT.email = 'hr@hinomotorsasia.com';
+        HR_CONTACT.phone = '02-000-0000';
+        renderTrustPanel();
+    }""")
+    assert page.evaluate("() => window.__trust_xss") is None
+    assert "<img" in page.inner_text("#trust-panel")
+
+
+def test_privacy_page_shares_the_same_contact_details(open_exam, server):
+    # แผงบนหน้าแรกกับหน้านโยบายต้องบอกผู้รับผิดชอบคนเดียวกัน ไม่งั้นผู้สมัคร
+    # ที่โทรตามเบอร์ในนโยบายจะไปไม่ถึงคนเดียวกับที่หน้าแรกอ้าง
+    index_contact = open_exam().evaluate(
+        "() => [HR_CONTACT.name, HR_CONTACT.email, HR_CONTACT.phone]")
+    page = open_exam()
+    page.goto(f"{server}/privacy.html")
+    privacy_contact = page.evaluate(
+        "() => [HR_CONTACT.name, HR_CONTACT.email, HR_CONTACT.phone]")
+    assert index_contact == privacy_contact
+
+
+def test_trust_panel_follows_the_language_toggle(open_exam):
+    # แผงนี้สร้างด้วย JS ไม่ใช่ data-i18n — applyLang() จึงไม่แตะให้เอง
+    # ถ้าไม่ hook ไว้ ผู้สมัครที่กด EN จะเห็นแผงยืนยันตัวตนค้างเป็นภาษาไทย
+    page = open_exam()
+    assert "แบบทดสอบนี้เป็นของ" in page.inner_text("#trust-panel")
+    page.click("#lang-fab")
+    assert "This assessment belongs to" in page.inner_text("#trust-panel")
+    page.click("#lang-fab")
+    assert "แบบทดสอบนี้เป็นของ" in page.inner_text("#trust-panel")
