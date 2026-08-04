@@ -2889,8 +2889,11 @@ function bulkDeleteCandidates(){
   try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !aliasesIntersect(candKeyAliases(x), aliases)))); } catch(e){}
   cloudDeleteCandidate(aliases);
   // เทียบด้วย candKey(applicant) (มี fallback ไป nid) ไม่ใช่แค่อีเมล — applicant ที่ admin
-  // เปิดดูย้อนหลังผ่าน adminOpenScoreDash ไม่มี email เลย
-  if (applicant && aliases.has(candKey(applicant))){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
+  // เปิดดูย้อนหลังผ่าน adminOpenScoreDash ไม่มี email เลย นอกจาก aliases แล้วยังเทียบตรง
+  // กับ nids ที่เลือกด้วย (floor) — aliases จะว่างเปล่าถ้า resolveCandidateAliases หา
+  // record ที่ตรงกับ nid ไม่เจอเลย (เช่น record ถูกลบไปแล้วจากที่อื่น) ซึ่งไม่ควรทำให้
+  // guard นี้อ่อนกว่าการเทียบตรง ๆ แบบเดิม (ดู F11 ใน task-2-report.md)
+  if (applicant && (aliases.has(candKey(applicant)) || nids.includes(candKey(applicant)))){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
   candSelected.clear();
   showToast(`✅ ลบข้อมูล ${nids.length} คนแล้ว`);
   renderCandidatesPage();
@@ -3646,8 +3649,11 @@ function deleteApplicantData(encodedKey) {
 
   // ถ้าเป็น applicant ปัจจุบัน ให้ reset session ด้วย — เทียบด้วย candKey(applicant) (มี
   // fallback ไป nid) ไม่ใช่แค่อีเมล เพราะ applicant ที่ admin เปิดดูย้อนหลังผ่าน
-  // adminOpenScoreDash ไม่มี email เลย (ดู F3 ใน task-2-report.md)
-  if (applicant && aliases.has(candKey(applicant))) {
+  // adminOpenScoreDash ไม่มี email เลย (ดู F3 ใน task-2-report.md) นอกจาก aliases แล้วยัง
+  // เทียบตรงกับ key.candKey ด้วย (floor) — aliases จะว่างเปล่าถ้า resolveCandidateAliases
+  // หา record ที่ตรงกับ key เดิมไม่เจอเลย ซึ่งไม่ควรทำให้ guard นี้อ่อนกว่าการเทียบตรง ๆ
+  // แบบเดิม (ดู F11 ใน task-2-report.md)
+  if (applicant && (aliases.has(candKey(applicant)) || candKey(applicant) === key.candKey)) {
     applicant = null;
     sessions  = [];
     curSess   = null;
@@ -3681,7 +3687,10 @@ async function cloudDeleteCandidate(aliases){
         await Promise.all(qs.docs.map(d => d.ref.delete()));
       }
     }
-    console.info('cloud: deleted candidate', values.join(','));
+    // ห้าม log ตัวค่า key เอง (อีเมล/เลขบัตร) เป็นชุด — จุดประสงค์งานนี้คือ PDPA key
+    // hygiene การพิมพ์ทั้ง batch ออก console ขัดกับเป้าหมายนั้น (ดู F13 ใน
+    // task-2-report.md) log แค่จำนวนพอ
+    console.info('cloud: deleted candidate,', values.length, 'alias(es)');
   } catch(e){ console.warn('cloud delete failed:', e); }
 }
 
@@ -5519,7 +5528,12 @@ function saveResultSnapshot(){
   };
   try {
     const all = getResultSnapshots();
-    const i = all.findIndex(x => candKey(x) === candKey(snap) && !x._sealed);
+    // กวาด alias ของผู้สมัครคนนี้ก่อนหา snapshot เดิมที่ยังไม่ sealed — คนที่สอบค้างไว้
+    // ก่อน migration อาจมี snapshot เดิมที่ key ด้วยเลขบัตร (nid) ในขณะที่ snap ใหม่นี้ key
+    // ด้วยอีเมลเสมอ (candKey(snap) ผ่าน applicantKey) เทียบ candKey ตรง ๆ จะไม่เจอ แล้วจะ
+    // push แถวใหม่ซ้ำแทนที่จะอัปเดตแถวเดิม (ดู F10 ใน task-2-report.md)
+    const aliases = resolveCandidateAliases(candKey(snap));
+    const i = all.findIndex(x => aliasesIntersect(candKeyAliases(x), aliases) && !x._sealed);
     const allDone = sessions.every(s => s.status === 'completed');
     if (i >= 0) {
       all[i] = { ...all[i], ...snap };
@@ -5536,9 +5550,18 @@ function saveResultSnapshot(){
 
 // ── Admin: open the rich score dashboard (read-only) for a candidate ──
 var adminViewingResults = false;
-function adminHasScoreDash(nid){ return getResultSnapshots().some(x => candKey(x) === nid); }
+// nid ที่รับเข้ามาคือ candKey ที่มาจากฝั่ง exam_records (เช่นปุ่ม "📊 แดชบอร์ดคะแนน" ส่ง
+// candKey(indivExportData.rows[0])) ซึ่งสำหรับผู้สมัครก่อน migration จะเป็นอีเมล ในขณะที่
+// snapshot เก่าถูก key ด้วยเลขบัตร (nid) เทียบ candKey ตรง ๆ จึงไม่เจอ ต้องกวาด alias ก่อน
+// เหมือนฝั่งลบ (F1) — ไม่งั้นแดชบอร์ดคะแนนของผู้สมัครก่อน migration จะเปิดไม่ได้เลย
+// (ดู F9 ใน task-2-report.md)
+function adminHasScoreDash(nid){
+  const aliases = resolveCandidateAliases(nid);
+  return getResultSnapshots().some(x => aliasesIntersect(candKeyAliases(x), aliases));
+}
 function adminOpenScoreDash(nid){
-  const snaps = getResultSnapshots().filter(x => candKey(x) === nid);
+  const aliases = resolveCandidateAliases(nid);
+  const snaps = getResultSnapshots().filter(x => aliasesIntersect(candKeyAliases(x), aliases));
   if (!snaps.length){
     showToast('❌ ยังไม่มีข้อมูลแดชบอร์ดคะแนนของผู้สมัครนี้');
     return;
