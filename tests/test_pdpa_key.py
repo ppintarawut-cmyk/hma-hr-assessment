@@ -249,3 +249,39 @@ def test_editing_from_the_confirm_box_returns_to_the_form(open_exam):
     page.click("#confirm-email-yes")
     page.wait_for_selector("#p-dash.active")
     assert page.evaluate("() => applicant.email") == "other@example.com"
+
+
+def test_reg_btn_keeps_its_english_label_while_the_confirm_box_is_open(open_exam):
+    """F1 regression: submitReg() used to reset #reg-btn's label with the hardcoded
+    Thai literal 'ยืนยันและเริ่มทดสอบ →' rather than the current-language I18N string.
+    Under the old (pre-confirm-box) flow this was invisible — nav('p-dash') fired
+    synchronously right after, so the reset never painted. Now the confirm box sits
+    on top of the still-visible #p-register for as long as the candidate takes to
+    decide, so an English-mode candidate durably sees #reg-btn revert to Thai while
+    every other label on the page, including the new confirm box, reads English.
+    """
+    page = open_exam()
+    page.click("#lang-fab")   # drive the language switch the way the app itself does
+    _fill_registration(page)
+    page.click("#reg-btn")
+    page.wait_for_selector("#confirm-email-box", state="visible")
+    expected = page.evaluate("() => I18N.reg_btn.en")
+    assert page.inner_text("#reg-btn") == expected
+
+
+def test_leaving_registration_hides_the_confirm_box_and_clears_pending_reg(open_exam):
+    """F2 regression: the '← กลับ' control (nav('p-landing')) neither hid
+    #confirm-email-box nor cleared pendingReg, so returning to registration later
+    showed a stale confirm box left over from a previous, abandoned attempt.
+    """
+    page = open_exam()
+    _fill_registration(page)
+    page.click("#reg-btn")
+    page.wait_for_selector("#confirm-email-box", state="visible")
+
+    page.click("#p-register .topbar button")   # '← กลับ' → nav('p-landing')
+    page.wait_for_selector("#p-landing.active")
+    page.evaluate("() => nav('p-register')")
+
+    page.wait_for_selector("#confirm-email-box", state="hidden")
+    assert page.evaluate("() => pendingReg") is None

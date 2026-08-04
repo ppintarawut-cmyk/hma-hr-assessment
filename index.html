@@ -1699,6 +1699,15 @@ function resetPositionPresets(){
 function nav(id) {
   // The score dashboard (p-results) is HR/admin-only. Candidates can never reach it.
   if (id === 'p-results' && !adminViewingResults) id = 'p-dash';
+  // Leaving the registration page with the email-confirm box still open (e.g. via
+  // "← กลับ") must not leave it — or the pending form data behind it — stale for
+  // whenever the candidate returns to p-register.
+  const prevActive = document.querySelector('.page.active');
+  if (prevActive && prevActive.id === 'p-register' && id !== 'p-register') {
+    pendingReg = null;
+    const box = document.getElementById('confirm-email-box');
+    if (box) box.style.display = 'none';
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
@@ -1796,7 +1805,7 @@ function submitReg() {
   document.getElementById('confirm-email-value').textContent = email;
   document.getElementById('confirm-email-box').style.display = 'block';
   document.getElementById('confirm-email-box').scrollIntoView({behavior:'smooth', block:'nearest'});
-  btn.innerHTML = 'ยืนยันและเริ่มทดสอบ →'; btn.disabled=false;
+  btn.innerHTML = t18n('reg_btn'); btn.disabled=false;
 }
 
 let pendingReg = null;   // ค่าจากฟอร์มที่รอผู้สมัครยืนยันอีเมล
@@ -1827,7 +1836,7 @@ function confirmEmailAndStart(){
   });
   pendingReg = null;
   document.getElementById('confirm-email-box').style.display = 'none';
-  btn.innerHTML = 'ถูกต้อง เริ่มทดสอบ →';
+  btn.innerHTML = t18n('confirm_email_yes');
   btn.disabled = false;
   nav('p-dash');
 }
