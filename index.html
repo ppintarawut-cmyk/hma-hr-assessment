@@ -2799,11 +2799,18 @@ function renderCandidatesPage(){
         return `<span class="cand-test-pill ${out==='P'?'cand-pass':'cand-fail'}">${c} ${sc}</span>`;
       }).join(' ');
       const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), candKey:nid });
+      // rowKeyEnc/nid ห้าม splice ตรง ๆ เข้าไปใน onclick="..." เป็น JS string literal —
+      // ตัว HTML parser จะ decode entity ของ attribute (เช่น &#39; ที่ esc() ทำ) กลับเป็น
+      // อักขระจริงก่อนคอมไพล์เป็น JS เสมอ ดังนั้น esc()/encodeURIComponent (ซึ่งไม่ escape
+      // ' ( ) ) ไม่ช่วยในบริบทนี้เลย — ใส่เป็น data-* attribute (ข้อความ HTML ล้วน อ่านผ่าน
+      // .dataset ไม่มีวันถูกคอมไพล์เป็นโค้ด) แล้วผูก handler แบบ delegated event listener
+      // แทน (ดู addEventListener('click', ...) ท้าย renderCandidatesPage นี้)
+      const rowKeyEnc = encodeURIComponent(rowKey);
       const delBtn = canDelete
-        ? `<button class="btn btn-sm" style="background:var(--red-l);color:var(--red);font-size:11px;padding:3px 8px" onclick="deleteApplicantData('${encodeURIComponent(rowKey)}')" title="ลบผู้สมัครนี้">🗑</button>`
+        ? `<button class="btn btn-sm js-del-btn" style="background:var(--red-l);color:var(--red);font-size:11px;padding:3px 8px" data-row-key="${rowKeyEnc}" title="ลบผู้สมัครนี้">🗑</button>`
         : '';
       return `<tr>
-        <td style="text-align:center"><input type="checkbox" class="cand-check" ${checked} onclick="toggleCandSelect('${esc(nid)}')"></td>
+        <td style="text-align:center"><input type="checkbox" class="cand-check js-cand-select" ${checked} data-cand-key="${esc(nid)}"></td>
         <td><div style="display:flex;align-items:center;gap:8px">
           <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(init)}</div>
           <div><div style="font-weight:500;font-size:13px;white-space:nowrap">${esc(p.name||'—')}</div>
@@ -2815,7 +2822,7 @@ function renderCandidatesPage(){
         <td style="font-size:12px;color:var(--gray-400);white-space:nowrap">${esc(p.datetime||'—')}</td>
         <td style="font-size:11px;line-height:1.9">${pills}</td>
         <td style="text-align:center;font-weight:600;color:${p.avg!=null?(p.avg>=70?'var(--pass)':'var(--red)'):'var(--gray-400)'}">${p.avg!=null?p.avg:'—'}</td>
-        <td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="showIndivPdf('${encodeURIComponent(rowKey)}')">📄 ดูผล</button> ${delBtn}</td>
+        <td style="white-space:nowrap"><button class="btn btn-secondary btn-sm js-pdf-btn" style="font-size:11px" data-row-key="${rowKeyEnc}">📄 ดูผล</button> ${delBtn}</td>
       </tr>`;
     }).join('');
   }
@@ -2830,6 +2837,21 @@ function renderCandidatesPage(){
   const delSel = document.getElementById('cand-delbtn'); if (delSel) delSel.style.display = canDelete ? '' : 'none';
   syncCandDirLabel();
 }
+
+// Delegated click handler for the Candidates table (#cand-tbody). The tbody element
+// itself is static (never replaced), only its innerHTML is re-rendered by
+// renderCandidatesPage() above — attaching once here (instead of via a per-row
+// onclick="...('${candidateValue}')" string, which a candidate's own email/name could
+// break out of, see the security note above rowKeyEnc) is both safer and cheaper than
+// re-binding listeners on every render.
+document.getElementById('cand-tbody')?.addEventListener('click', e => {
+  const del = e.target.closest('.js-del-btn');
+  if (del){ deleteApplicantData(del.dataset.rowKey); return; }
+  const pdf = e.target.closest('.js-pdf-btn');
+  if (pdf){ showIndivPdf(pdf.dataset.rowKey); return; }
+  const sel = e.target.closest('.js-cand-select');
+  if (sel){ toggleCandSelect(sel.dataset.candKey); }
+});
 
 function renderCandPager(pages){
   const host = document.getElementById('cand-pgbtns'); if (!host) return;
@@ -3085,30 +3107,48 @@ function filterAdmin() {
     const pill=r.out==='P'?'<span class="badge b-pass">✓ P</span>':'<span class="badge b-fail">✗ NP</span>';
     const sc=`<span style="font-weight:600;color:${r.out==='P'?'var(--teal)':'var(--red)'}">${r.score}</span><span style="color:var(--gray-400);font-size:11px">/100</span>`;
     const rowKey = JSON.stringify({fn:r.fn,ln:r.ln,candKey:candKey(r)});
+    // ดู comment เดียวกันใน renderCandidatesPage(): ห้าม splice rowKey เข้า onclick="..."
+    // เป็น JS string literal ตรง ๆ — ใส่เป็น data-row-key แล้วผูก delegated listener แทน
+    const rowKeyEnc = encodeURIComponent(rowKey);
     const attempts = attemptMap[candKey(r)] || 0;
     const attemptTag = attempts > 1
       ? `<span style="font-size:10px;background:var(--amber-l);color:var(--amber);padding:1px 6px;border-radius:8px;margin-left:4px">ครั้งที่ ${attempts}</span>`
       : attempts===1 ? `<span style="font-size:10px;background:var(--gray-100);color:var(--gray-500);padding:1px 6px;border-radius:8px;margin-left:4px">ครั้งที่ 1</span>` : '';
     const delBtn = canDelete
-      ? `<button class="btn btn-sm" style="background:var(--red-l);color:var(--red);font-size:11px;padding:3px 8px" onclick="deleteApplicantData('${encodeURIComponent(rowKey)}')">🗑</button>`
+      ? `<button class="btn btn-sm js-del-btn" style="background:var(--red-l);color:var(--red);font-size:11px;padding:3px 8px" data-row-key="${rowKeyEnc}">🗑</button>`
       : '';
     return `<tr style="cursor:pointer${r.isLive?';background:color-mix(in srgb, var(--teal-l) 40%, transparent)':''}">
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" ><div style="display:flex;align-items:center;gap:8px">
+      <td class="js-row-detail" data-row-key="${rowKeyEnc}" ><div style="display:flex;align-items:center;gap:8px">
         <div class="avatar" style="background:${colors[ci]};color:${textc[ci]}">${esc(r.fn.charAt(0))}</div>
         <div>
           <div style="font-weight:500;white-space:nowrap">${liveTag}${esc(r.fn)} ${esc(r.ln)}${attemptTag}</div>
           <div style="font-size:11px;color:var(--gray-400)">${esc(candKey(r))}</div>
         </div>
       </div></td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="white-space:nowrap">${esc(r.test)}</td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="font-size:12px;color:var(--gray-400);white-space:nowrap">${esc(r.date)}</td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')" style="font-size:12px;white-space:nowrap">${esc(r.time)}</td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')">${sc}</td>
-      <td onclick="showDetailByKey('${encodeURIComponent(rowKey)}')">${pill}</td>
-      <td style="white-space:nowrap"><button class="btn btn-secondary btn-sm" style="font-size:11px" onclick="showIndivPdf('${encodeURIComponent(rowKey)}')">📄 ดูผล</button> ${delBtn}</td>
+      <td class="js-row-detail" data-row-key="${rowKeyEnc}" style="white-space:nowrap">${esc(r.test)}</td>
+      <td class="js-row-detail" data-row-key="${rowKeyEnc}" style="font-size:12px;color:var(--gray-400);white-space:nowrap">${esc(r.date)}</td>
+      <td class="js-row-detail" data-row-key="${rowKeyEnc}" style="font-size:12px;white-space:nowrap">${esc(r.time)}</td>
+      <td class="js-row-detail" data-row-key="${rowKeyEnc}">${sc}</td>
+      <td class="js-row-detail" data-row-key="${rowKeyEnc}">${pill}</td>
+      <td style="white-space:nowrap"><button class="btn btn-secondary btn-sm js-pdf-btn" style="font-size:11px" data-row-key="${rowKeyEnc}">📄 ดูผล</button> ${delBtn}</td>
     </tr>`;
   }).join('');
 }
+
+// Delegated click handler for the admin overview table (#a-tbody), same rationale as
+// #cand-tbody's listener above renderCandPager(): rowKey is candidate-controlled
+// (name/email), so it must never be compiled as JS via an inline onclick="...".
+// The row-detail cells share one class (.js-row-detail); the button cell is
+// deliberately excluded from it (matches the original markup, where only the six
+// data columns opened showDetailByKey — the buttons column never did).
+document.getElementById('a-tbody')?.addEventListener('click', e => {
+  const del = e.target.closest('.js-del-btn');
+  if (del){ deleteApplicantData(del.dataset.rowKey); return; }
+  const pdf = e.target.closest('.js-pdf-btn');
+  if (pdf){ showIndivPdf(pdf.dataset.rowKey); return; }
+  const cell = e.target.closest('.js-row-detail');
+  if (cell){ showDetailByKey(cell.dataset.rowKey); }
+});
 
 function resetFilter(){
   document.getElementById('f-name').value='';

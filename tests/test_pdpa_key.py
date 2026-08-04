@@ -165,3 +165,46 @@ def test_completing_an_attempt_updates_a_legacy_unsealed_snapshot_instead_of_dup
     snaps = page.evaluate(
         "() => JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]')")
     assert len(snaps) == 1
+
+
+def test_candidate_email_cannot_break_out_of_the_rendered_row_controls(open_exam):
+    """Security regression: the registration email validator
+    (/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/, index.html) rejects only whitespace and `@` —
+    `'`, `(`, `)` and `-` all pass. That value becomes candidate_key/email and flows
+    into candKey(p), which the Candidates table interpolates into its row controls.
+
+    Before the fix, renderCandidatesPage() built those controls as
+    onclick="toggleCandSelect('${esc(nid)}')" / onclick="deleteApplicantData('${...}')".
+    esc() HTML-entity-escapes `'` to `&#39;` — correct for HTML *text*, but an
+    attribute's value is entity-decoded by the HTML parser *before* the browser
+    compiles it as JavaScript, so `&#39;` becomes a real `'` that closes the JS
+    string literal early. encodeURIComponent (used for the delete/pdf button's
+    rowKey) doesn't escape `'`, `(` or `)` either, so it has the same hole.
+
+    This payload (`'`, `(`, `)`, `-`) turns that hole into arbitrary script
+    execution in the HR admin's own session — the session with delete rights and
+    the Firestore connection — the moment the row is rendered and its control is
+    used, no candidate cooperation required beyond registering with this email.
+    """
+    payload = "a')-(window.__xss_fired=1)-('b@x.co"
+    rec = exam_record(candidate_key=payload, email=payload, name="เพย์โหลด ทดสอบ")
+    page = open_exam(exam_records=[rec])
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.evaluate("() => { currentAdmin = { role: 'superadmin' }; nav('p-candidates'); }")
+
+    # Rendering the row alone must not run attacker script.
+    assert page.evaluate("() => window.__xss_fired") is None
+
+    # The checkbox control must still work — and select the FULL payload as the
+    # candidate key, not a truncated fragment (a sign the string was reinterpreted
+    # as JS rather than passed through as one opaque value).
+    page.locator('#cand-tbody .cand-check').click()
+    assert page.evaluate("() => [...candSelected]") == [payload]
+    assert page.evaluate("() => window.__xss_fired") is None
+
+    # The delete control must still work and remove exactly this candidate.
+    page.locator('#cand-tbody button[title="ลบผู้สมัครนี้"]').click()
+    remaining = page.evaluate(
+        "() => JSON.parse(localStorage.getItem('hma_exam_records') || '[]').length")
+    assert remaining == 0
+    assert page.evaluate("() => window.__xss_fired") is None
