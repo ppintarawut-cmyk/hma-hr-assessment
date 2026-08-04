@@ -212,7 +212,6 @@ def test_candidate_email_cannot_break_out_of_the_rendered_row_controls(open_exam
 
 def _fill_registration(page, email="Somchai@Example.com"):
     page.evaluate("() => nav('p-register')")
-    page.fill("#r-nid", "1234567890123")
     page.fill("#r-fn", "สมชาย")
     page.fill("#r-ln", "ทดสอบ")
     page.fill("#r-age", "28")
@@ -285,3 +284,145 @@ def test_leaving_registration_hides_the_confirm_box_and_clears_pending_reg(open_
 
     page.wait_for_selector("#confirm-email-box", state="hidden")
     assert page.evaluate("() => pendingReg") is None
+
+
+# ── Task 4: stop collecting the national ID; fix consent to match reality ──
+
+COLLECTED_TH = ["ชื่อ-นามสกุล", "อีเมล", "เบอร์โทรศัพท์", "อายุ",
+                "ประสบการณ์", "ตำแหน่งที่สมัคร", "ผลการทดสอบ"]
+
+
+def test_registration_form_has_no_national_id_field(open_exam):
+    page = open_exam()
+    page.evaluate("() => nav('p-register')")
+    assert page.locator("#r-nid").count() == 0
+
+
+def test_consent_text_no_longer_mentions_the_national_id(open_exam):
+    page = open_exam()
+    for lang in ("th", "en"):
+        text = page.evaluate(f"() => I18N.pdpa_consent.{lang}")
+        assert "เลขประจำตัวประชาชน" not in text
+        assert "national ID" not in text
+
+
+COLLECTED_EN = ["full name", "email", "phone number", "age",
+                "work experience", "position", "test results"]
+
+
+def test_consent_text_lists_every_field_the_form_collects(open_exam):
+    page = open_exam()
+    text = page.evaluate("() => I18N.pdpa_consent.th")
+    for field in COLLECTED_TH:
+        assert field in text, f"consent ไม่ได้ประกาศว่าเก็บ {field}"
+
+
+def test_english_consent_text_lists_the_same_fields(open_exam):
+    page = open_exam()
+    text = page.evaluate("() => I18N.pdpa_consent.en").lower()
+    for field in COLLECTED_EN:
+        assert field in text, f"English consent is missing {field}"
+
+
+def test_pdpa_notice_links_to_the_privacy_page(open_exam):
+    page = open_exam()
+    page.evaluate("() => nav('p-register')")
+    href = page.get_attribute("#p-register a[href='privacy.html']", "href")
+    assert href == "privacy.html"
+
+
+def test_privacy_page_loads_and_lists_the_collected_fields(open_exam, server):
+    page = open_exam()
+    page.goto(f"{server}/privacy.html")
+    body = page.inner_text("body")
+    for field in COLLECTED_TH:
+        assert field in body
+
+
+def test_candidate_table_shows_the_email_not_a_national_id(open_exam):
+    page = open_exam(exam_records=[exam_record()])
+    page.evaluate("() => { renderCandidates(); }")
+    assert "somchai@example.com" in page.inner_text("#a-cand-tbody")
+    assert "1234567890123" not in page.inner_text("#a-cand-tbody")
+
+
+# ── Item A: the randomization seed must not collapse once nid is gone ──
+#
+# getRandomizedQs() used to seed its shuffle from applicant.nid. Once the
+# national-ID field is removed, applicant.nid is undefined for every
+# candidate, so every seed collapses to the same 'x' fallback and every
+# candidate would see the questions in the identical order. The seed must
+# key off applicantKey(applicant) (email, always lowercased) instead.
+
+
+def test_two_candidates_with_different_emails_get_different_question_orders(open_exam):
+    page = open_exam()
+    order_a = page.evaluate("""
+        () => {
+            applicant = { name: 'A', email: 'alice@example.com' };
+            return getRandomizedQs({ test: { code: 'IQ' } }).map(q => q.q);
+        }
+    """)
+    order_b = page.evaluate("""
+        () => {
+            applicant = { name: 'B', email: 'bob@example.com' };
+            return getRandomizedQs({ test: { code: 'IQ' } }).map(q => q.q);
+        }
+    """)
+    assert len(order_a) > 1
+    assert order_a != order_b
+
+
+def test_same_candidate_gets_the_same_question_order_across_a_resume(open_exam):
+    page = open_exam()
+    _fill_registration(page, email="Somchai@Example.com")
+    page.click("#reg-btn")
+    page.click("#confirm-email-yes")
+    page.wait_for_selector("#p-dash.active")
+
+    # Start the IQ test directly (skip the intro screen) so a randomized order
+    # is generated and persisted via the real window.openTest() wrapper.
+    page.evaluate("""
+        () => {
+            curSess = sessions.findIndex(s => s.test.code === 'IQ');
+            sessions[curSess].status = 'in_progress';
+            window.openTest();
+        }
+    """)
+    order_before = page.evaluate("() => sessions[curSess]._randomizedQs.map(q => q.q)")
+    assert len(order_before) > 1
+
+    # Simulate a refresh: reload the page (in-memory state is gone, but the
+    # session was persisted to localStorage by window.openTest()'s wrapper)
+    # and resume through the real resumeSession() path.
+    page.reload()
+    page.wait_for_function("typeof submitReg !== 'undefined'")
+    page.evaluate("() => resumeSession()")
+    order_after = page.evaluate("() => sessions[curSess]._randomizedQs.map(q => q.q)")
+
+    assert order_after == order_before
+
+
+# ── Item C: export column headers must not lie about what they contain ──
+#
+# buildExportData() (feeding both the CSV and the XLSX exports) used to label
+# its identity column "เลขประชาชน" (national ID) even though the value is
+# candKey(r) — the candidate's email for every post-migration record. A PII
+# column whose header lies is exactly what this task exists to fix.
+
+
+def test_export_data_does_not_label_the_identity_column_a_national_id(open_exam):
+    page = open_exam(exam_records=[exam_record()])
+    row = page.evaluate("() => buildExportData()[0]")
+    assert "เลขประชาชน" not in row
+
+
+def test_export_data_identity_column_holds_the_candidate_key(open_exam):
+    page = open_exam(exam_records=[exam_record()])
+    row = page.evaluate("() => buildExportData()[0]")
+    # Whatever the column is called now, it must actually hold the candidate's
+    # identity key (the email, for a post-migration record) rather than a
+    # 13-digit national ID.
+    values = list(row.values())
+    assert "somchai@example.com" in values
+    assert "1234567890123" not in values

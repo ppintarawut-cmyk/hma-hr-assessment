@@ -701,11 +701,6 @@ textarea.q-inp:focus{border-color:var(--teal)}
     <p data-i18n="reg_intro" style="font-size:13px;color:var(--gray-400);margin-bottom:16px">กรอกข้อมูลให้ครบถ้วนก่อนเริ่มทำแบบทดสอบ</p>
     <div class="card">
       <div id="reg-err" class="alert alert-err"></div>
-      <div class="field">
-        <label><span data-i18n="f_nid">เลขบัตรประจำตัวประชาชน</span> <span style="color:var(--red)">*</span></label>
-        <input id="r-nid" type="text" maxlength="13" placeholder="1234567890123">
-        <div class="err-msg" id="e-nid" style="display:none"></div>
-      </div>
       <div class="grid2">
         <div class="field">
           <label><span data-i18n="f_fn">ชื่อ</span> <span style="color:var(--red)">*</span></label>
@@ -745,16 +740,16 @@ textarea.q-inp:focus{border-color:var(--teal)}
       </div>
       <div class="alert alert-info" style="display:flex;gap:8px;align-items:flex-start">
         <span>🔒</span>
-        <span data-i18n="pdpa_info">ข้อมูลของท่านเก็บรักษาภายใต้นโยบายความเป็นส่วนตัว (PDPA) และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น</span>
+        <span data-i18n-html="pdpa_info">ข้อมูลของท่านเก็บรักษาตาม <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">นโยบายความเป็นส่วนตัว</a> และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น</span>
       </div>
       <!-- PDPA Consent -->
       <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
           <input type="checkbox" id="pdpa-consent" style="margin-top:2px;width:16px;height:16px;accent-color:var(--teal);flex-shrink:0">
           <span data-i18n-html="pdpa_consent" style="font-size:12px;color:var(--gray-500);line-height:1.6">
-            ข้าพเจ้ายินยอมให้ <strong>HMA (Hino Motors Asia)</strong> เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล
-            ได้แก่ ชื่อ-นามสกุล เลขประจำตัวประชาชน อีเมล และผลการทดสอบ
-            เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562
+            ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล
+            ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร และผลการทดสอบ
+            เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562 โดยเก็บไว้ไม่เกิน 2 ปี
           </span>
         </label>
         <div class="err-msg" id="e-pdpa" style="display:none;margin-top:6px">กรุณายอมรับเงื่อนไขการเก็บข้อมูล</div>
@@ -1121,7 +1116,7 @@ textarea.q-inp:focus{border-color:var(--teal)}
   <div class="main-wide">
     <div class="card" style="padding:14px">
       <div class="cand-toolbar">
-        <input type="text" class="grow" id="cand-search" placeholder="🔍 ค้นหาชื่อ / ตำแหน่ง / เลขบัตร..." oninput="onCandSearch()">
+        <input type="text" class="grow" id="cand-search" placeholder="🔍 ค้นหาชื่อ / ตำแหน่ง / อีเมล..." oninput="onCandSearch()">
         <select id="cand-sort" onchange="onCandControls()" title="เรียงตาม">
           <option value="date">🕒 วันเวลาที่สอบ</option>
           <option value="name">🔤 ชื่อ</option>
@@ -1388,7 +1383,6 @@ const I18N = {
   reg_title:     { th:'ลงทะเบียนเข้าสอบ',     en:'Registration' },
   back:          { th:'← กลับ',              en:'← Back' },
   reg_intro:     { th:'กรอกข้อมูลให้ครบถ้วนก่อนเริ่มทำแบบทดสอบ', en:'Complete the form below before starting the assessment' },
-  f_nid:         { th:'เลขบัตรประจำตัวประชาชน', en:'National ID number' },
   f_fn:          { th:'ชื่อ',                en:'First name' },
   f_ln:          { th:'นามสกุล',             en:'Last name' },
   f_age:         { th:'อายุ (ปี)',           en:'Age (years)' },
@@ -1397,8 +1391,8 @@ const I18N = {
   f_postype:     { th:'กลุ่มตำแหน่ง (กำหนดชุดข้อสอบ)', en:'Position group (defines test set)' },
   f_email:       { th:'อีเมล',               en:'Email' },
   f_phone:       { th:'เบอร์โทรศัพท์',         en:'Phone number' },
-  pdpa_info:     { th:'ข้อมูลของท่านเก็บรักษาภายใต้นโยบายความเป็นส่วนตัว (PDPA) และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น', en:'Your data is stored under our privacy policy (PDPA) and used solely for recruitment consideration.' },
-  pdpa_consent:  { th:'ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ-นามสกุล เลขประจำตัวประชาชน อีเมล และผลการทดสอบ เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562', en:'I consent to HMA (Hino Motors Asia) collecting and using my personal data — full name, national ID, email and test results — for recruitment purposes, in accordance with the Personal Data Protection Act (PDPA) B.E. 2562.' },
+  pdpa_info:     { th:'ข้อมูลของท่านเก็บรักษาตาม <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">นโยบายความเป็นส่วนตัว</a> และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น', en:'Your data is handled under our <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">privacy notice</a> and used solely for recruitment consideration.' },
+  pdpa_consent:  { th:'ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร และผลการทดสอบ เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562 โดยเก็บไว้ไม่เกิน 2 ปี', en:'I consent to HMA (Hino Motors Asia) collecting and using my personal data — full name, email, phone number, age, work experience, position applied for and test results — for recruitment purposes, in accordance with the Personal Data Protection Act (PDPA) B.E. 2562, retained for no longer than 2 years.' },
   reg_btn:       { th:'ยืนยันและเริ่มทดสอบ →', en:'Confirm & start →' },
   confirm_email_lead: { th:'ผลการทดสอบจะถูกส่งไปที่อีเมลนี้ กรุณาตรวจสอบให้ถูกต้อง', en:'Your results will be sent to this address. Please check that it is correct.' },
   confirm_email_yes:  { th:'ถูกต้อง เริ่มทดสอบ →', en:'Correct — start the test →' },
@@ -1751,11 +1745,11 @@ function showErr(id, msg) {
   const fid=id.replace('e-','r-'); const fel=(fid==='r-pos'?document.getElementById('reg-pos'):document.getElementById(fid)); fel?.classList.add('err');
 }
 function clearErrs() {
-  ['e-nid','e-fn','e-ln','e-age','e-pos','e-email','e-pdpa'].forEach(id => {
+  ['e-fn','e-ln','e-age','e-pos','e-email','e-pdpa'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.style.display='none'; }
   });
-  ['r-nid','r-fn','r-ln','r-age','reg-pos','r-email'].forEach(id => {
+  ['r-fn','r-ln','r-age','reg-pos','r-email'].forEach(id => {
     document.getElementById(id)?.classList.remove('err');
   });
   document.getElementById('reg-err').style.display='none';
@@ -1763,7 +1757,6 @@ function clearErrs() {
 
 function submitReg() {
   clearErrs();
-  const nid   = document.getElementById('r-nid').value.trim();
   const fn    = document.getElementById('r-fn').value.trim();
   const ln    = document.getElementById('r-ln').value.trim();
   const age   = Number(document.getElementById('r-age').value);
@@ -1774,7 +1767,6 @@ function submitReg() {
   const phone = document.getElementById('r-phone')?.value.trim() || '';
 
   let ok = true;
-  if (!/^\d{13}$/.test(nid)) { showErr('e-nid','เลขบัตรต้องเป็นตัวเลข 13 หลัก'); ok=false; }
   if (!fn) { showErr('e-fn','กรุณากรอกชื่อ'); ok=false; }
   if (!ln) { showErr('e-ln','กรุณากรอกนามสกุล'); ok=false; }
   if (!age||age<18||age>70) { showErr('e-age','อายุต้องอยู่ระหว่าง 18-70 ปี'); ok=false; }
@@ -1797,7 +1789,7 @@ function submitReg() {
 
   pendingReg = {
     name: `${fn} ${ln}`,
-    pos, nid, postype: posId, email, phone,
+    pos, postype: posId, email, phone,
     age: Number(document.getElementById('r-age').value) || 0,
     exp: Number(document.getElementById('r-exp')?.value) || 0,
     preset,
@@ -1824,7 +1816,7 @@ function confirmEmailAndStart(){
 
   const preset = pendingReg.preset;
   applicant = {
-    name: pendingReg.name, pos: pendingReg.pos, nid: pendingReg.nid, postype: pendingReg.postype,
+    name: pendingReg.name, pos: pendingReg.pos, postype: pendingReg.postype,
     email: pendingReg.email, phone: pendingReg.phone,
     age: pendingReg.age, exp: pendingReg.exp,
   };
@@ -1958,7 +1950,7 @@ function randomizeQuestions(qs, seed, shuffleOpts = true) {
 // safe to call repeatedly; the seed makes it idempotent across resume/refresh.
 function getRandomizedQs(s) {
   if (!s._randomizedQs) {
-    const seed = `${(applicant && applicant.nid) || 'x'}|${s.test.code}`;
+    const seed = `${applicantKey(applicant) || 'x'}|${s.test.code}`;
     // Look up the live test definition so an admin toggle applies even to
     // sessions whose cached s.test copy predates the change. Default = shuffle.
     const tdef = TESTS.find(t => t.code === s.test.code) || s.test;
@@ -3810,7 +3802,7 @@ function buildExportData() {
   const fromStored = stored.map(r => {
     const obj = {
       'วันที่/เวลา':    r.datetime     || '',
-      'เลขประชาชน':    candKey(r)     || '',
+      'รหัสผู้สมัคร':    candKey(r)     || '',
       'ชื่อ-สกุล':     r.name         || '',
       'Email':           r.email        || '',
       'โทรศัพท์':       r.phone        || '',
@@ -3839,7 +3831,7 @@ function buildExportData() {
   });
   const fromDemo = Object.values(byNid).map(p => {
     const obj = {
-      'วันที่/เวลา':'(ตัวอย่าง)','เลขประชาชน':p.key,'ชื่อ-สกุล':p.name,
+      'วันที่/เวลา':'(ตัวอย่าง)','รหัสผู้สมัคร':p.key,'ชื่อ-สกุล':p.name,
       'Email':'','โทรศัพท์':'','อายุ':'','ประสบการณ์(ปี)':'','ตำแหน่ง':p.pos,'ครั้งที่':1,
     };
     CODES.forEach(c => {
@@ -3881,12 +3873,12 @@ function exportToXLSX() {
 
   // ── SHEET 1: ผลสอบรวม ─────────────────────────────────────────────
   const s1Headers = [
-    'วันที่/เวลา','เลขประชาชน','ชื่อ-สกุล','Email','โทรศัพท์','อายุ','ประสบ.(ปี)','ตำแหน่ง','ครั้งที่',
+    'วันที่/เวลา','รหัสผู้สมัคร','ชื่อ-สกุล','Email','โทรศัพท์','อายุ','ประสบ.(ปี)','ตำแหน่ง','ครั้งที่',
     ...CODES.flatMap(c => [c+' คะแนน', c+' ผล', c+' เวลา', c+' ออกจากจอ']),
     'ผ่าน/ทั้งหมด',
   ];
   const s1Rows = data.map(r => [
-    r['วันที่/เวลา'], r['เลขประชาชน'], r['ชื่อ-สกุล'], r['Email'], r['โทรศัพท์'],
+    r['วันที่/เวลา'], r['รหัสผู้สมัคร'], r['ชื่อ-สกุล'], r['Email'], r['โทรศัพท์'],
     r['อายุ'], r['ประสบการณ์(ปี)'], r['ตำแหน่ง'], r['ครั้งที่'],
     ...CODES.flatMap(c => [r[c+'_คะแนน'], r[c+'_ผล'], r[c+'_เวลา'], r[c+'_ออกจากหน้าจอ']]),
     r['ผ่าน/ทั้งหมด'],
@@ -3929,17 +3921,17 @@ function exportToXLSX() {
   // ── SHEET 3: ข้อมูลผู้สมัคร ──────────────────────────────────────
   const byNid = {};
   data.forEach(r => {
-    const k = r['เลขประชาชน'];
+    const k = r['รหัสผู้สมัคร'];
     if (!k) return;
     if (!byNid[k] || r['ครั้งที่'] > byNid[k]['ครั้งที่']) byNid[k] = r;
   });
   const s3 = [
     ['ข้อมูลผู้สมัคร','','','','','','',''],
     [],
-    ['เลขประชาชน','ชื่อ-สกุล','Email','โทรศัพท์','อายุ','ประสบการณ์(ปี)','ตำแหน่ง','จำนวนครั้งที่สอบ'],
+    ['รหัสผู้สมัคร','ชื่อ-สกุล','Email','โทรศัพท์','อายุ','ประสบการณ์(ปี)','ตำแหน่ง','จำนวนครั้งที่สอบ'],
     ...Object.values(byNid).map(r => {
-      const cnt = data.filter(x => x['เลขประชาชน'] === r['เลขประชาชน']).length;
-      return [r['เลขประชาชน'],r['ชื่อ-สกุล'],r['Email'],r['โทรศัพท์'],r['อายุ'],r['ประสบการณ์(ปี)'],r['ตำแหน่ง'],cnt];
+      const cnt = data.filter(x => x['รหัสผู้สมัคร'] === r['รหัสผู้สมัคร']).length;
+      return [r['รหัสผู้สมัคร'],r['ชื่อ-สกุล'],r['Email'],r['โทรศัพท์'],r['อายุ'],r['ประสบการณ์(ปี)'],r['ตำแหน่ง'],cnt];
     }),
   ];
   const ws3 = XLSX.utils.aoa_to_sheet(s3);
@@ -5294,9 +5286,9 @@ function downloadIndivCSV() {
     const wb  = window.XLSX.utils.book_new();
     const aoa = [
       [person + ' — ผลการสอบ','','','','','','',''],
-      ['เลขประชาชน: ' + candKey(rows[0]),'','','','','','',''],
+      ['รหัสผู้สมัคร: ' + candKey(rows[0]),'','','','','','',''],
       [],
-      ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ-สกุล','เลขประชาชน','ตำแหน่ง'],
+      ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ-สกุล','รหัสผู้สมัคร','ตำแหน่ง'],
       ...rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, candKey(r), r.pos]),
     ];
     const ws = window.XLSX.utils.aoa_to_sheet(aoa);
@@ -5306,7 +5298,7 @@ function downloadIndivCSV() {
     window.XLSX.writeFile(wb, 'HMA_' + fname + '_' + date + '.xlsx');
     showToast('✅ Export Excel ' + person + ' สำเร็จ');
   } else {
-    const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ','เลขประชาชน','ตำแหน่ง'];
+    const headers = ['ชุดสอบ','วัน/เวลา','เวลาที่ใช้','คะแนน','เกณฑ์ผ่าน','ผล','ออกจากหน้าจอ','ชื่อ','รหัสผู้สมัคร','ตำแหน่ง'];
     const csvRows = rows.map(r=>[r.test, r.date, r.time, r.score, indivPassing(r), r.out, (r.leaves==null?'':r.leaves), person, candKey(r), r.pos]);
     const csv = [headers,...csvRows].map(row=>row.map(csvCell).join(',')).join('\n');
     const blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
@@ -5658,7 +5650,13 @@ function adminOpenScoreDash(nid){
     return;
   }
   const snap = snaps[snaps.length - 1];
-  applicant = { name: snap.name, pos: snap.pos, nid: candKey(snap), exp: snap.exp ?? '' };
+  // email (not nid): applicant.nid no longer exists (Task 4 stopped collecting
+  // the national ID) and getRandomizedQs()'s seed now reads applicantKey(applicant)
+  // (applicant.email) — carrying candKey(snap) under .email here keeps the review
+  // page's reconstructed question order keyed the same way it was during the
+  // live exam, for both post-migration (email) and legacy (candKey's nid fallback)
+  // snapshots alike.
+  applicant = { name: snap.name, pos: snap.pos, email: candKey(snap), exp: snap.exp ?? '' };
   sessions = snap.sessions.map(s => ({
     test: (typeof TESTS !== 'undefined' && TESTS.find(t => t.code === s.code)) ||
           { code:s.code, name:s.name, nameTH:s.nameTH, passing:s.passing, mins:s.mins },

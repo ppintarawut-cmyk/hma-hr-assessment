@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>นโยบายความเป็นส่วนตัว — HMA Testing System</title>
+<style>
+  :root{--teal:#0f9b78;--gray-900:#1a1d1f;--gray-700:#41474d;--gray-400:#8a9199;--gray-200:#e4e7eb;--gray-50:#f7f8f9;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Noto Sans Thai',system-ui,-apple-system,sans-serif;color:var(--gray-900);line-height:1.75;background:#fff}
+  .wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:24px;margin:0 0 4px}
+  h2{font-size:16px;margin:32px 0 8px;color:var(--teal)}
+  .updated{color:var(--gray-400);font-size:13px;margin-bottom:28px}
+  ul{padding-left:20px}
+  li{margin-bottom:4px}
+  .box{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:16px 18px;margin-top:8px}
+  a{color:var(--teal)}
+  .back{display:inline-block;margin-bottom:20px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← กลับหน้าแบบทดสอบ</a>
+  <h1>นโยบายความเป็นส่วนตัว</h1>
+  <div class="updated">ระบบแบบทดสอบผู้สมัครงาน — ปรับปรุงล่าสุด 3 สิงหาคม 2569</div>
+
+  <h2>ผู้ควบคุมข้อมูลส่วนบุคคล</h2>
+  <p>บริษัท ฮีโน่ มอเตอร์ส เอเซีย จำกัด (Hino Motors Asia Ltd. — HMA) ฝ่ายทรัพยากรบุคคล</p>
+  <div class="box" id="hr-contact"></div>
+
+  <h2>ข้อมูลที่เราเก็บ</h2>
+  <ul>
+    <li>ชื่อ-นามสกุล</li>
+    <li>อีเมล</li>
+    <li>เบอร์โทรศัพท์</li>
+    <li>อายุ</li>
+    <li>ประสบการณ์ทำงาน (จำนวนปี)</li>
+    <li>ตำแหน่งที่สมัคร</li>
+    <li>คำตอบและผลการทดสอบ</li>
+  </ul>
+  <p>เราไม่เก็บเลขประจำตัวประชาชน สำเนาบัตรประชาชน หรือข้อมูลทางการเงินใด ๆ
+     และจะไม่ขอรหัสผ่านจากท่านไม่ว่ากรณีใด</p>
+
+  <h2>วัตถุประสงค์และฐานทางกฎหมาย</h2>
+  <p>ใช้เพื่อประกอบการพิจารณาคัดเลือกบุคลากรเท่านั้น โดยอาศัย<strong>ความยินยอม</strong>ของท่าน
+     ที่ให้ไว้ก่อนเริ่มทำแบบทดสอบ ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562</p>
+
+  <h2>ที่จัดเก็บ</h2>
+  <p>ข้อมูลถูกจัดเก็บบน Google Firestore และในเครื่องของผู้ใช้งานระบบ
+     เข้าถึงได้เฉพาะเจ้าหน้าที่ฝ่ายทรัพยากรบุคคลที่ได้รับสิทธิ์</p>
+
+  <h2>ระยะเวลาเก็บรักษา</h2>
+  <p>ไม่เกิน 2 ปีนับจากวันที่ท่านทำแบบทดสอบ</p>
+
+  <h2>สิทธิของท่าน</h2>
+  <ul>
+    <li>ขอเข้าถึงและขอสำเนาข้อมูลของท่าน</li>
+    <li>ขอแก้ไขข้อมูลที่ไม่ถูกต้อง</li>
+    <li>ขอให้ลบข้อมูล</li>
+    <li>ถอนความยินยอมเมื่อใดก็ได้</li>
+    <li>ร้องเรียนต่อสำนักงานคณะกรรมการคุ้มครองข้อมูลส่วนบุคคล</li>
+  </ul>
+  <p>ใช้สิทธิได้โดยติดต่อผู้รับผิดชอบตามข้อมูลด้านบน</p>
+</div>
+<script>
+// ต้องตรงกับ HR_CONTACT ใน index.html — ดู Task 5
+const HR_CONTACT = {
+  name:  'ยังไม่ระบุ — ต้องใส่ก่อน cutover',
+  email: 'ยังไม่ระบุ@hinomotorsasia.com',
+  phone: 'ยังไม่ระบุ',
+};
+document.getElementById('hr-contact').innerHTML =
+  `<div><strong>ผู้รับผิดชอบ:</strong> ${HR_CONTACT.name}</div>` +
+  `<div><strong>อีเมล:</strong> <a href="mailto:${HR_CONTACT.email}">${HR_CONTACT.email}</a></div>` +
+  `<div><strong>โทรศัพท์:</strong> ${HR_CONTACT.phone}</div>`;
+</script>
+</body>
+</html>
