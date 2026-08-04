@@ -2393,7 +2393,7 @@ function getLiveRows() {
     .map((s, i) => ({
       id:   'live_' + i,
       fn, ln,
-      candidate_key: (applicant.email || '').toLowerCase(),
+      candidate_key: applicantKey(applicant),
       test: s.test.code,
       date: now,
       time: s.remainSecs != null
@@ -2512,8 +2512,51 @@ function renderAdmin() {
 // (exam_records.national_id / result_snapshots.nid) จึง fallback ให้แถวเก่า
 // ยังแสดงผลได้หลังเปลี่ยน — ห้ามลบ fallback จนกว่า migration บน Firestore จะจบ
 function candKey(r){
-  return (r && (r.candidate_key || (r.email || '').toLowerCase()
-                || r.national_id || r.nid)) || '';
+  if (!r) return '';
+  const ck = r.candidate_key ? String(r.candidate_key).toLowerCase() : '';
+  return ck || (r.email || '').toLowerCase() || r.national_id || r.nid || '';
+}
+
+// อีเมลของ applicant ปัจจุบัน (ตัวพิมพ์เล็กเสมอ) — ใช้เฉพาะตอน "เขียน" record ใหม่
+// (candidate_key ของ exam record / snapshot ที่กำลังจะบันทึก) ห้ามใช้ที่จุด
+// เปรียบเทียบ/guard เพราะ applicant ที่ admin เปิดดูย้อนหลัง (adminOpenScoreDash)
+// ไม่มี email เลย — จุดเปรียบเทียบให้ใช้ candKey(applicant) แทน (มี fallback ไป nid)
+function applicantKey(a){
+  return (a && (a.email || '').toLowerCase()) || '';
+}
+
+// ทุกค่าที่ record นี้อาจถูกใช้เป็น key ได้ — ในช่วงก่อน migration record ของคนเดียวกัน
+// อาจถูก key ด้วยอีเมล (exam_records ซึ่งมี email) หรือด้วยเลขบัตร (result_snapshots
+// ซึ่งไม่มี email) การลบต้องกวาดให้ครบทุกค่า ไม่งั้นข้อมูลจะรอดจากการลบ
+function candKeyAliases(r){
+  const out = new Set();
+  if (r && r.candidate_key) out.add(String(r.candidate_key).toLowerCase());
+  if (r && r.email)         out.add(String(r.email).toLowerCase());
+  if (r && r.national_id)   out.add(String(r.national_id));
+  if (r && r.nid)           out.add(String(r.nid));
+  return out;
+}
+
+// รวม alias ทั้งหมดของผู้สมัครคนหนึ่ง โดยไล่หา record ทุกใบใน exam_records และ
+// result_snapshots ที่ candKey() ตรงกับ key ที่ระบุ แล้วรวม alias ของ record เหล่านั้น
+// เข้าด้วยกัน — ต้องกวาดทั้งสองคอลเลกชันเพราะคนเดียวกันอาจถูก key คนละแบบในแต่ละที่
+function resolveCandidateAliases(key){
+  const out = new Set();
+  if (!key) return out;
+  try {
+    const recs = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
+    recs.forEach(r => { if (candKey(r) === key) candKeyAliases(r).forEach(a => out.add(a)); });
+  } catch(e){}
+  try {
+    const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]');
+    snaps.forEach(s => { if (candKey(s) === key) candKeyAliases(s).forEach(a => out.add(a)); });
+  } catch(e){}
+  return out;
+}
+
+function aliasesIntersect(a, b){
+  for (const v of a) if (b.has(v)) return true;
+  return false;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2566,7 +2609,7 @@ function renderCandidates() {
     if (!applicant || !sessions.length) return null;
     const nameParts = applicant.name.split(' ');
     const profile = {
-      candidate_key: (applicant.email || '').toLowerCase(),
+      candidate_key: applicantKey(applicant),
       name:        applicant.name,
       email:       applicant.email || '',
       phone:       applicant.phone || '',
@@ -2628,8 +2671,6 @@ function renderCandidates() {
       if (sc == null) return `<span class="cand-test-pill cand-pend">${c}</span>`;
       return `<span class="cand-test-pill ${out==='P'?'cand-pass':'cand-fail'}">${c} ${sc}</span>`;
     }).join(' ');
-
-    const rowKey = JSON.stringify({ fn:(p.name||'').split(' ')[0], ln:(p.name||'').split(' ').slice(1).join(' '), candKey:candKey(p) });
 
     return `<tr style="${p.isLive ? 'background:color-mix(in srgb,var(--teal-l) 35%,transparent)' : ''}">
       <td>
@@ -2710,7 +2751,7 @@ function getCandidateList(){
 function getCandidateView(){
   let list = getCandidateList();
   const q = candSearch.trim().toLowerCase();
-  if (q) list = list.filter(p => `${p.name||''} ${p.position||''} ${p.email||''}`.toLowerCase().includes(q));
+  if (q) list = list.filter(p => `${p.name||''} ${p.position||''} ${candKey(p)||''}`.toLowerCase().includes(q));
   const dir = candDir === 'asc' ? 1 : -1;
   const cmpStr = (a,b) => a < b ? -1*dir : a > b ? 1*dir : 0;
   list.sort((a,b) => {
@@ -2840,11 +2881,16 @@ function bulkDeleteCandidates(){
   const nids = [...candSelected];
   if (!nids.length){ showToast('เลือกผู้สมัครก่อน'); return; }
   if (!confirm(`⚠️ ลบข้อมูลผู้สมัคร ${nids.length} คนที่เลือก?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
-  const nidSet = new Set(nids);
-  try { const s = JSON.parse(localStorage.getItem('hma_exam_records')||'[]');   localStorage.setItem('hma_exam_records',   JSON.stringify(s.filter(r => !nidSet.has(candKey(r))))); } catch(e){}
-  try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !nidSet.has(candKey(x))))); } catch(e){}
-  nids.forEach(nid => cloudDeleteCandidate(nid));
-  if (applicant && nidSet.has((applicant.email||'').toLowerCase())){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
+  // กวาดทุก alias ของทุกคนที่เลือก ไม่ใช่แค่ key เดียว — คนเดียวกันอาจถูก key คนละแบบใน
+  // exam_records กับ result_snapshots (ดูคอมเมนต์ที่ candKeyAliases)
+  const aliases = new Set();
+  nids.forEach(nid => resolveCandidateAliases(nid).forEach(a => aliases.add(a)));
+  try { const s = JSON.parse(localStorage.getItem('hma_exam_records')||'[]');   localStorage.setItem('hma_exam_records',   JSON.stringify(s.filter(r => !aliasesIntersect(candKeyAliases(r), aliases)))); } catch(e){}
+  try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !aliasesIntersect(candKeyAliases(x), aliases)))); } catch(e){}
+  cloudDeleteCandidate(aliases);
+  // เทียบด้วย candKey(applicant) (มี fallback ไป nid) ไม่ใช่แค่อีเมล — applicant ที่ admin
+  // เปิดดูย้อนหลังผ่าน adminOpenScoreDash ไม่มี email เลย
+  if (applicant && aliases.has(candKey(applicant))){ applicant = null; sessions = []; curSess = null; clearPersistedSession(); }
   candSelected.clear();
   showToast(`✅ ลบข้อมูล ${nids.length} คนแล้ว`);
   renderCandidatesPage();
@@ -3512,7 +3558,7 @@ function buildExamRecord() {
   const row = {
     datetime:     now.toLocaleString('th-TH'),
     _ts:          now.getTime(),   // sortable timestamp (Thai-locale string above isn't reliably parseable)
-    candidate_key: (applicant.email || '').toLowerCase(),
+    candidate_key: applicantKey(applicant),
     name:         applicant.name,
     email:        applicant.email || '',
     phone:        applicant.phone || '',
@@ -3581,21 +3627,27 @@ function deleteApplicantData(encodedKey) {
   const name = `${key.fn} ${key.ln}`;
   if (!confirm(`⚠️ ลบข้อมูลทั้งหมดของ "${name}" (${key.candKey})?\n\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
 
+  // กวาดทุก alias ของผู้สมัครคนนี้ก่อนลบ — record ก่อน migration อาจถูก key ด้วยอีเมลใน
+  // exam_records แต่ถูก key ด้วยเลขบัตรใน result_snapshots (ไม่งั้น snapshot จะรอดจากการลบ)
+  const aliases = resolveCandidateAliases(key.candKey);
+
   // ลบจาก localStorage (exam records + result snapshots)
   try {
     const stored = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
-    localStorage.setItem('hma_exam_records', JSON.stringify(stored.filter(r => candKey(r) !== key.candKey)));
+    localStorage.setItem('hma_exam_records', JSON.stringify(stored.filter(r => !aliasesIntersect(candKeyAliases(r), aliases))));
   } catch(e) {}
   try {
     const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]');
-    localStorage.setItem('hma_result_snapshots', JSON.stringify(snaps.filter(s => candKey(s) !== key.candKey)));
+    localStorage.setItem('hma_result_snapshots', JSON.stringify(snaps.filter(s => !aliasesIntersect(candKeyAliases(s), aliases))));
   } catch(e) {}
 
   // ลบจาก cloud ด้วย (ไม่งั้นรอบ sync ถัดไปจะดึงกลับมา) — ต้องเป็น admin ที่ล็อกอิน
-  cloudDeleteCandidate(key.candKey);
+  cloudDeleteCandidate(aliases);
 
-  // ถ้าเป็น applicant ปัจจุบัน ให้ reset session ด้วย
-  if (applicant && (applicant.email||'').toLowerCase() === key.candKey) {
+  // ถ้าเป็น applicant ปัจจุบัน ให้ reset session ด้วย — เทียบด้วย candKey(applicant) (มี
+  // fallback ไป nid) ไม่ใช่แค่อีเมล เพราะ applicant ที่ admin เปิดดูย้อนหลังผ่าน
+  // adminOpenScoreDash ไม่มี email เลย (ดู F3 ใน task-2-report.md)
+  if (applicant && aliases.has(candKey(applicant))) {
     applicant = null;
     sessions  = [];
     curSess   = null;
@@ -3609,14 +3661,27 @@ function deleteApplicantData(encodedKey) {
 }
 
 // Remove a candidate's records from Firestore (exam_records + result_snapshots).
-async function cloudDeleteCandidate(nid){
+// รับ aliases เป็น Set ของทุกค่าที่ record นี้อาจถูก key ไว้ (จาก resolveCandidateAliases /
+// candKeyAliases) แล้วกวาดทั้ง 4 คู่ collection/field เพราะ record ก่อน migration ไม่มี
+// candidate_key เลย — เดิม query แค่ exam_records.candidate_key จุดเดียวจึงไม่เจออะไรเลย
+// สำหรับ record เก่า (no-op เงียบ ๆ) แล้ว cloudFetchAll ก็ดึงกลับมาใหม่ในรอบ sync ถัดไป
+async function cloudDeleteCandidate(aliases){
   if (!cloudEnabled() || !cloudSignedIn()) return;
+  const values = [...(aliases instanceof Set ? aliases : [aliases])].filter(Boolean);
+  if (!values.length) return;
   try {
-    for (const [coll, field] of [['exam_records','candidate_key'], ['result_snapshots','candidate_key']]) {
-      const qs = await db.collection(coll).where(field, '==', nid).get();
-      await Promise.all(qs.docs.map(d => d.ref.delete()));
+    const pairs = [
+      ['exam_records','candidate_key'], ['exam_records','national_id'],
+      ['result_snapshots','candidate_key'], ['result_snapshots','nid'],
+    ];
+    for (const [coll, field] of pairs) {
+      for (let i = 0; i < values.length; i += 10) {   // Firestore 'in' รับได้สูงสุด 10 ค่า/query
+        const chunk = values.slice(i, i + 10);
+        const qs = await db.collection(coll).where(field, 'in', chunk).get();
+        await Promise.all(qs.docs.map(d => d.ref.delete()));
+      }
     }
-    console.info('cloud: deleted candidate', nid);
+    console.info('cloud: deleted candidate', values.join(','));
   } catch(e){ console.warn('cloud delete failed:', e); }
 }
 
@@ -5438,7 +5503,7 @@ function saveResultSnapshot(){
   const done = sessions.filter(s => s.status === 'completed');
   if (!done.length) return;
   const snap = {
-    candidate_key: (applicant.email || '').toLowerCase(),
+    candidate_key: applicantKey(applicant),
     name: applicant.name,
     pos:  applicant.pos,
     exp:  applicant.exp ?? '',
@@ -5529,7 +5594,7 @@ function _mergeIntoLocal(key, incoming, keyFn){
 async function cloudPushOnComplete(){
   if (!cloudEnabled()) return;
   if (!sessions.length || !sessions.every(s => s.status === 'completed')) return;
-  const nid = applicant && (applicant.email || '').toLowerCase();
+  const nid = applicantKey(applicant);
   if (!nid) return;
   try {
     const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => candKey(r) === nid);

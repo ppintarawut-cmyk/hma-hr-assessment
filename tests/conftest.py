@@ -173,3 +173,22 @@ def legacy_exam_record(**over):
     base["national_id"] = "1234567890123"
     base.update(over)
     return base
+
+
+def legacy_exam_record_with_email(**over):
+    """รูปทรงจริงของ record ก่อน migration (ต่างจาก legacy_exam_record() ด้านบน ซึ่งตัด
+    email ออกโดยตั้งใจเพื่อทดสอบ fallback ไป national_id แยกเป็นกรณีเดียว) —
+    record เก่าจริง ๆ มีทั้ง national_id (ยังไม่ได้ลบตอน migrate) และ email
+    (เก็บไว้ตั้งแต่แรกสำหรับติดต่อผู้สมัคร) แต่ไม่มี candidate_key เลย
+
+    ภายใต้ลำดับ fallback ปัจจุบันของ candKey() (candidate_key || email || national_id
+    || nid) record แบบนี้จะถูก key ด้วยอีเมลเสมอ — ตรงข้ามกับ result_snapshot รุ่นเก่าที่
+    ไม่เคยเก็บ email เลย (มีแค่ nid) จึงถูก key ด้วยเลขบัตรแทน คนเดียวกันจึงมี key ต่างกัน
+    คนละคอลเลกชัน นี่คือช่องโหว่ที่การลบ (deleteApplicantData/bulkDeleteCandidates)
+    ต้องกวาดให้ครบทั้งสอง key ไม่งั้น snapshot จะรอดจากการลบ
+    """
+    base = exam_record()
+    base.pop("candidate_key")
+    base["national_id"] = "1234567890123"
+    base.update(over)
+    return base
