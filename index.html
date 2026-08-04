@@ -748,7 +748,9 @@ textarea.q-inp:focus{border-color:var(--teal)}
           <input type="checkbox" id="pdpa-consent" style="margin-top:2px;width:16px;height:16px;accent-color:var(--teal);flex-shrink:0">
           <span data-i18n-html="pdpa_consent" style="font-size:12px;color:var(--gray-500);line-height:1.6">
             ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล
-            ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร และผลการทดสอบ
+            ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร ผลการทดสอบ
+            และบันทึกการออกจากหน้าต่างแบบทดสอบ (สลับแท็บ/หน้าต่าง) หรือพยายามคัดลอกข้อความระหว่างทำแบบทดสอบ
+            ซึ่งฝ่ายทรัพยากรบุคคลจะเห็นข้อมูลนี้
             เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562 โดยเก็บไว้ไม่เกิน 2 ปี
           </span>
         </label>
@@ -1392,7 +1394,7 @@ const I18N = {
   f_email:       { th:'อีเมล',               en:'Email' },
   f_phone:       { th:'เบอร์โทรศัพท์',         en:'Phone number' },
   pdpa_info:     { th:'ข้อมูลของท่านเก็บรักษาตาม <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">นโยบายความเป็นส่วนตัว</a> และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น', en:'Your data is handled under our <a href="privacy.html" target="_blank" style="color:var(--teal);text-decoration:underline">privacy notice</a> and used solely for recruitment consideration.' },
-  pdpa_consent:  { th:'ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร และผลการทดสอบ เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562 โดยเก็บไว้ไม่เกิน 2 ปี', en:'I consent to HMA (Hino Motors Asia) collecting and using my personal data — full name, email, phone number, age, work experience, position applied for and test results — for recruitment purposes, in accordance with the Personal Data Protection Act (PDPA) B.E. 2562, retained for no longer than 2 years.' },
+  pdpa_consent:  { th:'ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ-นามสกุล อีเมล เบอร์โทรศัพท์ อายุ ประสบการณ์ทำงาน ตำแหน่งที่สมัคร ผลการทดสอบ และบันทึกการออกจากหน้าต่างแบบทดสอบ (สลับแท็บ/หน้าต่าง) หรือพยายามคัดลอกข้อความระหว่างทำแบบทดสอบ ซึ่งฝ่ายทรัพยากรบุคคลจะเห็นข้อมูลนี้ เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562 โดยเก็บไว้ไม่เกิน 2 ปี', en:'I consent to HMA (Hino Motors Asia) collecting and using my personal data — full name, email, phone number, age, work experience, position applied for, test results, and a log of when I switch away from the exam window (tab/window switching) or attempt to copy text during the test, which is visible to HR — for recruitment purposes, in accordance with the Personal Data Protection Act (PDPA) B.E. 2562, retained for no longer than 2 years.' },
   reg_btn:       { th:'ยืนยันและเริ่มทดสอบ →', en:'Confirm & start →' },
   confirm_email_lead: { th:'ผลการทดสอบจะถูกส่งไปที่อีเมลนี้ กรุณาตรวจสอบให้ถูกต้อง', en:'Your results will be sent to this address. Please check that it is correct.' },
   confirm_email_yes:  { th:'ถูกต้อง เริ่มทดสอบ →', en:'Correct — start the test →' },
@@ -1950,7 +1952,18 @@ function randomizeQuestions(qs, seed, shuffleOpts = true) {
 // safe to call repeatedly; the seed makes it idempotent across resume/refresh.
 function getRandomizedQs(s) {
   if (!s._randomizedQs) {
-    const seed = `${applicantKey(applicant) || 'x'}|${s.test.code}`;
+    // ก่อน Task 4 (ที่เลิกเก็บเลขบัตรประชาชน) seed มาจาก applicant.nid ล้วน ๆ ไม่สนใจ
+    // email เลย — session ที่ persist ไว้ตั้งแต่ก่อน deploy build นี้ (localStorage
+    // ของผู้สมัครที่ยังทำสอบค้างอยู่ตอน deploy) ยังมี applicant.nid ติดมาด้วย ถ้าปล่อยให้
+    // seed ตรงนี้เปลี่ยนไปอ่าน email แทนตอน resume จะได้ลำดับข้อคนละชุดกับตอนที่ผู้สมัคร
+    // ตอบจริง แล้ว _answersRandom (ซึ่งเทียบตำแหน่งล้วน ๆ) จะไปตรวจกับข้อที่ผิด — ให้คะแนน
+    // ผิดเงียบ ๆ โดยไม่มี error (ดู F1 ใน task-4-report.md) จึงต้องเช็ค applicant.nid ก่อน
+    // candKey()/applicantKey() เสมอ — ห้ามเรียก candKey(applicant) ตรง ๆ แทน เพราะลำดับ
+    // fallback ของ candKey() เช็ค email ก่อน nid (ห้ามแก้ลำดับนั้น) ซึ่งสำหรับ session เก่าที่
+    // มีทั้งสองฟิลด์จะได้ค่า email ผิดตัวอีกเช่นกัน — ส่วน applicant ปัจจุบัน (สมัครใหม่)
+    // ไม่มี .nid อยู่แล้ว จึงตกไปใช้ candKey(applicant) (= email) เหมือนเดิมโดยไม่กระทบ
+    const idKey = (applicant && applicant.nid) ? String(applicant.nid) : (candKey(applicant) || 'x');
+    const seed = `${idKey}|${s.test.code}`;
     // Look up the live test definition so an admin toggle applies even to
     // sessions whose cached s.test copy predates the change. Default = shuffle.
     const tdef = TESTS.find(t => t.code === s.test.code) || s.test;
@@ -5650,13 +5663,17 @@ function adminOpenScoreDash(nid){
     return;
   }
   const snap = snaps[snaps.length - 1];
-  // email (not nid): applicant.nid no longer exists (Task 4 stopped collecting
-  // the national ID) and getRandomizedQs()'s seed now reads applicantKey(applicant)
-  // (applicant.email) — carrying candKey(snap) under .email here keeps the review
-  // page's reconstructed question order keyed the same way it was during the
-  // live exam, for both post-migration (email) and legacy (candKey's nid fallback)
-  // snapshots alike.
-  applicant = { name: snap.name, pos: snap.pos, email: candKey(snap), exp: snap.exp ?? '' };
+  // nid (not email): applicant ที่สร้างย้อนหลังตรงนี้ไม่มี email จริงเลย (ดู
+  // applicantKey()'s contract comment ด้านบน candKey()) ใส่ candKey(snap) ไว้ใต้ .nid
+  // แทน — getRandomizedQs()'s seed เช็ค applicant.nid ก่อนเสมอ (ดู F1 ใน
+  // task-4-report.md) จึงยังคง reconstruct ลำดับข้อเดียวกับตอนสอบจริงได้ ทั้งสำหรับ
+  // snapshot หลัง migration (candKey ให้ email) และ snapshot เก่าก่อน migration
+  // (candKey fallback ไปเลขบัตร) — ถ้าใส่ไว้ใต้ .email แทนจะไปชน applicantKey(applicant)
+  // ที่ renderCandidates() ใช้สร้าง candidate_key ของ live profile ทำให้ profile
+  // ที่แท้จริงไม่มี live session อยู่เลย ดันไปเทียบเท่ากับแถวผู้สมัครจริงใน HR table
+  // แล้ว merge ทับข้อมูลจริง (เบอร์โทร/อายุ/สถานะ live) ด้วยข้อมูลว่างเปล่า (ดู F2 ใน
+  // task-4-report.md)
+  applicant = { name: snap.name, pos: snap.pos, nid: candKey(snap), exp: snap.exp ?? '' };
   sessions = snap.sessions.map(s => ({
     test: (typeof TESTS !== 'undefined' && TESTS.find(t => t.code === s.code)) ||
           { code:s.code, name:s.name, nameTH:s.nameTH, passing:s.passing, mins:s.mins },

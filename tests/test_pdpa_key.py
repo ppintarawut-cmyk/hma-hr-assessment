@@ -339,8 +339,62 @@ def test_privacy_page_loads_and_lists_the_collected_fields(open_exam, server):
         assert field in body
 
 
+# ── F3 (task-4-report review): the consent text and privacy.html must also
+# disclose that the system logs when a candidate switches away from the exam
+# window/tab or attempts to copy text — a timestamped per-session log that is
+# stored, exported and shown to HR (index.html: triggerCheat/examLeaveCount/
+# buildExamRecord's *_leaves columns) but wasn't mentioned in either notice.
+
+
+def test_consent_text_discloses_exam_window_leave_and_copy_paste_tracking(open_exam):
+    page = open_exam()
+    th = page.evaluate("() => I18N.pdpa_consent.th")
+    en = page.evaluate("() => I18N.pdpa_consent.en").lower()
+    assert "ออกจากหน้าต่างแบบทดสอบ" in th
+    assert "คัดลอก" in th
+    assert "switch away from the exam window" in en
+    assert "copy" in en
+
+
+def test_privacy_page_lists_exam_window_leave_and_copy_paste_tracking(open_exam, server):
+    page = open_exam()
+    page.goto(f"{server}/privacy.html")
+    body = page.inner_text("body")
+    assert "ออกจากหน้าต่างแบบทดสอบ" in body
+    assert "คัดลอก" in body
+
+
+# ── F6 (task-4-report review): privacy.html must be bilingual, following the
+# same th/en toggle + 'hma_lang' localStorage mechanism index.html uses, so
+# an English-using candidate who accepts the English consent (which links
+# here) doesn't land on a Thai-only page, and the two pages stay in sync.
+
+
+def test_privacy_page_has_an_english_toggle(open_exam, server):
+    page = open_exam()
+    page.goto(f"{server}/privacy.html")
+    page.click("#lang-btn")
+    body = page.inner_text("body")
+    assert "Privacy Notice" in body
+    assert "Data We Collect" in body
+    assert "นโยบายความเป็นส่วนตัว" not in body
+
+
+def test_privacy_page_follows_the_language_the_candidate_already_chose(open_exam, server):
+    page = open_exam()
+    page.click("#lang-fab")   # switch to English the way the app itself does
+    page.goto(f"{server}/privacy.html")
+    body = page.inner_text("body")
+    assert "Privacy Notice" in body
+
+
 def test_candidate_table_shows_the_email_not_a_national_id(open_exam):
-    page = open_exam(exam_records=[exam_record()])
+    # F5 (task-4-report review): exam_record() has no national_id key at all, so
+    # "1234567890123" could never appear here regardless of what the code does —
+    # use legacy_exam_record_with_email() instead, which actually carries that
+    # digit string under national_id (alongside the email candKey() prefers),
+    # so this assertion has real teeth.
+    page = open_exam(exam_records=[legacy_exam_record_with_email()])
     page.evaluate("() => { renderCandidates(); }")
     assert "somchai@example.com" in page.inner_text("#a-cand-tbody")
     assert "1234567890123" not in page.inner_text("#a-cand-tbody")
@@ -403,6 +457,120 @@ def test_same_candidate_gets_the_same_question_order_across_a_resume(open_exam):
     assert order_after == order_before
 
 
+# ── F1 (task-4-report review): a session persisted by the OLD (pre-Task-4)
+# build carries an applicant with BOTH .nid (what the old build seeded the
+# shuffle from) and .email (what the current build seeds from instead). If
+# such a session survives a deploy and the candidate resumes it within the
+# 24h window, getRandomizedQs() must still reconstruct the SAME question
+# order the candidate was actually looking at — not a different one keyed
+# by email — or their positional answers get silently graded against the
+# wrong questions.
+
+
+def test_resuming_a_pre_task4_session_reconstructs_the_shuffle_it_was_sat_under(open_exam):
+    page = open_exam()
+
+    # What the OLD build's seed formula ("${applicant.nid || 'x'}|${code}")
+    # produced for this candidate — computed directly via the same
+    # randomizeQuestions() helper the app itself uses, independent of
+    # whatever the current seed formula under test does.
+    expected_order = page.evaluate("""
+        () => randomizeQuestions(
+            ALL_QUESTIONS['IQ'] || [],
+            '1234567890123|IQ',
+            (TESTS.find(t => t.code === 'IQ') || {}).shuffleOpts !== false
+        ).map(q => q.q)
+    """)
+    assert len(expected_order) > 1
+
+    # Simulate a session persisted by the OLD build: applicant carries both
+    # .nid and .email, exactly the shape described in the F1 finding.
+    page.evaluate("""
+        () => {
+            localStorage.setItem('hma_active_session', JSON.stringify({
+                applicant: {
+                    name: 'สมชาย ทดสอบ', pos: 'ช่างเทคนิค', exp: 3,
+                    nid: '1234567890123', email: 'somchai@example.com',
+                },
+                sessions: [{
+                    test: { code:'IQ', name:'IQ', nameTH:'ไอคิว', mins:20, passing:60 },
+                    status: 'in_progress', score:null, outcome:null, raw:null, maxP:null,
+                    answers: [], answersRandom: [0, 1, null],
+                    remainSecs: 1000, startedAt: Date.now(),
+                }],
+                curSess: 0, curQ: 0, savedAt: Date.now(),
+            }));
+        }
+    """)
+
+    page.evaluate("() => resumeSession()")
+    actual_order = page.evaluate("() => sessions[curSess]._randomizedQs.map(q => q.q)")
+
+    assert actual_order == expected_order
+
+
+# ── F2 (task-4-report review): adminOpenScoreDash() must not regress the HR
+# candidates table. The applicant object it reconstructs must have no live
+# .email (applicantKey(applicant) must stay '') so renderCandidates()'s live
+# profile never masquerades as the real candidate and MERGES OVER their
+# stored row (blank phone/age, a spurious "กำลังทำอยู่" live dot, attempts
+# reset to 1) when HR opens the score dashboard and clicks back.
+#
+# Note: reconstructing `applicant` without `.email` also means
+# renderCandidates()'s liveProfile (candidate_key: applicantKey(applicant),
+# i.e. '') never matches the real stored row by candKey() either — so a
+# SEPARATE, distinct row for the same candidate still gets appended (with a
+# live dot on *that* row). That row-level duplication predates Task 4
+# entirely (adminOpenScoreDash's applicant object never carried .email even
+# before Task 4 — this candidate_key computation in renderCandidates() has
+# always been unable to identify it), so it is out of scope for F1-F6 and is
+# only noted, not asserted on, below. F2's specific regression was the real
+# row silently losing its own data, which this test does assert on.
+
+
+def test_admin_score_dashboard_does_not_corrupt_the_hr_candidates_table(open_exam):
+    rec = exam_record()   # phone "0812345678", age 28, candidate_key/email "somchai@example.com"
+    snap = {
+        "candidate_key": rec["candidate_key"],
+        "name": rec["name"], "pos": rec["position"], "exp": rec["experience"],
+        "datetime": rec["datetime"],
+        # At least one completed session — an empty list makes adminOpenScoreDash()
+        # reconstruct `sessions = []`, and renderCandidates()'s liveProfile requires
+        # `sessions.length` to be non-zero, so an empty fixture here would never be
+        # able to exercise (or catch a regression in) the live-profile merge at all.
+        "sessions": [{
+            "code": "IQ", "name": "Cognitive Ability", "nameTH": "ความสามารถทางสติปัญญา",
+            "passing": 70, "mins": 25, "score": 80, "outcome": "P", "raw": 8, "maxP": 10,
+            "sections": {}, "percentile": None, "remainSecs": 100, "leaves": 0,
+        }],
+    }
+    page = open_exam(exam_records=[rec], result_snapshots=[snap])
+    page.evaluate("() => { currentAdmin = { role: 'superadmin' }; nav('p-admin'); }")
+
+    key = page.evaluate(
+        "() => candKey(JSON.parse(localStorage.getItem('hma_exam_records'))[0])")
+    assert key == rec["candidate_key"]
+    assert page.evaluate(f"() => adminHasScoreDash({json.dumps(key)})") is True
+
+    # HR opens the score dashboard for this candidate, then clicks "back" —
+    # the exact real flow (adminOpenScoreDash → backFromResults → nav('p-admin')
+    # → renderAdmin → renderCandidates).
+    page.evaluate(f"() => adminOpenScoreDash({json.dumps(key)})")
+    page.evaluate("() => backFromResults()")
+
+    # Find the real candidate's own row by its email (present only on the real
+    # stored row — the reconstructed applicant, and any phantom row derived
+    # from it, never carries .email at all).
+    real_row = page.locator("#a-cand-tbody tr", has_text="somchai@example.com")
+    assert real_row.count() == 1, "the real stored candidate row must not itself be duplicated"
+
+    row_text = real_row.inner_text()
+    assert "0812345678" in row_text, "phone must still show — not blanked by the live-profile merge"
+    assert "28" in row_text, "age must still show — not blanked by the live-profile merge"
+    assert real_row.locator('[title="กำลังทำอยู่"]').count() == 0, \
+        "the real candidate's row must not be marked as a live in-progress session"
+
+
 # ── Item C: export column headers must not lie about what they contain ──
 #
 # buildExportData() (feeding both the CSV and the XLSX exports) used to label
@@ -418,7 +586,12 @@ def test_export_data_does_not_label_the_identity_column_a_national_id(open_exam)
 
 
 def test_export_data_identity_column_holds_the_candidate_key(open_exam):
-    page = open_exam(exam_records=[exam_record()])
+    # F5 (task-4-report review): exam_record() carries no national_id key, so
+    # "1234567890123" could never show up in the exported row regardless of
+    # implementation — legacy_exam_record_with_email() actually carries that
+    # digit string (under national_id, alongside the email candKey() prefers),
+    # giving the "not in values" half of this assertion something real to catch.
+    page = open_exam(exam_records=[legacy_exam_record_with_email()])
     row = page.evaluate("() => buildExportData()[0]")
     # Whatever the column is called now, it must actually hold the candidate's
     # identity key (the email, for a post-migration record) rather than a
