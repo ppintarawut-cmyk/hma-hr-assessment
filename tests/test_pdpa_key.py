@@ -208,3 +208,44 @@ def test_candidate_email_cannot_break_out_of_the_rendered_row_controls(open_exam
         "() => JSON.parse(localStorage.getItem('hma_exam_records') || '[]').length")
     assert remaining == 0
     assert page.evaluate("() => window.__xss_fired") is None
+
+
+def _fill_registration(page, email="Somchai@Example.com"):
+    page.evaluate("() => nav('p-register')")
+    page.fill("#r-nid", "1234567890123")
+    page.fill("#r-fn", "สมชาย")
+    page.fill("#r-ln", "ทดสอบ")
+    page.fill("#r-age", "28")
+    page.select_option("#reg-pos", index=1)
+    page.fill("#r-email", email)
+    page.check("#pdpa-consent")
+
+
+def test_submitting_registration_asks_to_confirm_the_email(open_exam):
+    page = open_exam()
+    _fill_registration(page)
+    page.click("#reg-btn")
+    page.wait_for_selector("#confirm-email-box", state="visible")
+    assert page.inner_text("#confirm-email-value").strip() == "Somchai@Example.com"
+
+
+def test_confirming_the_email_starts_the_exam(open_exam):
+    page = open_exam()
+    _fill_registration(page)
+    page.click("#reg-btn")
+    page.click("#confirm-email-yes")
+    page.wait_for_selector("#p-dash.active")
+    assert page.evaluate("() => candKey({email: applicant.email})") == "somchai@example.com"
+
+
+def test_editing_from_the_confirm_box_returns_to_the_form(open_exam):
+    page = open_exam()
+    _fill_registration(page)
+    page.click("#reg-btn")
+    page.click("#confirm-email-edit")
+    page.wait_for_selector("#confirm-email-box", state="hidden")
+    page.fill("#r-email", "other@example.com")
+    page.click("#reg-btn")
+    page.click("#confirm-email-yes")
+    page.wait_for_selector("#p-dash.active")
+    assert page.evaluate("() => applicant.email") == "other@example.com"

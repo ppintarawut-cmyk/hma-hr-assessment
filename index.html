@@ -760,6 +760,16 @@ textarea.q-inp:focus{border-color:var(--teal)}
         <div class="err-msg" id="e-pdpa" style="display:none;margin-top:6px">กรุณายอมรับเงื่อนไขการเก็บข้อมูล</div>
       </div>
       <button class="btn btn-primary btn-full" id="reg-btn" data-i18n="reg_btn" onclick="submitReg()" style="margin-top:4px">ยืนยันและเริ่มทดสอบ →</button>
+      <div id="confirm-email-box" style="display:none;margin-top:14px;background:var(--gray-50);border:1.5px solid var(--teal);border-radius:var(--radius);padding:16px">
+        <div data-i18n="confirm_email_lead" style="font-size:13px;color:var(--gray-700);margin-bottom:8px">
+          ผลการทดสอบจะถูกส่งไปที่อีเมลนี้ กรุณาตรวจสอบให้ถูกต้อง
+        </div>
+        <div id="confirm-email-value" style="font-size:18px;font-weight:700;color:var(--gray-900);word-break:break-all;margin-bottom:14px"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button id="confirm-email-yes" class="btn" data-i18n="confirm_email_yes" onclick="confirmEmailAndStart()">ถูกต้อง เริ่มทดสอบ →</button>
+          <button id="confirm-email-edit" class="btn btn-secondary" data-i18n="confirm_email_edit" onclick="cancelEmailConfirm()">แก้ไขอีเมล</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1390,6 +1400,9 @@ const I18N = {
   pdpa_info:     { th:'ข้อมูลของท่านเก็บรักษาภายใต้นโยบายความเป็นส่วนตัว (PDPA) และใช้เพื่อประกอบการพิจารณาสมัครงานเท่านั้น', en:'Your data is stored under our privacy policy (PDPA) and used solely for recruitment consideration.' },
   pdpa_consent:  { th:'ข้าพเจ้ายินยอมให้ HMA (Hino Motors Asia) เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ-นามสกุล เลขประจำตัวประชาชน อีเมล และผลการทดสอบ เพื่อวัตถุประสงค์ในการคัดเลือกบุคลากร ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562', en:'I consent to HMA (Hino Motors Asia) collecting and using my personal data — full name, national ID, email and test results — for recruitment purposes, in accordance with the Personal Data Protection Act (PDPA) B.E. 2562.' },
   reg_btn:       { th:'ยืนยันและเริ่มทดสอบ →', en:'Confirm & start →' },
+  confirm_email_lead: { th:'ผลการทดสอบจะถูกส่งไปที่อีเมลนี้ กรุณาตรวจสอบให้ถูกต้อง', en:'Your results will be sent to this address. Please check that it is correct.' },
+  confirm_email_yes:  { th:'ถูกต้อง เริ่มทดสอบ →', en:'Correct — start the test →' },
+  confirm_email_edit: { th:'แก้ไขอีเมล',           en:'Edit email' },
   // ── Dashboard ──
   d_total:       { th:'ชุดสอบทั้งหมด',        en:'Total tests' },
   d_done:        { th:'เสร็จแล้ว',           en:'Completed' },
@@ -1773,21 +1786,50 @@ function submitReg() {
   btn.innerHTML = '<span class="spin"></span> กำลังลงทะเบียน...';
   btn.disabled = true;
 
-  setTimeout(() => {
-    applicant = {
-      name: `${fn} ${ln}`,
-      pos, nid,
-      postype: posId,
-      email, phone,
-      age: Number(document.getElementById('r-age').value) || 0,
-      exp: Number(document.getElementById('r-exp')?.value) || 0,
-    };
-    const codes  = preset ? preset.tests : TESTS.map(t => t.code);
-    const chosen = TESTS.filter(t => codes.includes(t.code));
-    sessions = (chosen.length ? chosen : TESTS).map(t => { const n=(ALL_QUESTIONS[t.code]||[]).length||10; return { test:t, status:'not_started', score:null, outcome:null, answers:new Array(n).fill(null) }; });
-    btn.innerHTML = 'ยืนยันและเริ่มทดสอบ →'; btn.disabled=false;
-    nav('p-dash');
-  }, 700);
+  pendingReg = {
+    name: `${fn} ${ln}`,
+    pos, nid, postype: posId, email, phone,
+    age: Number(document.getElementById('r-age').value) || 0,
+    exp: Number(document.getElementById('r-exp')?.value) || 0,
+    preset,
+  };
+  document.getElementById('confirm-email-value').textContent = email;
+  document.getElementById('confirm-email-box').style.display = 'block';
+  document.getElementById('confirm-email-box').scrollIntoView({behavior:'smooth', block:'nearest'});
+  btn.innerHTML = 'ยืนยันและเริ่มทดสอบ →'; btn.disabled=false;
+}
+
+let pendingReg = null;   // ค่าจากฟอร์มที่รอผู้สมัครยืนยันอีเมล
+
+function cancelEmailConfirm(){
+  pendingReg = null;
+  document.getElementById('confirm-email-box').style.display = 'none';
+  document.getElementById('r-email').focus();
+}
+
+function confirmEmailAndStart(){
+  if (!pendingReg) return;
+  const btn = document.getElementById('confirm-email-yes');
+  btn.innerHTML = '<span class="spin"></span> กำลังลงทะเบียน...';
+  btn.disabled = true;
+
+  const preset = pendingReg.preset;
+  applicant = {
+    name: pendingReg.name, pos: pendingReg.pos, nid: pendingReg.nid, postype: pendingReg.postype,
+    email: pendingReg.email, phone: pendingReg.phone,
+    age: pendingReg.age, exp: pendingReg.exp,
+  };
+  const codes  = preset ? preset.tests : TESTS.map(t => t.code);
+  const chosen = TESTS.filter(t => codes.includes(t.code));
+  sessions = (chosen.length ? chosen : TESTS).map(t => {
+    const n = (ALL_QUESTIONS[t.code]||[]).length || 10;
+    return { test:t, status:'not_started', score:null, outcome:null, answers:new Array(n).fill(null) };
+  });
+  pendingReg = null;
+  document.getElementById('confirm-email-box').style.display = 'none';
+  btn.innerHTML = 'ถูกต้อง เริ่มทดสอบ →';
+  btn.disabled = false;
+  nav('p-dash');
 }
 
 // ══════════════════════════════════════════
