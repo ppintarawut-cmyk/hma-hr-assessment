@@ -3295,8 +3295,12 @@ const HR_CONTACT = {
   phone: 'ยังไม่ระบุ',
 };
 
+// ค่าว่างนับเป็น placeholder ด้วย ไม่ใช่แค่คำขึ้นต้น 'ยังไม่ระบุ' — ไม่งั้นการลบค่าทิ้ง
+// (ตั้งใจจะกลับมาใส่ทีหลัง) จะปิดแถบเตือนเงียบ ๆ แล้วหน้าแรกขึ้นให้ผู้สมัครโดยไม่มีชื่อ
+// ผู้รับผิดชอบเลย ซึ่งคือหน้าที่แผงนี้มีไว้กำจัด
 function hrContactIsPlaceholder(){
-  return Object.values(HR_CONTACT).some(v => String(v).startsWith('ยังไม่ระบุ'));
+  return Object.values(HR_CONTACT)
+    .some(v => !String(v ?? '').trim() || String(v).startsWith('ยังไม่ระบุ'));
 }
 
 // แผงยืนยันตัวตนบนหน้าแรก — ผู้สมัครต้องตรวจสอบได้ว่าลิงก์นี้ของจริงก่อนกรอกอะไร

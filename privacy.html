@@ -78,6 +78,20 @@ const HR_CONTACT = {
   phone: 'ยังไม่ระบุ',
 };
 
+// ชุดเดียวกับ index.html — หน้านี้ต่อค่า HR_CONTACT เข้า innerHTML เหมือนกัน
+// จึงต้อง escape เหมือนกัน (ชื่อที่มี & หรือ < ทำ markup พัง และอีเมลที่มี "
+// จะหลุดออกจาก attribute ของ href="mailto:...")
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// ค่าว่างนับเป็น placeholder ด้วย — ตรรกะเดียวกับ hrContactIsPlaceholder() ใน index.html
+function hrContactIsPlaceholder(){
+  return Object.values(HR_CONTACT)
+    .some(v => !String(v ?? '').trim() || String(v).startsWith('ยังไม่ระบุ'));
+}
+
 // ── Bilingual (th/en) — same localStorage key + toggle pattern as index.html,
 // so switching language on either page stays in sync with the other.
 const I18N = {
@@ -89,6 +103,7 @@ const I18N = {
   hr_officer:   { th:'ผู้รับผิดชอบ', en:'Responsible officer' },
   hr_email:     { th:'อีเมล', en:'Email' },
   hr_phone:     { th:'โทรศัพท์', en:'Phone' },
+  hr_placeholder: { th:'⚠️ ยังไม่ได้ใส่ข้อมูลผู้รับผิดชอบจริง — เอกสารนี้ยังไม่พร้อมใช้', en:'⚠️ The responsible officer’s details have not been filled in yet — this notice is not ready for use.' },
   h_collect:    { th:'ข้อมูลที่เราเก็บ', en:'Data We Collect' },
   c_name:       { th:'ชื่อ-นามสกุล', en:'Full name' },
   c_email:      { th:'อีเมล', en:'Email' },
@@ -133,10 +148,16 @@ function applyLang(){
   document.title = (LANG==='th' ? I18N.title.th : I18N.title.en) + ' — HMA Testing System';
   const btn = document.getElementById('lang-btn');
   if (btn) btn.textContent = LANG==='th' ? 'EN' : 'ไทย';
-  document.getElementById('hr-contact').innerHTML =
-    `<div><strong>${I18N.hr_officer[LANG]}:</strong> ${HR_CONTACT.name}</div>` +
-    `<div><strong>${I18N.hr_email[LANG]}:</strong> <a href="mailto:${HR_CONTACT.email}">${HR_CONTACT.email}</a></div>` +
-    `<div><strong>${I18N.hr_phone[LANG]}:</strong> ${HR_CONTACT.phone}</div>`;
+  // หน้านี้ระบุ "ผู้ควบคุมข้อมูลส่วนบุคคล" ตามกฎหมาย — ถ้ายังไม่ได้ใส่ข้อมูลจริง
+  // ต้องเตือนแบบเดียวกับหน้าแรก ไม่ใช่แสดง placeholder เป็นชื่อผู้รับผิดชอบ
+  // และเป็นที่อยู่สำหรับใช้สิทธิ์ตาม PDPA
+  const warn = hrContactIsPlaceholder()
+    ? `<div id="hr-contact-warning" style="background:#fcebeb;border:1px solid #e84060;color:#791f1f;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-weight:600">${I18N.hr_placeholder[LANG]}</div>`
+    : '';
+  document.getElementById('hr-contact').innerHTML = warn +
+    `<div><strong>${I18N.hr_officer[LANG]}:</strong> ${esc(HR_CONTACT.name)}</div>` +
+    `<div><strong>${I18N.hr_email[LANG]}:</strong> <a href="mailto:${encodeURIComponent(HR_CONTACT.email)}">${esc(HR_CONTACT.email)}</a></div>` +
+    `<div><strong>${I18N.hr_phone[LANG]}:</strong> ${esc(HR_CONTACT.phone)}</div>`;
 }
 
 function toggleLang(){
