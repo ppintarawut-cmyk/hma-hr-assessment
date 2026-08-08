@@ -2,6 +2,26 @@ import json
 
 from conftest import exam_record, legacy_exam_record, legacy_exam_record_with_email
 
+# Firebase SDK ปลอมสำหรับเทสต์ tools/migrate-candidate-key.html โดยไม่ต้องมีเน็ต
+# ครอบเฉพาะ API ที่หน้านั้นเรียกจริง: initializeApp, auth(), firestore() + FieldValue
+FIREBASE_STUB = """
+window.firebase = window.firebase || (() => {
+  const firestore = () => ({
+    collection: () => ({ get: () => Promise.resolve({ size: 0, docs: [] }) }),
+    batch: () => ({ update() {}, commit: () => Promise.resolve() }),
+  });
+  firestore.FieldValue = { delete: () => null };
+  return {
+    initializeApp: () => ({}),
+    auth: () => ({
+      currentUser: null,
+      signInWithEmailAndPassword: () => Promise.reject(new Error('stub')),
+    }),
+    firestore,
+  };
+})();
+"""
+
 
 def test_exam_page_opens_on_landing(open_exam):
     page = open_exam()
@@ -686,15 +706,36 @@ def test_migration_tool_ships_with_the_destructive_button_disabled(open_exam, se
 
 
 def test_migration_tool_refuses_to_run_before_login(open_exam, server):
+    # stub Firebase SDK แทนที่จะ skip เมื่อโหลด CDN ไม่ได้ — guard ตัวนี้เป็นสิ่งเดียว
+    # ที่กั้นระหว่างการกดพลาดกับการลบ field ถาวร ปล่อยให้เทสต์เขียวเพราะ skip
+    # บนเครื่องที่ไม่มีเน็ตเท่ากับไม่มีเทสต์
     page = open_exam()
+    page.route("**/firebasejs/**", lambda route: route.fulfill(
+        status=200, content_type="application/javascript", body=FIREBASE_STUB))
     page.goto(f"{server}/tools/migrate-candidate-key.html")
-    if page.evaluate("() => typeof firebase === 'undefined'"):
-        import pytest
-        pytest.skip("Firebase SDK ไม่ได้โหลด (ไม่มีเน็ต) — ข้ามการตรวจ guard")
+    assert page.evaluate("() => typeof firebase !== 'undefined'"), "stub ไม่ถูกโหลด"
+    # SDK จริงตั้ง firebase.SDK_VERSION ไว้ — ถ้ามีแปลว่า route ไม่ได้ดัก แล้วเทสต์นี้
+    # จะกลายเป็นการยิง Firestore จริงโดยไม่ได้ตั้งใจ
+    assert page.evaluate("() => firebase.SDK_VERSION") is None, \
+        "โหลด Firebase SDK ตัวจริงแทน stub — route ไม่ทำงาน"
+
     page.click("#btn-dry")
     assert "ต้องเข้าสู่ระบบก่อน" in page.inner_text("#log")
     # ปุ่มอันตรายต้องยังล็อกอยู่
     assert page.locator("#btn-run").is_disabled()
+
+
+def test_migration_tool_keeps_the_destructive_run_locked_after_a_clean_dry_run(open_exam, server):
+    # ถึง dry-run จะผ่านสะอาด ก็ยังต้องล็อกอินก่อนถึงจะลงมือจริงได้
+    page = open_exam()
+    page.route("**/firebasejs/**", lambda route: route.fulfill(
+        status=200, content_type="application/javascript", body=FIREBASE_STUB))
+    page.goto(f"{server}/tools/migrate-candidate-key.html")
+    page.evaluate("() => { auth.currentUser = { email: 'super@hinomotorsasia.com' }; }")
+    page.click("#btn-dry")
+    page.wait_for_function("() => document.getElementById('log').textContent.includes('ตรวจแล้ว')")
+    # collection ว่าง → ไม่มี orphan → ปุ่มลงมือจริงปลดล็อก
+    assert page.locator("#btn-run").is_enabled()
 
 
 # ── code-review fixes 1-3: the "don't ship with placeholder contacts" gate ──

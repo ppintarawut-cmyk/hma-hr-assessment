@@ -101,18 +101,29 @@ async function run(dryRun){
       const snap = await db.collection(name).get();
       log(`\n[${name}] ทั้งหมด ${snap.size} record`);
 
+      // เก็บงานที่ต้องเขียนไว้ก่อน แล้วค่อย commit เป็นชุด — writeBatch รับได้ 500 ops
+      // ต่อครั้ง การ await update() ทีละ doc ทำให้ record หลักพันกลายเป็น round trip
+      // หลักพันครั้งเรียงกัน และถ้าแท็บถูกปิดกลางทางจะเหลือ collection ที่ migrate ครึ่ง ๆ
+      const pending = [];
       for (const doc of snap.docs) {
         const d = doc.data();
         if (d.candidate_key) { already++; continue; }
         const key = String(d.email || '').toLowerCase();
         if (!key) { orphans.push(doc.id); continue; }
-        if (!dryRun) {
-          await doc.ref.update({
+        pending.push([doc.ref, key]);
+        migrated++;
+      }
+
+      if (!dryRun) {
+        for (let i = 0; i < pending.length; i += 500) {
+          const batch = db.batch();
+          pending.slice(i, i + 500).forEach(([ref, key]) => batch.update(ref, {
             candidate_key: key,
             [legacy]: firebase.firestore.FieldValue.delete(),
-          });
+          }));
+          await batch.commit();
+          log(`  เขียนแล้ว ${Math.min(i + 500, pending.length)}/${pending.length}`);
         }
-        migrated++;
       }
 
       log(`  มี candidate_key อยู่แล้ว : ${already}`);
