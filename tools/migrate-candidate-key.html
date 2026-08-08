@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Migrate candidate_key — รันครั้งเดียว</title>
+<style>
+  body{font-family:'Noto Sans Thai',system-ui,sans-serif;max-width:760px;margin:40px auto;
+       padding:0 20px;line-height:1.7;color:#1a1d1f}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:#8a9199;font-size:13px;margin-bottom:20px}
+  button{padding:8px 16px;font-size:14px;cursor:pointer;margin-right:8px;border-radius:6px;
+         border:1px solid #c3c8ce;background:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.danger{border-color:#e84060;color:#791f1f;font-weight:600}
+  input{padding:7px 10px;font-size:14px;border:1px solid #c3c8ce;border-radius:6px}
+  #log{background:#111;color:#0f0;padding:14px;border-radius:8px;font-family:ui-monospace,monospace;
+       font-size:12px;white-space:pre-wrap;max-height:420px;overflow:auto;margin-top:16px}
+  .warn{background:#fff4e5;border:1px solid #f59e0b;padding:12px 14px;border-radius:8px;margin-bottom:18px}
+  .step{margin:14px 0}
+</style>
+</head>
+<body>
+<h1>Migrate <code>candidate_key</code></h1>
+<div class="sub">เครื่องมือรันครั้งเดียว — ลบทิ้งหลัง migrate เสร็จ</div>
+
+<div class="warn">
+  <strong>ก่อนกด "ลงมือจริง":</strong>
+  <ol style="margin:6px 0 0;padding-left:20px">
+    <li>export Firestore สำรองไว้ก่อน — การลบ field กู้คืนไม่ได้</li>
+    <li>รัน <strong>ตรวจสอบอย่างเดียว</strong> ก่อนเสมอ</li>
+    <li>ถ้ารายงานว่ามี record ที่ไม่มีอีเมล — <strong>หยุด</strong> อย่ากดลงมือจริง
+        เพราะ record กลุ่มนั้นจะไม่เหลือ key ใด ๆ เลยหลังลบเลขบัตร</li>
+  </ol>
+</div>
+
+<div class="step">
+  <input id="email" type="email" placeholder="อีเมล superadmin" size="30">
+  <input id="pass" type="password" placeholder="รหัสผ่าน">
+  <button id="btn-login">เข้าสู่ระบบ</button>
+</div>
+<div class="step">
+  <button id="btn-dry">ตรวจสอบอย่างเดียว (dry-run)</button>
+  <button id="btn-run" class="danger" disabled>ลงมือจริง</button>
+</div>
+<div id="log">รอเข้าสู่ระบบ…</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+// ค่าเดียวกับใน index.html — Firebase web API key ไม่ใช่ความลับ
+// สิทธิ์จริงบังคับด้วย Firestore Rules ฝั่งเซิร์ฟเวอร์
+const firebaseConfig = {
+  apiKey: "AIzaSyBkcnCg_NSBxawmLRdyx4GykDCDcZcu_pw",
+  authDomain: "hma-testing-a38f0.firebaseapp.com",
+  projectId: "hma-testing-a38f0",
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth(), db = firebase.firestore();
+
+const logEl = document.getElementById('log');
+const log = m => { logEl.textContent += '\n' + m; logEl.scrollTop = logEl.scrollHeight; };
+
+// exam_records เดิมใช้ field national_id, result_snapshots เดิมใช้ nid
+// หลัง migrate ทั้งคู่ใช้ candidate_key เหมือนกัน
+const COLLECTIONS = [
+  { name: 'exam_records',     legacy: 'national_id' },
+  { name: 'result_snapshots', legacy: 'nid' },
+];
+
+// dry-run ต้องผ่านและต้องไม่เจอ record ไร้อีเมล ก่อนถึงจะปลดล็อกปุ่มลงมือจริง
+let dryRunClean = false;
+
+document.getElementById('btn-login').addEventListener('click', async () => {
+  const email = document.getElementById('email').value.trim();
+  const pass  = document.getElementById('pass').value;
+  if (!email || !pass) { log('❌ กรอกอีเมลและรหัสผ่านก่อน'); return; }
+  try {
+    await auth.signInWithEmailAndPassword(email, pass);
+    log('✅ เข้าสู่ระบบสำเร็จ: ' + email);
+  } catch(e){ log('❌ เข้าสู่ระบบไม่สำเร็จ: ' + (e.code || e.message)); }
+});
+
+document.getElementById('btn-dry').addEventListener('click', () => run(true));
+document.getElementById('btn-run').addEventListener('click', () => run(false));
+
+async function run(dryRun){
+  if (!auth.currentUser) { log('❌ ต้องเข้าสู่ระบบก่อน'); return; }
+  if (!dryRun) {
+    if (!dryRunClean) { log('❌ ต้องรัน "ตรวจสอบอย่างเดียว" ให้ผ่านก่อน'); return; }
+    if (!confirm('ลบ field เลขบัตรถาวร กู้คืนไม่ได้ — export สำรองแล้วใช่ไหม?')) return;
+  }
+  logEl.textContent = dryRun ? '— ตรวจสอบอย่างเดียว —' : '— ลงมือจริง —';
+
+  let anyOrphan = false;
+  try {
+    for (const { name, legacy } of COLLECTIONS) {
+      let migrated = 0, already = 0;
+      const orphans = [];
+      const snap = await db.collection(name).get();
+      log(`\n[${name}] ทั้งหมด ${snap.size} record`);
+
+      // เก็บงานที่ต้องเขียนไว้ก่อน แล้วค่อย commit เป็นชุด — writeBatch รับได้ 500 ops
+      // ต่อครั้ง การ await update() ทีละ doc ทำให้ record หลักพันกลายเป็น round trip
+      // หลักพันครั้งเรียงกัน และถ้าแท็บถูกปิดกลางทางจะเหลือ collection ที่ migrate ครึ่ง ๆ
+      const pending = [];
+      for (const doc of snap.docs) {
+        const d = doc.data();
+        if (d.candidate_key) { already++; continue; }
+        const key = String(d.email || '').toLowerCase();
+        if (!key) { orphans.push(doc.id); continue; }
+        pending.push([doc.ref, key]);
+        migrated++;
+      }
+
+      if (!dryRun) {
+        for (let i = 0; i < pending.length; i += 500) {
+          const batch = db.batch();
+          pending.slice(i, i + 500).forEach(([ref, key]) => batch.update(ref, {
+            candidate_key: key,
+            [legacy]: firebase.firestore.FieldValue.delete(),
+          }));
+          await batch.commit();
+          log(`  เขียนแล้ว ${Math.min(i + 500, pending.length)}/${pending.length}`);
+        }
+      }
+
+      log(`  มี candidate_key อยู่แล้ว : ${already}`);
+      log(`  ${dryRun ? 'จะย้าย' : 'ย้ายแล้ว'}            : ${migrated}`);
+      log(`  ไม่มีอีเมล (ข้ามไว้)      : ${orphans.length}`);
+      if (orphans.length) {
+        anyOrphan = true;
+        log(`  ⚠️ record เหล่านี้จะไม่เหลือ key เลยถ้าลบเลขบัตรทิ้ง:`);
+        orphans.forEach(id => log(`     - ${id}`));
+      }
+    }
+  } catch(e){
+    log('\n❌ ล้มเหลว: ' + (e.code || e.message));
+    if (e.code === 'permission-denied') log('   บัญชีนี้ไม่ใช่ superadmin หรือ Firestore Rules ไม่อนุญาต');
+    dryRunClean = false;
+    document.getElementById('btn-run').disabled = true;
+    return;
+  }
+
+  if (dryRun) {
+    dryRunClean = !anyOrphan;
+    document.getElementById('btn-run').disabled = !dryRunClean;
+    log(anyOrphan
+      ? '\n🛑 หยุดก่อน — มี record ที่ไม่มีอีเมล รายงาน Pin แล้วตัดสินใจก่อนค่อยไปต่อ'
+      : '\n✅ ตรวจแล้วไม่มีปัญหา — export สำรอง แล้วกด "ลงมือจริง" ได้');
+  } else {
+    log('\n✅ เสร็จสิ้น — ตรวจใน ATS ว่าผลสอบของผู้สมัครเดิมยังจับคู่กับใบสมัครได้ แล้วลบไฟล์นี้ทิ้ง');
+  }
+}
+</script>
+</body>
+</html>
