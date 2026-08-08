@@ -75,7 +75,6 @@
 const HR_CONTACT = {
   name:  'ภัทราวุธ ย.',
   email: 'pattarawut_y@hinomotorsasia.com',
-  phone: '02-000-0000',
 };
 
 // ชุดเดียวกับ index.html — หน้านี้ต่อค่า HR_CONTACT เข้า innerHTML เหมือนกัน
@@ -102,7 +101,6 @@ const I18N = {
   p_controller: { th:'บริษัท ฮีโน่ มอเตอร์ส เอเซีย จำกัด (Hino Motors Asia Ltd. — HMA) ฝ่ายทรัพยากรบุคคล', en:'Hino Motors Asia Ltd. (HMA), Human Resources Department' },
   hr_officer:   { th:'ผู้รับผิดชอบ', en:'Responsible officer' },
   hr_email:     { th:'อีเมล', en:'Email' },
-  hr_phone:     { th:'โทรศัพท์', en:'Phone' },
   hr_placeholder: { th:'⚠️ ยังไม่ได้ใส่ข้อมูลผู้รับผิดชอบจริง — เอกสารนี้ยังไม่พร้อมใช้', en:'⚠️ The responsible officer’s details have not been filled in yet — this notice is not ready for use.' },
   h_collect:    { th:'ข้อมูลที่เราเก็บ', en:'Data We Collect' },
   c_name:       { th:'ชื่อ-นามสกุล', en:'Full name' },
@@ -156,8 +154,7 @@ function applyLang(){
     : '';
   document.getElementById('hr-contact').innerHTML = warn +
     `<div><strong>${I18N.hr_officer[LANG]}:</strong> ${esc(HR_CONTACT.name)}</div>` +
-    `<div><strong>${I18N.hr_email[LANG]}:</strong> <a href="mailto:${encodeURIComponent(HR_CONTACT.email)}">${esc(HR_CONTACT.email)}</a></div>` +
-    `<div><strong>${I18N.hr_phone[LANG]}:</strong> ${esc(HR_CONTACT.phone)}</div>`;
+    `<div><strong>${I18N.hr_email[LANG]}:</strong> <a href="mailto:${encodeURIComponent(HR_CONTACT.email)}">${esc(HR_CONTACT.email)}</a></div>`;
 }
 
 function toggleLang(){

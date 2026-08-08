@@ -8,7 +8,7 @@
 1. **ส่งจากอีเมล `@hinomotorsasia.com` เท่านั้น** ห้ามส่งจาก Gmail ส่วนตัว
 2. **เขียน URL เต็มเป็นข้อความ** ไม่ใช่ปุ่มหรือลิงก์ย่อ (bit.ly ฯลฯ) — ผู้สมัครต้องเทียบกับ
    address bar ได้ทีละตัวอักษร ลิงก์ย่อทำให้เทียบไม่ได้ ซึ่งเป็นพฤติกรรมเดียวกับอีเมลหลอกลวง
-3. **ชื่อและเบอร์ผู้ส่งต้องตรงกับที่แสดงบนหน้าเว็บ** (ค่า `HR_CONTACT` ใน `index.html`
+3. **ชื่อและอีเมลผู้ส่งต้องตรงกับที่แสดงบนหน้าเว็บ** (ค่า `HR_CONTACT` ใน `index.html`
    และ `privacy.html`) ถ้าคนละคน ผู้สมัครที่โทรเช็คจะเจอคนที่ไม่รู้เรื่อง
 4. **บอกล่วงหน้าว่าจะขออะไรและจะไม่ขออะไร** เพื่อให้ผู้สมัครจับได้เองถ้ามีคนอื่นสวมรอย
 5. อย่าแนบไฟล์ — อีเมลเชิญที่มีไฟล์แนบยิ่งดูเหมือน phishing
@@ -39,7 +39,7 @@ https://assessment.hinomotorsasia.com/
 เลขบัญชีธนาคาร · ข้อมูลบัตรเครดิต
 
 หากมีอีเมลหรือข้อความอ้างชื่อบริษัทแล้วขอข้อมูลเหล่านี้จากท่าน กรุณาอย่าให้
-และแจ้งกลับมาที่เบอร์ด้านล่าง
+และแจ้งกลับมาที่อีเมลด้านล่าง
 
 ระหว่างทำแบบทดสอบ ระบบจะบันทึกว่าท่านสลับออกจากหน้าต่างแบบทดสอบหรือพยายามคัดลอก
 ข้อความหรือไม่ ซึ่งฝ่ายทรัพยากรบุคคลจะเห็นข้อมูลนี้ประกอบการพิจารณา
@@ -47,12 +47,13 @@ https://assessment.hinomotorsasia.com/
 ข้อมูลของท่านเก็บไว้ไม่เกิน 2 ปี รายละเอียดอ่านได้ที่
 https://assessment.hinomotorsasia.com/privacy.html
 
-หากไม่แน่ใจว่าอีเมลหรือลิงก์นี้เป็นของจริง โทรหาผมได้โดยตรงตามเบอร์ด้านล่าง
+หากไม่แน่ใจว่าอีเมลหรือลิงก์นี้เป็นของจริง ตอบกลับอีเมลฉบับนี้ หรือติดต่อฝ่ายทรัพยากรบุคคล
+ตามช่องทางที่ท่านใช้สมัครงาน เพื่อยืนยันก่อนกรอกข้อมูล
 
 ขอแสดงความนับถือ
 **[ชื่อ-นามสกุล]**
 ฝ่ายทรัพยากรบุคคล บริษัท ฮีโน่ มอเตอร์ส เอเซีย จำกัด
-[อีเมล @hinomotorsasia.com] · [เบอร์โทร]
+[อีเมล @hinomotorsasia.com]
 
 ---
 
@@ -80,7 +81,7 @@ experience · the position you applied for
 card · bank account details · credit card details
 
 If you receive any message claiming to be from us that asks for these, please do not
-provide them, and let me know on the number below.
+provide them, and let me know by replying to this email.
 
 During the assessment the system records whether you switch away from the exam window or
 attempt to copy text; our HR team sees this alongside your results.
@@ -88,13 +89,13 @@ attempt to copy text; our HR team sees this alongside your results.
 Your data is kept for no longer than 2 years. Details:
 https://assessment.hinomotorsasia.com/privacy.html
 
-If you are unsure whether this email or link is genuine, please call me directly on the
-number below.
+If you are unsure whether this email or link is genuine, reply to this email or contact HR
+through whichever channel you applied by, before entering anything.
 
 Kind regards,
 **[Full name]**
 Human Resources, Hino Motors Asia Ltd.
-[email @hinomotorsasia.com] · [phone]
+[email @hinomotorsasia.com]
 
 ---
 
@@ -103,4 +104,4 @@ Human Resources, Hino Motors Asia Ltd.
 - [ ] `HR_CONTACT` ใน `index.html` และ `privacy.html` ใส่ข้อมูลจริงแล้ว และหน้าแรก
       ไม่ขึ้นแถบเตือนสีแดง
 - [ ] `https://assessment.hinomotorsasia.com/` เปิดได้จริงด้วย HTTPS
-- [ ] ชื่อ/เบอร์ในอีเมลตรงกับที่แสดงบนหน้าเว็บ
+- [ ] ชื่อ/อีเมลในอีเมลตรงกับที่แสดงบนหน้าเว็บ

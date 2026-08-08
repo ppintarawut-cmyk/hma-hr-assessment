@@ -646,7 +646,6 @@ def test_warning_disappears_once_real_contact_details_are_set(open_exam):
     page.evaluate("""() => {
         HR_CONTACT.name  = 'ภัทราวุธ ย.';
         HR_CONTACT.email = 'pattarawut_y@hinomotorsasia.com';
-        HR_CONTACT.phone = '02-000-0000';
         renderTrustPanel();
     }""")
     assert page.locator("#hr-contact-warning").count() == 0
@@ -660,7 +659,6 @@ def test_trust_panel_escapes_contact_values(open_exam):
     page.evaluate("""() => {
         HR_CONTACT.name  = '<img src=x onerror="window.__trust_xss=1">';
         HR_CONTACT.email = 'hr@hinomotorsasia.com';
-        HR_CONTACT.phone = '02-000-0000';
         renderTrustPanel();
     }""")
     assert page.evaluate("() => window.__trust_xss") is None
@@ -671,11 +669,11 @@ def test_privacy_page_shares_the_same_contact_details(open_exam, server):
     # แผงบนหน้าแรกกับหน้านโยบายต้องบอกผู้รับผิดชอบคนเดียวกัน ไม่งั้นผู้สมัคร
     # ที่โทรตามเบอร์ในนโยบายจะไปไม่ถึงคนเดียวกับที่หน้าแรกอ้าง
     index_contact = open_exam().evaluate(
-        "() => [HR_CONTACT.name, HR_CONTACT.email, HR_CONTACT.phone]")
+        "() => [HR_CONTACT.name, HR_CONTACT.email]")
     page = open_exam()
     page.goto(f"{server}/privacy.html")
     privacy_contact = page.evaluate(
-        "() => [HR_CONTACT.name, HR_CONTACT.email, HR_CONTACT.phone]")
+        "() => [HR_CONTACT.name, HR_CONTACT.email]")
     assert index_contact == privacy_contact
 
 
@@ -746,7 +744,7 @@ def test_blank_contact_values_count_as_placeholders(open_exam):
     # แล้วหน้าแรกขึ้นให้ผู้สมัครโดยไม่มีชื่อผู้รับผิดชอบเลย
     page = open_exam()
     page.evaluate("""() => {
-        HR_CONTACT.name = ''; HR_CONTACT.email = '   '; HR_CONTACT.phone = '';
+        HR_CONTACT.name = ''; HR_CONTACT.email = '   ';
         renderTrustPanel();
     }""")
     assert page.locator("#hr-contact-warning").is_visible()
@@ -765,7 +763,7 @@ def test_privacy_page_warns_while_the_hr_contact_is_a_placeholder(open_exam, ser
 def test_privacy_page_warns_when_a_contact_value_is_blank(open_exam, server):
     page = open_exam()
     page.goto(f"{server}/privacy.html")
-    page.evaluate("() => { HR_CONTACT.phone = '  '; applyLang(); }")
+    page.evaluate("() => { HR_CONTACT.email = '  '; applyLang(); }")
     assert page.locator("#hr-contact-warning").is_visible()
 
 
@@ -786,7 +784,6 @@ def test_privacy_page_warning_clears_once_real_contact_details_are_set(open_exam
     page.evaluate("""() => {
         HR_CONTACT.name  = 'ภัทราวุธ ย.';
         HR_CONTACT.email = 'pattarawut_y@hinomotorsasia.com';
-        HR_CONTACT.phone = '02-000-0000';
         applyLang();
     }""")
     assert page.locator("#hr-contact-warning").count() == 0
@@ -799,7 +796,6 @@ def test_privacy_page_escapes_contact_values(open_exam, server):
     page.evaluate("""() => {
         HR_CONTACT.name  = '<img src=x onerror="window.__priv_xss=1">';
         HR_CONTACT.email = 'hr@hinomotorsasia.com';
-        HR_CONTACT.phone = '02-000-0000';
         applyLang();
     }""")
     assert page.evaluate("() => window.__priv_xss") is None
@@ -814,7 +810,6 @@ def test_privacy_page_mailto_href_cannot_break_out_of_the_attribute(open_exam, s
     page.evaluate("""() => {
         HR_CONTACT.name  = 'HR';
         HR_CONTACT.email = 'a" onmouseover="window.__priv_href=1" x="';
-        HR_CONTACT.phone = '02-000-0000';
         applyLang();
     }""")
     link = page.locator("#hr-contact a")

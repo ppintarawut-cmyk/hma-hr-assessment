@@ -1401,7 +1401,7 @@ const I18N = {
   trust_owner:   { th:'แบบทดสอบนี้เป็นของ Hino Motors Asia Ltd.', en:'This assessment belongs to Hino Motors Asia Ltd.' },
   trust_purpose: { th:'ใช้ประกอบการพิจารณาใบสมัครงานเท่านั้น ข้อมูลของท่านเก็บไว้ไม่เกิน 2 ปี', en:'Used solely to support your job application. Your data is kept for no longer than 2 years.' },
   trust_contact: { th:'ผู้รับผิดชอบ', en:'Responsible officer' },
-  trust_verify:  { th:'ไม่แน่ใจว่าลิงก์นี้ของจริง? โทรหาเบอร์ข้างต้นเพื่อยืนยันก่อนกรอกข้อมูล — เราจะไม่ขอรหัสผ่านหรือข้อมูลทางการเงินจากท่าน', en:'Not sure this link is genuine? Call the number above to verify before entering anything — we will never ask you for a password or financial details.' },
+  trust_verify:  { th:'ไม่แน่ใจว่าลิงก์นี้ของจริง? อีเมลไปที่ที่อยู่ข้างต้นเพื่อยืนยันก่อนกรอกข้อมูล หรือติดต่อฝ่ายทรัพยากรบุคคลตามช่องทางที่ท่านใช้สมัครงาน — เราจะไม่ขอรหัสผ่านหรือข้อมูลทางการเงินจากท่าน', en:'Not sure this link is genuine? Email the address above to verify before entering anything, or contact HR through whichever channel you applied by — we will never ask you for a password or financial details.' },
   trust_privacy_link: { th:'อ่านนโยบายความเป็นส่วนตัว →', en:'Read the privacy notice →' },
   confirm_email_lead: { th:'ผลการทดสอบจะถูกส่งไปที่อีเมลนี้ กรุณาตรวจสอบให้ถูกต้อง', en:'Your results will be sent to this address. Please check that it is correct.' },
   confirm_email_yes:  { th:'ถูกต้อง เริ่มทดสอบ →', en:'Correct — start the test →' },
@@ -3314,7 +3314,6 @@ document.querySelector('#p-register .alert-info').style.display='flex';
 const HR_CONTACT = {
   name:  'ภัทราวุธ ย.',
   email: 'pattarawut_y@hinomotorsasia.com',
-  phone: '02-000-0000',
 };
 
 // ค่าว่างนับเป็น placeholder ด้วย ไม่ใช่แค่คำขึ้นต้น 'ยังไม่ระบุ' — ไม่งั้นการลบค่าทิ้ง
@@ -3343,7 +3342,6 @@ function renderTrustPanel(){
     <div style="margin-top:8px">
       <div><strong>${t18n('trust_contact')}:</strong> ${esc(HR_CONTACT.name)}</div>
       <div><strong>${t18n('f_email')}:</strong> <a href="mailto:${encodeURIComponent(HR_CONTACT.email)}" style="color:var(--teal)">${esc(HR_CONTACT.email)}</a></div>
-      <div><strong>${t18n('f_phone')}:</strong> ${esc(HR_CONTACT.phone)}</div>
     </div>
     <div style="margin-top:8px;color:var(--gray-400)">${t18n('trust_verify')}</div>
     <div style="margin-top:8px"><a href="privacy.html" target="_blank" style="color:var(--teal)">${t18n('trust_privacy_link')}</a></div>`;
