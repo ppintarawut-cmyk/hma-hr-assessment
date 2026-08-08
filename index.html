@@ -2613,18 +2613,30 @@ function candKeyAliases(r){
 // รวม alias ทั้งหมดของผู้สมัครคนหนึ่ง โดยไล่หา record ทุกใบใน exam_records และ
 // result_snapshots ที่ candKey() ตรงกับ key ที่ระบุ แล้วรวม alias ของ record เหล่านั้น
 // เข้าด้วยกัน — ต้องกวาดทั้งสองคอลเลกชันเพราะคนเดียวกันอาจถูก key คนละแบบในแต่ละที่
+// อ่านทั้งสองคอลเลกชันครั้งเดียวแล้วคืน resolver — ใช้เมื่อต้อง resolve หลาย key ติดกัน
+// (เช่นลบหมู่) เพราะ resolveCandidateAliases() ตัวเดียวจะ parse localStorage ใหม่ทุกครั้ง
+// ที่เรียก ทำให้ลบ 50 คนกลายเป็น 100 รอบ parse ทั้ง store ก่อนตัดอะไรออกสักแถว
+function buildAliasResolver(){
+  const byKey = new Map();
+  const index = json => {
+    let rows = [];
+    try { rows = JSON.parse(localStorage.getItem(json) || '[]'); } catch(e){ return; }
+    rows.forEach(r => {
+      const k = candKey(r);
+      if (!k) return;
+      let set = byKey.get(k);
+      if (!set) { set = new Set(); byKey.set(k, set); }
+      candKeyAliases(r).forEach(a => set.add(a));
+    });
+  };
+  index('hma_exam_records');
+  index('hma_result_snapshots');
+  return key => new Set(byKey.get(key) || []);
+}
+
 function resolveCandidateAliases(key){
-  const out = new Set();
-  if (!key) return out;
-  try {
-    const recs = JSON.parse(localStorage.getItem('hma_exam_records') || '[]');
-    recs.forEach(r => { if (candKey(r) === key) candKeyAliases(r).forEach(a => out.add(a)); });
-  } catch(e){}
-  try {
-    const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots') || '[]');
-    snaps.forEach(s => { if (candKey(s) === key) candKeyAliases(s).forEach(a => out.add(a)); });
-  } catch(e){}
-  return out;
+  if (!key) return new Set();
+  return buildAliasResolver()(key);
 }
 
 function aliasesIntersect(a, b){
@@ -2981,7 +2993,8 @@ function bulkDeleteCandidates(){
   // กวาดทุก alias ของทุกคนที่เลือก ไม่ใช่แค่ key เดียว — คนเดียวกันอาจถูก key คนละแบบใน
   // exam_records กับ result_snapshots (ดูคอมเมนต์ที่ candKeyAliases)
   const aliases = new Set();
-  nids.forEach(nid => resolveCandidateAliases(nid).forEach(a => aliases.add(a)));
+  const resolve = buildAliasResolver();   // index ครั้งเดียว ไม่ใช่ต่อคนที่เลือก
+  nids.forEach(nid => resolve(nid).forEach(a => aliases.add(a)));
   try { const s = JSON.parse(localStorage.getItem('hma_exam_records')||'[]');   localStorage.setItem('hma_exam_records',   JSON.stringify(s.filter(r => !aliasesIntersect(candKeyAliases(r), aliases)))); } catch(e){}
   try { const s = JSON.parse(localStorage.getItem('hma_result_snapshots')||'[]'); localStorage.setItem('hma_result_snapshots', JSON.stringify(s.filter(x => !aliasesIntersect(candKeyAliases(x), aliases)))); } catch(e){}
   cloudDeleteCandidate(aliases);
@@ -5690,8 +5703,12 @@ function saveResultSnapshot(){
     // กวาด alias ของผู้สมัครคนนี้ก่อนหา snapshot เดิมที่ยังไม่ sealed — คนที่สอบค้างไว้
     // ก่อน migration อาจมี snapshot เดิมที่ key ด้วยเลขบัตร (nid) ในขณะที่ snap ใหม่นี้ key
     // ด้วยอีเมลเสมอ (candKey(snap) ผ่าน applicantKey) เทียบ candKey ตรง ๆ จะไม่เจอ แล้วจะ
-    // push แถวใหม่ซ้ำแทนที่จะอัปเดตแถวเดิม (ดู F10 ใน task-2-report.md)
-    const aliases = resolveCandidateAliases(candKey(snap));
+    // push แถวใหม่ซ้ำแทนที่จะอัปเดตแถวเดิม
+    // เอา alias จาก applicant ตรง ๆ ไม่ต้อง scan localStorage — applicant ของ session ที่
+    // resume มาจากก่อน migration มีทั้ง .nid และ .email อยู่แล้ว ซึ่งคือ alias ที่ต้องการ
+    // พอดี จุดนี้อยู่บนเส้นทางส่งข้อสอบ การ parse ทั้ง store ทุกครั้งที่จบชุดคือเวลาที่
+    // ผู้สมัครต้องรอฟรี ๆ
+    const aliases = candKeyAliases(applicant);
     const i = all.findIndex(x => aliasesIntersect(candKeyAliases(x), aliases) && !x._sealed);
     const allDone = sessions.every(s => s.status === 'completed');
     if (i >= 0) {
@@ -5709,15 +5726,10 @@ function saveResultSnapshot(){
 
 // ── Admin: open the rich score dashboard (read-only) for a candidate ──
 var adminViewingResults = false;
-// nid ที่รับเข้ามาคือ candKey ที่มาจากฝั่ง exam_records (เช่นปุ่ม "📊 แดชบอร์ดคะแนน" ส่ง
+// nid ที่รับเข้ามาคือ candKey ที่มาจากฝั่ง exam_records (ปุ่ม "📊 แดชบอร์ดคะแนน" ส่ง
 // candKey(indivExportData.rows[0])) ซึ่งสำหรับผู้สมัครก่อน migration จะเป็นอีเมล ในขณะที่
 // snapshot เก่าถูก key ด้วยเลขบัตร (nid) เทียบ candKey ตรง ๆ จึงไม่เจอ ต้องกวาด alias ก่อน
-// เหมือนฝั่งลบ (F1) — ไม่งั้นแดชบอร์ดคะแนนของผู้สมัครก่อน migration จะเปิดไม่ได้เลย
-// (ดู F9 ใน task-2-report.md)
-function adminHasScoreDash(nid){
-  const aliases = resolveCandidateAliases(nid);
-  return getResultSnapshots().some(x => aliasesIntersect(candKeyAliases(x), aliases));
-}
+// เหมือนฝั่งลบ — ไม่งั้นแดชบอร์ดคะแนนของผู้สมัครก่อน migration จะเปิดไม่ได้เลย
 function adminOpenScoreDash(nid){
   const aliases = resolveCandidateAliases(nid);
   const snaps = getResultSnapshots().filter(x => aliasesIntersect(candKeyAliases(x), aliases));
@@ -5804,7 +5816,10 @@ async function cloudPushOnComplete(){
       const recs  = JSON.parse(localStorage.getItem('hma_exam_records')   || '[]').filter(r => candKey(r) === nid);
       const snaps = JSON.parse(localStorage.getItem('hma_result_snapshots')|| '[]').filter(s => candKey(s) === nid);
       const q = JSON.parse(localStorage.getItem('hma_cloud_pending') || '[]');
-      q.push({ rec: recs[recs.length-1], snap: snaps[snaps.length-1], nid, at: Date.now() });
+      // ไม่เก็บ nid ลงคิว — cloudFlushPending() replay แค่ rec/snap ไม่เคยอ่านมันเลย
+      // และการเก็บ key ผู้สมัครลง localStorage อีกที่หนึ่งโดยไม่มีคนใช้ ขัดกับเป้าหมาย
+      // ของงานนี้ที่ลดจำนวนที่ ๆ ตัวระบุตัวตนถูกเก็บ
+      q.push({ rec: recs[recs.length-1], snap: snaps[snaps.length-1], at: Date.now() });
       localStorage.setItem('hma_cloud_pending', JSON.stringify(q));
     } catch(_){}
     if (typeof showToast === 'function') showToast('⚠️ อัปโหลดผลขึ้น cloud ไม่สำเร็จ — ระบบจะลองใหม่อัตโนมัติเมื่อเชื่อมต่อได้', 6000);

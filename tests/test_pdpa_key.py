@@ -121,9 +121,8 @@ def test_admin_score_dashboard_reaches_a_legacy_candidates_snapshot(open_exam):
         "() => candKey(JSON.parse(localStorage.getItem('hma_exam_records'))[0])")
     assert exam_key == legacy_rec["email"]
 
-    has_dash = page.evaluate(f"() => adminHasScoreDash({json.dumps(exam_key)})")
-    assert has_dash is True
-
+    # เดิมเช็คผ่าน adminHasScoreDash() ด้วย แต่แอปไม่เคยเรียกฟังก์ชันนั้นเลย
+    # (ถูกลบทิ้งแล้ว) — adminOpenScoreDash คือเส้นทางจริงและกวาด alias แบบเดียวกัน
     page.evaluate(f"() => adminOpenScoreDash({json.dumps(exam_key)})")
     reached_name = page.evaluate("() => applicant && applicant.name")
     assert reached_name == legacy_rec["name"]
@@ -550,7 +549,6 @@ def test_admin_score_dashboard_does_not_corrupt_the_hr_candidates_table(open_exa
     key = page.evaluate(
         "() => candKey(JSON.parse(localStorage.getItem('hma_exam_records'))[0])")
     assert key == rec["candidate_key"]
-    assert page.evaluate(f"() => adminHasScoreDash({json.dumps(key)})") is True
 
     # HR opens the score dashboard for this candidate, then clicks "back" —
     # the exact real flow (adminOpenScoreDash → backFromResults → nav('p-admin')
