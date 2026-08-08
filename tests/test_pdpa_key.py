@@ -755,9 +755,29 @@ def test_blank_contact_values_count_as_placeholders(open_exam):
 def test_privacy_page_warns_while_the_hr_contact_is_a_placeholder(open_exam, server):
     # หน้านโยบายระบุ "ผู้ควบคุมข้อมูล" ตามกฎหมาย — ปล่อยให้ขึ้น placeholder
     # เป็นชื่อผู้รับผิดชอบไม่ได้
+    # ตั้งค่า placeholder เองแทนที่จะพึ่งค่าที่ ship มา (เหมือนฝั่ง index.html)
     page = open_exam()
     page.goto(f"{server}/privacy.html")
+    page.evaluate("() => { HR_CONTACT.name = 'ยังไม่ระบุ'; applyLang(); }")
     assert page.locator("#hr-contact-warning").is_visible()
+
+
+def test_privacy_page_warns_when_a_contact_value_is_blank(open_exam, server):
+    page = open_exam()
+    page.goto(f"{server}/privacy.html")
+    page.evaluate("() => { HR_CONTACT.phone = '  '; applyLang(); }")
+    assert page.locator("#hr-contact-warning").is_visible()
+
+
+def test_shipped_contact_details_are_real(open_exam, server):
+    # ค่าที่ ship จริงต้องผ่าน guard ทั้งสองหน้า — เทสต์นี้คือสิ่งที่กันไม่ให้
+    # deploy ทั้งที่ยังไม่ได้ใส่ข้อมูล
+    page = open_exam()
+    assert page.evaluate("() => hrContactIsPlaceholder()") is False
+    assert page.locator("#hr-contact-warning").count() == 0
+    page.goto(f"{server}/privacy.html")
+    assert page.evaluate("() => hrContactIsPlaceholder()") is False
+    assert page.locator("#hr-contact-warning").count() == 0
 
 
 def test_privacy_page_warning_clears_once_real_contact_details_are_set(open_exam, server):
