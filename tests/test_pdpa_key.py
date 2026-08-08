@@ -761,3 +761,49 @@ def test_privacy_page_mailto_href_cannot_break_out_of_the_attribute(open_exam, s
     link = page.locator("#hr-contact a")
     assert link.get_attribute("onmouseover") is None
     assert link.get_attribute("href").startswith("mailto:")
+
+
+# ── code-review follow-ups: correctness ──
+
+
+def test_cand_key_normalizes_a_numeric_legacy_id(open_exam):
+    # legacy record ที่ national_id มาเป็นตัวเลข (re-import / แก้มือใน Firestore)
+    # ต้องได้ string ไม่งั้น Set ของ string จะ has() ไม่เจอ แล้วเลือก/ลบไม่ได้
+    page = open_exam()
+    assert page.evaluate("() => candKey({national_id: 1234567890123})") == "1234567890123"
+    assert page.evaluate("() => typeof candKey({nid: 1234567890123})") == "string"
+
+
+def test_cand_key_aliases_normalize_a_numeric_legacy_id(open_exam):
+    aliases = open_exam().evaluate(
+        "() => [...candKeyAliases({national_id: 1234567890123})]")
+    assert aliases == ["1234567890123"]
+
+
+def test_deleting_a_candidate_with_a_numeric_legacy_id_removes_the_record(open_exam):
+    # ผลลัพธ์จริงของ candKey() ที่ไม่ normalize: resolveCandidateAliases เทียบ
+    # candKey(record) (number) กับ key ที่มาจาก JSON (string) → ไม่ตรง → alias ว่าง
+    # → filter ไม่ตัดอะไรเลย → กด "ลบข้อมูลทั้งหมด" แล้ว record ยังอยู่ ทั้งที่ UI บอกว่าลบแล้ว
+    page = open_exam(exam_records=[legacy_exam_record(national_id=1234567890123, email="")])
+    aliases = page.evaluate("() => [...resolveCandidateAliases('1234567890123')]")
+    assert aliases == ["1234567890123"], \
+        "record ที่ national_id เป็นตัวเลขต้อง resolve alias เจอ ไม่งั้นลบไม่โดน"
+
+
+def test_candidate_row_avatar_survives_a_blank_name(open_exam):
+    # charCodeAt(0) ของ string ว่างคือ NaN → colors[NaN] undefined
+    # → style="background:undefined" (avatar ไม่มีสี)
+    page = open_exam(exam_records=[exam_record(name="")])
+    page.evaluate("() => { renderCandidates(); }")
+    avatar = page.locator("#a-cand-tbody .avatar").first
+    assert "undefined" not in (avatar.get_attribute("style") or "")
+
+
+def test_pending_reg_is_declared_before_its_users(open_exam):
+    # nav() (บรรทัด ~1712) และ submitReg() แตะ pendingReg แต่ let ประกาศทีหลัง
+    # ยังไม่ระเบิดเพราะไม่มี top-level call ก่อนถึงบรรทัดนั้น — แต่เป็นกับดัก
+    page = open_exam()
+    src = page.evaluate("() => document.documentElement.outerHTML")
+    decl = src.index("let pendingReg")
+    assert decl < src.index("function nav(id)"), \
+        "let pendingReg ต้องประกาศก่อน nav() ไม่งั้น init ที่เพิ่มเข้ามาทีหลังจะเจอ TDZ"

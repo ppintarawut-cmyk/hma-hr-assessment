@@ -1699,6 +1699,11 @@ function resetPositionPresets(){
 
 
 
+// ค่าจากฟอร์มลงทะเบียนที่รอผู้สมัครยืนยันอีเมล — ประกาศไว้เหนือผู้ใช้ทั้งสอง (nav()
+// และ submitReg()) โดยตั้งใจ: `let` มี temporal dead zone ถ้ามี top-level init ถูกเพิ่ม
+// ระหว่างสองจุดนั้นแล้วเรียก nav() จะได้ ReferenceError ที่ทำให้ทั้งสคริปต์ตาย
+let pendingReg = null;
+
 // ══════════════════════════════════════════
 // NAV
 // ══════════════════════════════════════════
@@ -1811,8 +1816,6 @@ function submitReg() {
   document.getElementById('confirm-email-box').scrollIntoView({behavior:'smooth', block:'nearest'});
   btn.innerHTML = t18n('reg_btn'); btn.disabled=false;
 }
-
-let pendingReg = null;   // ค่าจากฟอร์มที่รอผู้สมัครยืนยันอีเมล
 
 function cancelEmailConfirm(){
   pendingReg = null;
@@ -2577,10 +2580,14 @@ function renderAdmin() {
 // (hma-ats.html:1135) record ที่บันทึกก่อน 2026-08 ใช้เลขบัตรเป็น key
 // (exam_records.national_id / result_snapshots.nid) จึง fallback ให้แถวเก่า
 // ยังแสดงผลได้หลังเปลี่ยน — ห้ามลบ fallback จนกว่า migration บน Firestore จะจบ
+// normalize ทุกทางเลือกเป็น string ตัวพิมพ์เล็ก ไม่ใช่แค่ candidate_key กับ email —
+// legacy record ที่ national_id มาเป็นตัวเลข (re-import / แก้มือใน Firestore) เคยคืน
+// Number ออกไป แล้ว resolveCandidateAliases เทียบกับ key ที่มาจาก JSON (string) ไม่ตรง
+// → alias ว่าง → การลบไม่ตัด record นั้นออกเลยทั้งที่ UI บอกว่าลบแล้ว
 function candKey(r){
   if (!r) return '';
-  const ck = r.candidate_key ? String(r.candidate_key).toLowerCase() : '';
-  return ck || (r.email || '').toLowerCase() || r.national_id || r.nid || '';
+  const v = r.candidate_key || r.email || r.national_id || r.nid;
+  return v == null ? '' : String(v).toLowerCase();
 }
 
 // อีเมลของ applicant ปัจจุบัน (ตัวพิมพ์เล็กเสมอ) — ใช้เฉพาะตอน "เขียน" record ใหม่
@@ -2598,8 +2605,8 @@ function candKeyAliases(r){
   const out = new Set();
   if (r && r.candidate_key) out.add(String(r.candidate_key).toLowerCase());
   if (r && r.email)         out.add(String(r.email).toLowerCase());
-  if (r && r.national_id)   out.add(String(r.national_id));
-  if (r && r.nid)           out.add(String(r.nid));
+  if (r && r.national_id)   out.add(String(r.national_id).toLowerCase());
+  if (r && r.nid)           out.add(String(r.nid).toLowerCase());
   return out;
 }
 
@@ -2720,7 +2727,9 @@ function renderCandidates() {
   }
 
   tbody.innerHTML = all.map(p => {
-    const ci    = ((p.name||'').charCodeAt(0) + (candKey(p)||' ').charCodeAt(0)) % 5;
+    // ทั้งสอง operand ต้องมี fallback: charCodeAt(0) ของ string ว่างคือ NaN ซึ่งทำให้
+    // ci เป็น NaN แล้ว colors[NaN]/textc[NaN] เป็น undefined → avatar ไม่มีสี
+    const ci    = (((p.name||' ').charCodeAt(0)) + ((candKey(p)||' ').charCodeAt(0))) % 5;
     const init  = (p.name||'?').charAt(0).toUpperCase();
     const taken = CODES.filter(c => p[c+'_score'] != null);
     const pass  = taken.filter(c => p[c+'_outcome'] === 'P');
