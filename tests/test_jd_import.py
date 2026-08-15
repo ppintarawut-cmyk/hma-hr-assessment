@@ -153,6 +153,87 @@ def test_two_column_form_is_read_as_a_single_jd(open_ats):
     assert any("SAP" in s["name"] for s in jd["skills"])
 
 
+# ── ฟอร์ม JD มาตรฐาน Part 1-6 ────────────────────────────────────────────
+
+# ทรงเดียวกับ "Job Description (แบบบรรยายลักษณะงาน)" ของบริษัท — ฉลากคอลัมน์แรก ค่าคอลัมน์ที่ 4
+JD_FORM = """[
+  ['Job Description (แบบบรรยายลักษณะงาน)'],
+  ['Part 1: General Information '],
+  ['ส่วนที่ 1 ข้อมูลทั่วไป '],
+  ['ตำแหน่งภาษาไทย', '', '', 'พนักงาน'],
+  ['Position English Name (Job Title)', '', '', 'Team Member'],
+  ['ชื่อตำแหน่งตามขอบเขตงาน', '', '', 'พนักงานวางแผนการผลิต'],
+  ['Position by scope of job', '', '', 'Production Planning Officer'],
+  ['สังกัดส่วนงานภาษาไทย', '', '', 'ส่วนงานวางแผนและควบคุมการผลิต'],
+  ['Part 3: Job Purpose (Overview Roles)'],
+  ['ส่วนที่ 3 หน้าที่หลัก'],
+  ['วางแผนการผลิตรายเดือนและประสานงานกับฝ่ายจัดซื้อ'],
+  ['Part 5: Qualification '],
+  ['ส่วนที่ 5 คุณสมบัติ'],
+  ['Education requirements', '', 'Bachelor degree or over', '', 'Major', 'Industrial Engineering or Related'],
+  ['Experience preferred', '', 'มีประสบการณ์ด้านวางแผนการผลิตอย่างน้อย 2 ปี'],
+  ['Part 6: Job Competency'],
+  ['ส่วนที่ 6 ความสามารถพื้นฐานในตำแหน่งงาน'],
+  ['Core Competency', '', '', 'Functional Competency'],
+  ['(ความสามารถหลัก)', '', '', '(สมรรถนะเพิ่มเติมในงาน)'],
+  ['ทักษะการแก้ไขปัญหา', '', '', 'ทักษะการวิเคราะห์ข้อมูล'],
+  ['ทักษะการทำงานเป็นทีม', '', '', '', '', 'MS-MFG-JD-0042']
+]"""
+
+
+def test_standard_form_is_recognised(open_ats):
+    page = open_ats()
+    assert page.evaluate("() => isJdForm(" + JD_FORM + ")") is True
+    assert page.evaluate("() => isJdForm([['ตำแหน่ง','A'],['แผนก','B']])") is False
+
+
+def test_form_prefers_scope_title_over_job_grade(open_ats):
+    """"ตำแหน่งภาษาไทย" ในฟอร์มนี้คือระดับพนักงาน ("พนักงาน") ไม่ใช่ชื่อตำแหน่ง"""
+    page = open_ats()
+    jd = page.evaluate("() => parseJdForm(" + JD_FORM + ")")
+    assert jd["title"] == "พนักงานวางแผนการผลิต"
+    assert jd["dept"] == "ส่วนงานวางแผนและควบคุมการผลิต"
+
+
+def test_form_reads_qualification_section(open_ats):
+    page = open_ats()
+    jd = page.evaluate("() => parseJdForm(" + JD_FORM + ")")
+    assert jd["minExp"] == 2
+    assert "bachelor" in jd["eduKeywords"] and "engineering" in jd["eduKeywords"]
+    assert "Bachelor degree or over" in jd["quals"]
+    assert "วางแผนการผลิตรายเดือน" in jd["jd"]        # Part 3 คือเนื้องาน ไม่ใช่คุณสมบัติ
+
+
+def test_form_competencies_become_matchable_skills(open_ats):
+    """Part 6 คือเกณฑ์ทักษะที่บริษัทเขียนเอง — ต้องมาก่อนทักษะที่เดาจากคลัง"""
+    page = open_ats()
+    names = [s["name"] for s in page.evaluate("() => parseJdForm(" + JD_FORM + ")")["skills"]]
+    # วลียาวต้องพ่วงแก่นคำเป็นคำพ้อง ไม่งั้นไม่มีทางตรงกับข้อความใน resume
+    assert "ทักษะการแก้ไขปัญหา/แก้ไขปัญหา" in names
+    # ตัวที่ตรงกับคลังอยู่แล้วให้ใช้ของคลัง เพราะมีคำพ้องครบกว่า
+    assert "Teamwork/ทำงานเป็นทีม/ทีมเวิร์ก" in names
+    assert "Analytical/วิเคราะห์/การวิเคราะห์" in names
+
+
+@pytest.mark.parametrize("noise", [
+    "Core Competency", "Functional Competency", "(ความสามารถหลัก)", "MS-MFG-JD-0042",
+])
+def test_form_column_headers_and_doc_codes_are_not_skills(open_ats, noise):
+    page = open_ats()
+    names = [s["name"] for s in page.evaluate("() => parseJdForm(" + JD_FORM + ")")["skills"]]
+    assert not any(noise.lower() in n.lower() for n in names)
+
+
+def test_same_form_as_flat_text_still_reads(open_ats):
+    """ฟอร์มเดียวกันที่ถูกส่งมาเป็น PDF จะเหลือแต่ข้อความ — ต้องยังได้ค่าหลักครบ"""
+    page = open_ats()
+    jd = page.evaluate("() => parseJD(sheetRowsToText(" + JD_FORM + "), {})")
+    assert jd["title"] == "พนักงานวางแผนการผลิต"
+    assert jd["dept"] == "ส่วนงานวางแผนและควบคุมการผลิต"
+    assert jd["minExp"] == 2
+    assert "Bachelor degree or over" in jd["quals"]
+
+
 def test_label_regex_alternatives_all_work(open_ats):
     """jdLabelValue ต่อ pattern ท้าย source ที่มี | อยู่ — ต้องครอบวงเล็บก่อน
     ไม่งั้นทางเลือกแรก ๆ จะไม่มีส่วนที่ต่อท้ายติดไปด้วย"""

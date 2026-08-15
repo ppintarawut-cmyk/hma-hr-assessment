@@ -18,6 +18,7 @@
 | `resume-03-scanned-image.pdf` | หน้าเป็นภาพล้วน ไม่มีชั้นข้อความ — บังคับใช้ OCR | NARONG SAETANG · narong.s@example.com (ติด badge 🔍 อ่านด้วย OCR) |
 | `jd-01-production-engineer.pdf` | นำเข้า JD จาก PDF ภาษาไทย | วิศวกรฝ่ายผลิต · Production Engineering · 3 ปี · ทักษะ ~12 รายการ |
 | `jd-02-manpower-plan.xlsx` | นำเข้า JD จาก Excel — แผ่นแรกเป็นฟอร์ม แผ่นสองเป็นตาราง 3 ตำแหน่ง | ถามยืนยันแล้วนำเข้า Sales Engineer / HR Officer / ช่างซ่อมบำรุง |
+| `jd-03-standard-form.xlsx` | ฟอร์ม **แบบบรรยายลักษณะงาน Part 1-6** ที่บริษัทใช้จริง | พนักงานวางแผนการผลิต · ส่วนงานวางแผนและควบคุมการผลิต · 2 ปี · ทักษะ 21 รายการจาก Part 6 |
 
 `resume-03` ต้องเปิดสวิตช์ OCR ที่แท็บ Resume Scanner และครั้งแรกจะโหลดชุดข้อมูลภาษา
 ประมาณ 15 MB จาก CDN ใช้เวลาสักพัก

@@ -1138,18 +1138,29 @@ function parseResume(rawText, hints) {
 
 /* ฉลากที่ใช้กันจริงในเอกสาร JD ไทย/อังกฤษ */
 const JD_LABELS = {
+  // ฟอร์มมาตรฐานมีทั้ง "ตำแหน่งภาษาไทย" (= ระดับพนักงาน) และ "ชื่อตำแหน่งตามขอบเขตงาน"
+  // (= ตำแหน่งจริง) ต้องลองตัวหลังก่อนเสมอ ไม่งั้นจะได้คำว่า "พนักงาน" มาเป็นชื่อตำแหน่ง
+  titleScope: /(?:^|\n)[ \t]*ชื่อตำแหน่งตามขอบเขตงาน|(?:^|\n)[ \t]*position\s*by\s*scope(?:\s*of\s*job)?/i,
   title: /(?:^|\n)[ \t]*(?:ชื่อ)?ตำแหน่ง(?:งาน|ที่เปิดรับ|ที่รับสมัคร)?|(?:^|\n)[ \t]*(?:job\s*)?(?:position|title|job\s*title|role)/i,
   dept: /(?:^|\n)[ \t]*(?:แผนก|ฝ่าย|หน่วยงาน|สังกัด)|(?:^|\n)[ \t]*(?:department|division|section)/i,
 };
-/* หัวข้อที่แบ่ง "หน้าที่งาน" ออกจาก "คุณสมบัติผู้สมัคร" */
-const QUALS_HEADING_RE = /(?:^|\n)[ \t]*(?:คุณสมบัติ(?:ผู้สมัคร|ของผู้สมัคร|เฉพาะตำแหน่ง)?|คุณสมบัติที่ต้องการ|สิ่งที่ต้องมี|qualifications?|requirements?|desired\s+skills?|skill\s+requirements?|who\s+you\s+are|what\s+you\s+(?:need|bring))[ \t]*:?[ \t]*(?:\n|$)/i;
+/* หัวข้อที่แบ่ง "หน้าที่งาน" ออกจาก "คุณสมบัติผู้สมัคร"
+   รับหัวข้อแบบ "Part 5: Qualification" / "ส่วนที่ 5 คุณสมบัติ" ด้วย เพราะฟอร์ม JD
+   มาตรฐานของบริษัทเรียงเป็น Part 1-6 และมักถูกส่งมาเป็น PDF ของฟอร์มเดียวกัน */
+const QUALS_HEADING_RE = /(?:^|\n)[ \t]*(?:(?:part|ส่วนที่)\s*\d+\s*[:：]?\s*)?(?:คุณสมบัติ(?:ผู้สมัคร|ของผู้สมัคร|เฉพาะตำแหน่ง)?|คุณสมบัติที่ต้องการ|สิ่งที่ต้องมี|qualifications?|requirements?|desired\s+skills?|skill\s+requirements?|who\s+you\s+are|what\s+you\s+(?:need|bring))[ \t]*:?[ \t]*(?:\n|$)/i;
 
-/* สาขาวิชาที่พบบ่อยใน JD — ใช้ตั้งคีย์เวิร์ดวุฒิให้ตรงกับคำที่จะเจอใน resume */
+/* สาขาวิชาที่พบบ่อยใน JD — ใช้ตั้งคีย์เวิร์ดวุฒิให้ตรงกับคำที่จะเจอใน resume
+   ตัวที่ 3 คือคำพ้องที่ใช้ "จับ" เพิ่ม — ถ้าเจอคำพ้องจะใส่ลงคีย์เวิร์ดด้วย
+   เพราะ resume อาจเขียนคนละคำกับ JD (JD ว่า "ทรัพยากรมนุษย์" resume ว่า "ทรัพยากรบุคคล") */
 const JD_FIELDS = [
-  ['engineering', 'วิศวกรรม'], ['business administration', 'บริหารธุรกิจ'], ['accounting', 'บัญชี'],
-  ['finance', 'การเงิน'], ['logistics', 'โลจิสติกส์'], ['supply chain', 'ซัพพลายเชน'],
-  ['computer', 'คอมพิวเตอร์'], ['information technology', 'เทคโนโลยีสารสนเทศ'],
-  ['human resource', 'ทรัพยากรบุคคล'], ['marketing', 'การตลาด'], ['science', 'วิทยาศาสตร์'],
+  ['engineering', 'วิศวกรรม', ['วิศวกรรมศาสตร์']],
+  ['business administration', 'บริหารธุรกิจ', ['business management', 'การจัดการ']],
+  ['accounting', 'บัญชี'], ['finance', 'การเงิน'],
+  ['logistics', 'โลจิสติกส์'], ['supply chain', 'ซัพพลายเชน'],
+  ['computer', 'คอมพิวเตอร์', ['computer science', 'วิทยาการคอมพิวเตอร์']],
+  ['information technology', 'เทคโนโลยีสารสนเทศ'],
+  ['human resource', 'ทรัพยากรบุคคล', ['human resources', 'hr management', 'ทรัพยากรมนุษย์']],
+  ['marketing', 'การตลาด'], ['science', 'วิทยาศาสตร์'],
   ['statistics', 'สถิติ'], ['economics', 'เศรษฐศาสตร์'], ['law', 'นิติศาสตร์'],
 ];
 
@@ -1158,10 +1169,13 @@ const JD_FIELDS = [
    คือส่วนที่ต่อท้ายจะผูกกับทางเลือกสุดท้ายทางเดียว */
 function jdLabelValue(text, labelRe) {
   const label = '(?:' + labelRe.source + ')';
+  // ฉลากในฟอร์มมักมีคำต่อท้าย ("ตำแหน่งภาษาไทย") ทำให้จับได้ทั้ง "ภาษาไทย : พนักงาน"
+  // ค่าจริงคือส่วนหลังโคลอนตัวสุดท้ายเสมอ
+  const tail = v => { const i = Math.max(v.lastIndexOf(':'), v.lastIndexOf('：')); return (i >= 0 ? v.slice(i + 1) : v).trim(); };
   const m = String(text || '').match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*([^\\n]{2,80})', 'i'));
-  if (m && m[1] && m[1].trim()) return m[1].trim().replace(/[.,;]+$/, '');
+  if (m && m[1] && tail(m[1])) return tail(m[1]).replace(/[.,;]+$/, '');
   const m2 = String(text || '').match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*\\n[ \\t]*([^\\n]{2,80})', 'i'));
-  return m2 && m2[1] ? m2[1].trim().replace(/[.,;]+$/, '') : '';
+  return m2 && m2[1] ? tail(m2[1]).replace(/[.,;]+$/, '') : '';
 }
 
 /* ประสบการณ์ "ขั้นต่ำ" ที่ JD ต้องการ — ต่างจาก resume ที่เอาค่ามากสุด
@@ -1194,11 +1208,16 @@ function extractEduKeywords(text) {
   else if (/\bdiploma\b|ปวส/i.test(low)) out.push('diploma', 'ปวส');
   // สาขาที่ถูกพูดถึงก่อนในเอกสารคือสาขาหลัก — ไม่ใช่สาขาที่มาก่อนในลิสต์ของเรา
   let best = null, bestAt = Infinity;
-  for (const [en, th] of JD_FIELDS) {
-    const at = Math.min(...[low.indexOf(en), low.indexOf(th)].filter(i => i >= 0), Infinity);
-    if (at < bestAt) { bestAt = at; best = [en, th]; }
+  for (const f of JD_FIELDS) {
+    const terms = [f[0], f[1]].concat(f[2] || []);
+    const at = Math.min(...terms.map(t => low.indexOf(t)).filter(i => i >= 0), Infinity);
+    if (at < bestAt) { bestAt = at; best = f; }
   }
-  if (best) out.push(best[0], best[1]);
+  if (best) {
+    out.push(best[0], best[1]);
+    // ใส่คำพ้องที่เอกสารใช้จริงลงไปด้วย จะได้จับ resume ที่เขียนคำเดียวกับ JD ได้
+    (best[2] || []).forEach(alias => { if (low.includes(alias)) out.push(alias); });
+  }
   return out.join(', ');
 }
 
@@ -1280,12 +1299,103 @@ function jdRowsToJobs(rows) {
   return jobs;
 }
 
+/* ── ฟอร์ม JD มาตรฐาน (Part 1-6 / ส่วนที่ 1-6) ──
+   เอกสาร "Job Description (แบบบรรยายลักษณะงาน)" ของบริษัทเป็นตารางที่ merge ช่องเยอะ
+   อ่านจากแถวโดยตรงดีกว่าแปลงเป็นข้อความก่อน เพราะยังรู้ว่าอะไรคือฉลากอะไรคือค่า
+   และรู้ว่าบรรทัดไหนอยู่ Part ไหน — Part 3+4 คือเนื้องาน, Part 5 คือคุณสมบัติ,
+   Part 6 คือ Core Competency ซึ่งตรงกับ "เกณฑ์ทักษะ" ของระบบพอดี */
+const JD_FORM_FIELDS = [
+  // ชื่อตามขอบเขตงานคือตำแหน่งจริง ส่วน "ตำแหน่งภาษาไทย" เป็นระดับพนักงาน (พนักงาน/หัวหน้า)
+  { key: 'titleScope', re: /ชื่อตำแหน่งตามขอบเขตงาน|position\s*by\s*scope/i },
+  { key: 'titleGrade', re: /^ตำแหน่งภาษาไทย|position\s*english\s*name|job\s*title/i },
+  { key: 'dept', re: /^สังกัด|section\s*\(?\s*de[ap]+artment/i },
+  { key: 'division', re: /division|ฝ่ายงาน/i },
+];
+/* หัวคอลัมน์ใน Part 6 และรหัสเอกสาร — ไม่ใช่ชื่อความสามารถ */
+const JD_FORM_NOISE_RE = /^(?:core|functional|managerial)\s*competency$|^\(?(?:ความสามารถหลัก|สมรรถนะเพิ่มเติมในงาน|ความสามารถในการบริหารจัดการ)\)?$|^[A-Z]{2,}-[A-Z0-9-]{2,}$/i;
+/* คำนำหน้าที่ทำให้ความสามารถกลายเป็นวลียาวจนไม่มีทางตรงกับข้อความใน resume */
+const COMPETENCY_PREFIX_RE = /^(?:ทักษะ(?:การ|ด้าน|ใน)?|ความรู้(?:ด้าน|เกี่ยวกับ|ใน)?|การมี|ความสามารถ(?:ใน|ด้าน)?|มีความ|ความ)\s*/;
+
+function rowCells(r) { return (r || []).map(cellText).filter(Boolean); }
+
+/* ใช่ฟอร์มนี้ไหม — ดูจากหัวข้อ Part/ส่วนที่ ตั้งแต่ 2 อันขึ้นไป */
+function isJdForm(rows) {
+  let parts = 0;
+  for (const r of (rows || []).slice(0, 80)) {
+    const first = rowCells(r)[0] || '';
+    if (/^(?:part|ส่วนที่)\s*\d/i.test(first) && ++parts >= 2) return true;
+  }
+  return false;
+}
+
+/* ความสามารถ 1 ข้อ → ชื่อทักษะที่ใช้คิดคะแนนได้จริง
+   ถ้าตรงกับคลังทักษะให้ใช้ตัวคลัง (มีคำพ้องครบกว่า) ไม่งั้นเก็บวลีเดิมไว้
+   แล้วเติมแก่นคำเป็นคำพ้อง — "ทักษะการวิเคราะห์ข้อมูล" ไม่มีใน resume แต่ "วิเคราะห์ข้อมูล" มี */
+function competencyToSkill(phrase) {
+  const p = String(phrase || '').replace(/\s+/g, ' ').trim();
+  if (!p) return '';
+  const lib = SKILL_LIBRARY.find(name => skillSynonyms(name).some(t => textHasTerm(p.toLowerCase(), t)));
+  if (lib) return lib;
+  const core = p.replace(COMPETENCY_PREFIX_RE, '').trim();
+  return core && core !== p ? p + '/' + core : p;
+}
+
+/* ฟอร์ม JD → ค่าที่กรอกลงฟอร์มตำแหน่งงานได้ */
+function parseJdForm(rows) {
+  const found = {};
+  const sections = {};                       // เลข Part → บรรทัดในส่วนนั้น
+  const competencies = [];
+  let part = 0;
+
+  for (const r of (rows || [])) {
+    const cells = rowCells(r);
+    if (!cells.length) continue;
+    const head = cells[0];
+    const m = head.match(/^(?:part|ส่วนที่)\s*(\d+)/i);
+    if (m) { part = parseInt(m[1], 10); continue; }      // บรรทัดหัวข้อไม่เก็บเป็นเนื้อหา
+
+    const field = JD_FORM_FIELDS.find(f => f.re.test(head));
+    if (field && cells[1] && !found[field.key]) found[field.key] = cells[1];
+
+    if (part === 6) {
+      cells.forEach(c => {
+        if (JD_FORM_NOISE_RE.test(c)) return;
+        c.split(/[,、]/).forEach(one => { const t = one.trim(); if (t.length >= 2) competencies.push(t); });
+      });
+      continue;
+    }
+    (sections[part] = sections[part] || []).push(cells.join(' '));
+  }
+
+  const sec = n => (sections[n] || []).join('\n').trim();
+  const jd = [sec(3), sec(4)].filter(Boolean).join('\n\n');
+  const quals = sec(5);
+  const all = Object.values(sections).map(v => v.join('\n')).join('\n') + '\n' + competencies.join('\n');
+
+  // ความสามารถจากฟอร์มมาก่อน (เป็นเกณฑ์ที่บริษัทเขียนไว้เอง) แล้วค่อยเติมจากคลัง
+  const names = [];
+  const seen = new Set();
+  const add = n => { const k = n.toLowerCase(); if (n && !seen.has(k)) { seen.add(k); names.push(n); } };
+  competencies.map(competencyToSkill).forEach(add);
+  suggestSkillsFromText(all).forEach(add);
+
+  return {
+    title: (found.titleScope || found.titleGrade || '').slice(0, 80),
+    dept: (found.dept || found.division || '').slice(0, 60),
+    minExp: extractRequiredYears(quals || all),
+    eduKeywords: extractEduKeywords(quals || all),
+    jd, quals,
+    skills: names.map(name => ({ name, weight: 3, required: false })),
+    text: normText(all),
+  };
+}
+
 /* ข้อความ JD → ค่าที่กรอกลงฟอร์มได้ · hints.bigText / hints.fileName ใช้เดาชื่อตำแหน่ง */
 function parseJD(text, hints) {
   hints = hints || {};
   const src = normText(text);
   const { jd, quals } = splitJdAndQuals(src);
-  let title = jdLabelValue(src, JD_LABELS.title);
+  let title = jdLabelValue(src, JD_LABELS.titleScope) || jdLabelValue(src, JD_LABELS.title);
   if (!title && hints.bigText && hints.bigText.length <= 80) title = hints.bigText.trim();
   if (!title) {
     // ไม่มีฉลาก — บรรทัดแรกที่ไม่ใช่หัวจดหมาย/ชื่อบริษัท มักเป็นชื่อตำแหน่ง
@@ -1941,6 +2051,8 @@ async function importJDFile(file) {
     if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
       toast('กำลังอ่านไฟล์ Excel…');
       const { rows, text } = await readSpreadsheet(file);
+      // ฟอร์ม JD มาตรฐานอ่านจากแถวโดยตรง — ยังรู้ว่าอะไรคือฉลาก อะไรคือค่า และอยู่ Part ไหน
+      if (isJdForm(rows)) { fillJobForm(parseJdForm(rows), file.name); return; }
       const jobs = jdRowsToJobs(rows);
       // ตารางหลายตำแหน่ง → นำเข้าทีเดียวทั้งหมด · ตำแหน่งเดียว/ฟอร์ม → เปิดฟอร์มให้ตรวจก่อน
       if (jobs.length > 1) {
