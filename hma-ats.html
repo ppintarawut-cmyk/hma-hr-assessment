@@ -205,6 +205,15 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 .sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
+/* หน้า resume จริง + กล่องไฮไลต์ที่ปูทับตามพิกัดใน PDF */
+.rv-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.rv-host { max-height: 560px; overflow: auto; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 12px; }
+.rv-page { position: relative; margin: 0 auto 14px; box-shadow: 0 1px 6px rgba(0,0,0,.18); background: #fff; }
+.rv-page canvas { display: block; max-width: 100%; height: auto; }
+.rv-pagenum { position: absolute; right: 6px; bottom: 4px; font-size: 11px; color: var(--gray-400); background: rgba(255,255,255,.8); padding: 0 5px; border-radius: 4px; }
+/* mix-blend-mode: multiply ทำให้ตัวหนังสือใต้กล่องยังอ่านออก ไม่ถูกทับจนหาย */
+.rv-hit { position: absolute; background: var(--pass-b); mix-blend-mode: multiply; border-radius: 2px; pointer-events: auto; }
+[data-theme="dark"] .rv-hit { mix-blend-mode: screen; opacity: .55; }
 /* แถบโหมดทดสอบ — ต้องเห็นตลอดเวลา ไม่งั้นเผลอคิดว่าเป็นข้อมูลจริง */
 .demo-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 18px; font-size: 13px;
   background: var(--pend-l); color: var(--pend); border-bottom: 2px solid var(--pend); }
@@ -1429,43 +1438,95 @@ function parseJD(text, hints) {
    ที่ถูกคือดูช่องว่าง "จริง" บนหน้ากระดาษ: เว้นวรรคเมื่อระยะห่างแนวนอนกว้างพอเท่านั้น
 
    items = text item จาก pdf.js (str, transform, width, height)
-   คืน { text, bigText } โดย bigText = บรรทัดตัวโตสุดในช่วงต้นหน้า (ใช้เดาชื่อ) */
-function pdfItemsToText(items) {
+   คืนบรรทัดพร้อมของเดิมของแต่ละชิ้น (part.item) และตำแหน่งเริ่มต้นในบรรทัด (part.start)
+   เพื่อให้หน้าแสดง resume จริงย้อนจากช่วงตัวอักษรที่ match กลับไปเป็นกล่องบนหน้ากระดาษได้
+   — ตัวไฮไลต์กับตัวคิดคะแนนจึงอ่านข้อความชุดเดียวกันเป๊ะ ไม่มีทางเหลื่อมกัน */
+function pdfItemsToLines(items) {
   const lines = [];
   for (const it of (items || [])) {
-    const s = it && it.str;
-    if (!s) continue;      // เก็บ item ที่เป็นช่องว่างล้วนไว้ด้วย — บางไฟล์ใช้มันคั่นคำจริง ๆ
+    const raw = it && it.str;
+    if (!raw) continue;    // เก็บ item ที่เป็นช่องว่างล้วนไว้ด้วย — บางไฟล์ใช้มันคั่นคำจริง ๆ
+    // ซ่อมสระ/วรรณยุกต์ไทยทีละชิ้น (ไม่ trim) เพื่อให้ offset ในบรรทัดยังตรงกับชิ้นเดิมเสมอ
+    const s = raw.normalize('NFC').replace(/ํา/g, 'ำ').replace(/ำา/g, 'ำ');
     const tr = it.transform || [1, 0, 0, 1, 0, 0];
     const size = Math.abs(tr[3]) || Math.abs(it.height) || 10;
     const x = tr[4], y = tr[5];
     const w = typeof it.width === 'number' ? it.width : s.length * size * 0.5;
     // บรรทัดเดียวกัน = พิกัดแนวตั้งใกล้กันไม่เกินครึ่งความสูงตัวอักษร
     let line = lines.find(L => Math.abs(L.y - y) <= Math.max(2, Math.min(L.size, size) * 0.5));
-    if (!line) { line = { y, size, items: [] }; lines.push(line); }
+    if (!line) { line = { y, size, parts: [] }; lines.push(line); }
     line.size = Math.max(line.size, size);
-    line.items.push({ x, w, s, size });
+    line.parts.push({ x, w, s, size, item: it });
   }
   lines.sort((a, b) => b.y - a.y);                       // PDF นับแกน Y จากล่างขึ้นบน
-  const texts = lines.map(L => {
-    L.items.sort((a, b) => a.x - b.x);
+  for (const L of lines) {
+    L.parts.sort((a, b) => a.x - b.x);
     let out = '', prev = null;
-    for (const it of L.items) {
+    for (const p of L.parts) {
       if (prev) {
-        const gap = it.x - (prev.x + prev.w);
-        const needSpace = gap > Math.max(prev.size, it.size) * 0.25;
-        if (needSpace && !/\s$/.test(out) && !/^\s/.test(it.s)) out += ' ';
+        const gap = p.x - (prev.x + prev.w);
+        const needSpace = gap > Math.max(prev.size, p.size) * 0.25;
+        if (needSpace && !/\s$/.test(out) && !/^\s/.test(p.s)) out += ' ';
       }
-      out += it.s;
-      prev = it;
+      p.start = out.length;                              // ตัวอักษรตัวแรกของชิ้นนี้อยู่ตรงไหนในบรรทัด
+      out += p.s;
+      prev = p;
     }
-    return out.trim();
-  });
+    L.text = out;
+  }
+  return lines;
+}
+
+/* คืน { text, bigText } โดย bigText = บรรทัดตัวโตสุดในช่วงต้นหน้า (ใช้เดาชื่อ) */
+function pdfItemsToText(items) {
+  const lines = pdfItemsToLines(items);
+  const texts = lines.map(L => L.text.trim());
   // ชื่อผู้สมัครมักเป็นข้อความตัวโตสุดในช่วงต้นหน้า — เก็บไว้เป็นตัวช่วยเดาชื่อ
   let bigText = '', bigSize = 0;
   for (let i = 0; i < Math.min(lines.length, 12); i++) {
     if (texts[i] && lines[i].size > bigSize) { bigSize = lines[i].size; bigText = texts[i]; }
   }
   return { text: texts.join('\n'), bigText };
+}
+
+/* ── ความกว้างโดยประมาณของข้อความ (ใช้วางกล่องไฮไลต์บนหน้า PDF) ──
+   PDF มักเก็บทั้งบรรทัดเป็นชิ้นเดียว รู้แค่ความกว้างรวม การหาว่าคำหนึ่งอยู่ตรงไหน
+   จึงต้องเฉลี่ยเอา — แต่สระบน/ล่างและวรรณยุกต์ไทยลอยอยู่เหนือ-ใต้ตัวอักษร ไม่กินความกว้าง
+   ถ้านับเท่าตัวอื่นกล่องจะเลื่อนไปทางขวาสะสมเรื่อย ๆ ในบรรทัดที่มีภาษาไทย */
+const THAI_ZERO_WIDTH_RE = /[ัิ-ฺ็-๎]/;
+function textAdvance(s, from, to) {
+  let w = 0;
+  for (let i = Math.max(0, from); i < Math.min(to, s.length); i++) {
+    if (THAI_ZERO_WIDTH_RE.test(s[i])) continue;
+    w += s[i] === ' ' ? 0.6 : 1;                         // ช่องว่างแคบกว่าตัวอักษรทั่วไป
+  }
+  return w;
+}
+
+/* ── หาช่วงตัวอักษรของคำที่ match ── */
+/* คืน [{start, end, term}] ตามกติกาเดียวกับ textHasTerm:
+   ASCII ต้องเป็นคำเต็ม (ไม่ใช่ส่วนหนึ่งของคำอื่น) · ไทยจับแบบ substring */
+function findTermRanges(text, terms) {
+  const src = String(text || '');
+  const low = src.toLowerCase();
+  const out = [];
+  (terms || []).forEach(term => {
+    const t = String(term || '').toLowerCase();
+    if (!t) return;
+    if (/^[\x00-\x7F]+$/.test(t)) {
+      const re = new RegExp('(?:^|[^a-z0-9])(' + escapeRe(t) + ')(?:$|[^a-z0-9])', 'gi');
+      let m;
+      while ((m = re.exec(low)) !== null) {
+        const start = m.index + m[0].indexOf(m[1]);
+        out.push({ start, end: start + m[1].length, term });
+        re.lastIndex = start + m[1].length;              // เดินต่อจากท้ายคำ กันวนไม่รู้จบ
+      }
+    } else {
+      let i = low.indexOf(t);
+      while (i >= 0) { out.push({ start: i, end: i + t.length, term }); i = low.indexOf(t, i + t.length); }
+    }
+  });
+  return out.sort((a, b) => a.start - b.start);
 }
 </script>
 
@@ -2097,6 +2158,110 @@ function fillJobForm(p, fileName) {
   toast(got.length ? `อ่านจาก ${fileName} ได้: ${got.join(' · ')} — ตรวจแล้วกดบันทึก` : `อ่าน ${fileName} แล้วแต่แยกหัวข้อไม่ได้ — เนื้อหาอยู่ในช่อง JD`);
 }
 
+/* ── แสดงหน้า resume จริงพร้อมไฮไลต์คำที่ใช้คิดคะแนน ──
+   วาดหน้า PDF ลง canvas แล้วปูกล่องไฮไลต์ทับตามพิกัดของ text item
+   ใช้บรรทัดชุดเดียวกับตัวคิดคะแนน (pdfItemsToLines) กล่องจึงตรงกับสิ่งที่นับคะแนนจริง
+   ไฟล์ต้นฉบับเก็บไว้ในหน่วยความจำระหว่าง session เท่านั้น ไม่ลงดิสก์/localStorage */
+const PREVIEW_SCALE = 1.6;
+const previewCache = new WeakMap();   // File → หน้าเอกสารที่วาดแล้ว กันวาดซ้ำตอนสลับแท็บ
+
+async function renderResumePreview(host, file, matchedSkills) {
+  host.innerHTML = '<div class="hint">⏳ กำลังเปิดไฟล์…</div>';
+  const terms = [];
+  (matchedSkills || []).forEach(name => skillSynonyms(name).forEach(t => { if (t) terms.push(t); }));
+  try {
+    if (!window.pdfjsLib) throw new Error('pdf.js ยังโหลดไม่เสร็จ');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    let pages = previewCache.get(file);
+    if (!pages) {
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false }).promise;
+      pages = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const viewport = page.getViewport({ scale: PREVIEW_SCALE });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        pages.push({ canvas, viewport, lines: pdfItemsToLines((await page.getTextContent()).items) });
+      }
+      previewCache.set(file, pages);
+    }
+
+    host.innerHTML = '';
+    let hits = 0;
+    pages.forEach((pg, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'rv-page';
+      wrap.style.width = pg.canvas.width + 'px';
+      wrap.appendChild(pg.canvas);
+      const label = document.createElement('div');
+      label.className = 'rv-pagenum';
+      label.textContent = `หน้า ${i + 1}/${pages.length}`;
+      wrap.appendChild(label);
+      pg.lines.forEach(L => {
+        findTermRanges(L.text, terms).forEach(range => {
+          // ช่วงตัวอักษรอาจกินหลายชิ้น — วาดกล่องแยกทีละชิ้นที่ทับกับช่วงนั้น
+          L.parts.forEach(part => {
+            const ps = part.start, pe = ps + part.s.length;
+            const from = Math.max(range.start, ps), to = Math.min(range.end, pe);
+            if (to <= from || !part.s.length) return;
+            const box = highlightBox(part, from - ps, to - ps, pg.viewport);
+            if (!box) return;
+            box.title = range.term;
+            wrap.appendChild(box);
+            hits++;
+          });
+        });
+      });
+      host.appendChild(wrap);
+    });
+    return hits;
+  } catch (err) {
+    host.innerHTML = `<div class="warn-box">เปิดหน้า resume ไม่ได้: ${esc(err.message || String(err))}</div>`;
+    return 0;
+  }
+}
+
+/* พิกัดของชิ้นข้อความ → กล่อง <div> บน canvas · from/to = ช่วงตัวอักษรภายในชิ้นนั้น
+   ตำแหน่งในแนวนอนเฉลี่ยจากความกว้างรวมของชิ้น (ดู textAdvance) จึงคลาดได้เล็กน้อย
+   ในฟอนต์ที่ตัวอักษรกว้างไม่เท่ากันมาก ๆ */
+function highlightBox(part, from, to, viewport) {
+  const tx = pdfjsLib.Util.transform(viewport.transform, part.item.transform);
+  const h = Math.hypot(tx[2], tx[3]) || part.size * viewport.scale;
+  const w = part.w * viewport.scale;
+  const total = textAdvance(part.s, 0, part.s.length);
+  if (!(w > 0) || !(h > 0) || !total) return null;
+  const left = w * (textAdvance(part.s, 0, from) / total);
+  const width = w * (textAdvance(part.s, from, to) / total);
+  const box = document.createElement('div');
+  box.className = 'rv-hit';
+  box.style.left = (tx[4] + left) + 'px';
+  box.style.top = (tx[5] - h) + 'px';
+  box.style.width = Math.max(width, 2) + 'px';
+  box.style.height = (h * 1.15) + 'px';
+  return box;
+}
+
+/* สลับระหว่างหน้าจริงกับข้อความที่ดึงได้ */
+async function toggleResumeView(id, mode) {
+  const r = (scanResults.find(x => x.id === id)) || null;
+  const host = document.getElementById('rvHost');
+  const status = document.getElementById('rvStatus');
+  if (!r || !host) return;
+  document.querySelectorAll('#rvToggle button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  if (mode === 'text') {
+    host.innerHTML = `<div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+    status.textContent = 'ข้อความที่ระบบดึงได้จากไฟล์ (ของดิบ ไม่ได้ตกแต่ง)';
+    return;
+  }
+  status.textContent = '';
+  const hits = await renderResumePreview(host, r.file, r.matched);
+  status.textContent = hits
+    ? `ไฮไลต์ ${hits} จุดที่ตรงกับทักษะของตำแหน่งนี้ — จุดเหล่านี้คือที่มาของคะแนนทักษะ`
+    : 'ไม่พบคำที่ตรงกับทักษะของตำแหน่งนี้ในหน้าเอกสาร';
+}
+
 /* ── Scan flow ── */
 async function handleFiles(fileList) {
   const jobId = document.getElementById('scanJob').value;
@@ -2111,7 +2276,9 @@ async function handleFiles(fileList) {
   const useOcr = !ocrEl || ocrEl.checked;
 
   for (const f of files) {
-    const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing' };
+    // เก็บ File ไว้กับแถวเพื่อเปิดดูหน้าจริงตอนกดรายละเอียด — อยู่ในหน่วยความจำเท่านั้น
+    // makeCandidate สร้าง record ด้วยฟิลด์ที่ระบุชัดเจน ไฟล์จึงไม่หลุดลง DB/ไฟล์สำรอง
+    const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing', file: f };
     scanResults.push(row);
     renderScanTable();
     try {
@@ -2524,8 +2691,29 @@ function detailHTML(r) {
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
     ${r.stage ? `<div id="scSection">${scorecardSectionHTML(r)}</div>` : ''}
     ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
-    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
-    <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+    ${resumeViewerHTML(r)}`;
+}
+
+/* หน้า resume จริง — ดูได้เฉพาะผลสแกนใน session นี้ เพราะไฟล์ต้นฉบับไม่ได้ถูกเก็บลง DB
+   (localStorage มีโควตาแค่ ~5MB · ผู้สมัครที่บันทึกแล้วจึงเหลือแต่ข้อความที่ดึงได้) */
+function resumeViewerHTML(r) {
+  const head = `<div class="section-title">resume ของผู้สมัคร <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = คำที่ตรงกับทักษะของตำแหน่ง (ที่มาของคะแนนทักษะ)</span></div>`;
+  const canPreview = r.file && /\.pdf$/i.test(r.file.name || '');
+  if (!canPreview) {
+    const why = r.file ? 'ไฟล์นี้ไม่ใช่ PDF จึงแสดงได้แค่ข้อความที่ดึงได้'
+      : 'ผู้สมัครที่บันทึกแล้วเก็บเฉพาะข้อความ ไม่ได้เก็บไฟล์ต้นฉบับ — ดูหน้าจริงได้ที่แท็บสแกนตอนอัปโหลด';
+    return head + `<div class="hint" style="margin-bottom:6px">${why}</div>
+      <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+  }
+  return head + `
+    <div class="rv-bar">
+      <span class="seg" id="rvToggle">
+        <button data-mode="page" class="active" onclick="toggleResumeView('${r.id}','page')">📄 หน้าจริง</button>
+        <button data-mode="text" onclick="toggleResumeView('${r.id}','text')">📝 ข้อความที่ดึงได้</button>
+      </span>
+      <span class="hint" id="rvStatus"></span>
+    </div>
+    <div class="rv-host" id="rvHost"><div class="hint">⏳ กำลังเปิดไฟล์…</div></div>`;
 }
 function sectionsHTML(sections, matched) {
   if (!sections) return '';
@@ -2544,6 +2732,8 @@ function showScanDetail(id) {
   document.getElementById('detailTitle').textContent = 'ผลสแกน — ' + (r.name || r.fileName);
   document.getElementById('detailBody').innerHTML = detailHTML(r);
   document.getElementById('detailModalBg').classList.add('open');
+  // วาดหน้าจริงหลังโมดัลเปิดแล้ว — เป็นงานหนัก ไม่ควรหน่วงการเปิดโมดัล
+  if (document.getElementById('rvHost')) toggleResumeView(id, 'page');
 }
 function showCandDetail(id) {
   const c = DB.candidates.find(x => x.id === id);
