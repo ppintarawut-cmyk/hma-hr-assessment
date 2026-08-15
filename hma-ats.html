@@ -205,6 +205,11 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 .sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
+/* ช่องแก้ชื่อ/อีเมลในตารางผลสแกน — ดูเหมือนข้อความธรรมดาจนกว่าจะโฟกัส */
+.scan-inp { width: 100%; min-width: 120px; padding: 4px 6px; font: inherit; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 6px; }
+.scan-inp:hover { border-color: var(--gray-200); }
+.scan-inp:focus { outline: none; border-color: var(--teal); background: var(--white, #fff); }
+.scan-inp::placeholder { color: var(--gray-400); font-style: italic; }
 .kv { font-size: 13px; }
 .kv td { border: none; padding: 4px 8px 4px 0; }
 .kv td:first-child { color: var(--gray-400); white-space: nowrap; }
@@ -292,7 +297,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
 
     <div class="card" id="scanResultsCard" style="display:none">
       <h2>ผลการสแกน</h2>
-      <p class="sub">ตรวจสอบข้อมูลที่ระบบดึงได้ก่อนกด "เพิ่มเป็นผู้สมัคร" — คลิก "รายละเอียด" เพื่อดูการคิดคะแนน</p>
+      <p class="sub">ตรวจสอบข้อมูลที่ระบบดึงได้ก่อนกด "เพิ่มเป็นผู้สมัคร" — ช่องชื่อ/อีเมลแก้ได้ทันทีถ้าระบบอ่านผิดหรืออ่านไม่เจอ · คลิก "รายละเอียด" เพื่อดูการคิดคะแนน</p>
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -646,10 +651,97 @@ function normText(raw) {
     .trim();
 }
 
-/* ── Contact extraction ── */
-function extractEmail(text) {
-  const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return m ? m[0].toLowerCase() : '';
+/* ── Contact extraction ──
+   ปัญหาที่เจอจริง: resume ที่มีอีเมลชัดเจน แต่ระบบหาไม่เจอ เพราะ PDF ไม่ได้เก็บ
+   "ข้อความ" เป็นบรรทัด — pdf.js คืนมาเป็นชิ้น ๆ (text item) ตามรอยต่อฟอนต์/เคิร์นนิ่ง
+   ทำให้ somchai.j@gmail.com ออกมาเป็น "somchai.j@ gmail.com" หรือถูกตัดคนละบรรทัด
+   regex ตรง ๆ จึงพลาด ทั้งที่คนอ่านออก
+
+   วิธีแก้: หาแบบเข้มก่อน (พฤติกรรมเดิม ไม่มี false positive) ถ้าไม่เจอค่อยซ่อมข้อความ
+   แล้วหาแบบผ่อนปรน — ซ่อมเฉพาะ "สำเนาที่ใช้ค้นหา" ไม่แตะ resumeText ที่ HR เห็น */
+
+/* อีเมลรูปแบบมาตรฐาน (ไม่มีช่องว่างแทรก) */
+const EMAIL_STRICT_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}/g;
+/* แบบผ่อนปรน: ยอมให้มีช่องว่าง 1 ตัวขนาบ @ และจุด — ใช้เฉพาะตอนหาแบบเข้มไม่เจอ */
+const EMAIL_LOOSE_RE = new RegExp(
+  '[A-Za-z0-9_%+-]+(?:[ ]?[._][ ]?[A-Za-z0-9_%+-]+)*' +
+  '[ ]?@[ ]?' +
+  '[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?' +
+  '(?:[ ]?\\.[ ]?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*' +
+  '[ ]?\\.[ ]?[A-Za-z]{2,}', 'g');
+
+/* นามสกุลไฟล์ที่ไม่ใช่ TLD — กัน "photo@2x.png" หรือ "logo@2.jpg" กลายเป็นอีเมล */
+const NOT_TLD_RE = /^(?:png|jpe?g|gif|svg|webp|bmp|pdf|docx?|xlsx?|pptx?|zip|rar|txt|csv)$/i;
+/* อีเมลกลาง/อีเมลบริษัท — มักเป็นของผู้รับสมัคร ไม่ใช่ของผู้สมัคร จึงจัดอันดับไว้ท้าย */
+const GENERIC_LOCAL_RE = /^(?:no-?reply|donotreply|info|contact|admin|support|sales|hr|career|jobs?|recruit(?:ment)?|webmaster|office|service|team|mail|example|your|name|email)s?$/i;
+
+function isPlausibleEmail(e) {
+  if (!e || e.length > 254) return false;
+  const at = e.lastIndexOf('@');
+  const local = e.slice(0, at), domain = e.slice(at + 1);
+  if (!local || local.length > 64 || domain.length > 253) return false;
+  if (/\.\./.test(e) || /^\./.test(local) || /\.$/.test(local)) return false;
+  const tld = domain.split('.').pop();
+  return !NOT_TLD_RE.test(tld);
+}
+
+/* ซ่อมข้อความก่อนค้นหาอีเมล — เรียกเฉพาะตอนหาแบบเข้มไม่เจอ */
+function repairContactText(raw) {
+  let t = String(raw || '')
+    .replace(/[＠﹫]/g, '@')                       // อักขระเต็มความกว้าง (คีย์บอร์ดญี่ปุ่น/จีน)
+    .replace(/[．｡]/g, '.')
+    // เขียนกันสแปม: somchai(at)gmail(dot)com — รับเฉพาะแบบมีวงเล็บ
+    // (แบบไม่มีวงเล็บอย่าง "worked at hino.co.th" จะกลายเป็นอีเมลปลอม จึงไม่รับ)
+    .replace(/[ \t]*[([{<][ \t]*(?:at|แอท)[ \t]*[)\]}>][ \t]*/gi, '@')
+    .replace(/[ \t]*[([{<][ \t]*(?:dot|จุด)[ \t]*[)\]}>][ \t]*/gi, '.');
+  // อีเมลถูกตัดข้ามบรรทัด (คอลัมน์แคบ/กล่องข้อความใน PDF)
+  return t
+    .replace(/([A-Za-z0-9._%+-])[ \t]*\n[ \t]*@/g, '$1@')
+    .replace(/@[ \t]*\n[ \t]*([A-Za-z0-9])/g, '@$1')
+    .replace(/(@[A-Za-z0-9.-]*)\.[ \t]*\n[ \t]*([A-Za-z]{2,})\b/g, '$1.$2');
+}
+
+/* คะแนนความน่าจะเป็น "อีเมลของผู้สมัครคนนี้" — ยิ่งน้อยยิ่งมาก่อน */
+function rankEmail(email, text, index) {
+  const local = email.split('@')[0];
+  let rank = 0;
+  const labelled = new RegExp('(?:e-?mail|อีเมล|เมล)[^\\n]{0,20}' + escapeRe(email.slice(0, 12)), 'i');
+  if (!labelled.test(text)) rank += 4;                       // อยู่ติดคำว่า "อีเมล" = ของเจ้าตัวแน่นอน
+  const headEnd = text.split('\n').slice(0, 15).join('\n').length;
+  if (index > headEnd) rank += 2;                            // อยู่หัวกระดาษ = ข้อมูลติดต่อของเจ้าตัว
+  if (GENERIC_LOCAL_RE.test(local)) rank += 8;               // info@ / hr@ = อีเมลองค์กร
+  return rank;
+}
+
+/* คืนอีเมลทั้งหมดที่พบ เรียงตัวที่น่าจะเป็นของผู้สมัครไว้ก่อน
+   links = URL จาก hyperlink ในไฟล์ (mailto:) — บาง resume ใส่อีเมลไว้เป็นลิงก์เท่านั้น */
+function extractEmails(text, links) {
+  const src = String(text || '');
+  const found = new Map();                                   // email → ตำแหน่งแรกที่เจอ
+  const collect = (re, from, squash) => {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(from)) !== null) {
+      const e = (squash ? m[0].replace(/ /g, '') : m[0]).toLowerCase();
+      if (isPlausibleEmail(e) && !found.has(e)) found.set(e, m.index);
+    }
+  };
+  collect(EMAIL_STRICT_RE, src, false);
+  if (!found.size) collect(EMAIL_LOOSE_RE, repairContactText(src), true);
+  const out = [...found.keys()].sort((a, b) =>
+    (rankEmail(a, src, found.get(a)) - rankEmail(b, src, found.get(b))) || (found.get(a) - found.get(b)));
+  // อีเมลจาก mailto: ต่อท้าย — เชื่อถือได้แต่บางทีเป็นลิงก์ของบริษัท จึงไม่แซงที่เจอในข้อความ
+  (links || []).forEach(u => {
+    const m = String(u || '').match(/^\s*mailto:([^?\s]+)/i);
+    if (!m) return;
+    const e = decodeURIComponent(m[1]).toLowerCase();
+    if (isPlausibleEmail(e) && !out.includes(e)) out.push(e);
+  });
+  return out;
+}
+
+function extractEmail(text, links) {
+  return extractEmails(text, links)[0] || '';
 }
 
 function extractPhone(text) {
@@ -672,26 +764,78 @@ function stripTitle(s) {
     .replace(/^(?:นางสาว|นาย|นาง|ดร)\.?\s*/, '')
     .trim();
 }
-function extractName(text, email) {
-  // 1) explicit label (TH/EN)
-  const label = text.match(/(?:^|\n)\s*(?:name|ชื่อ(?:-นามสกุล|-สกุล|จริง)?)\s*[:：]\s*([^\n]{2,60})/i);
-  if (label) return stripTitle(label[1]);
-  // 2) first plausible line: 2-4 words, no digits/@, not a resume header
-  const headerWords = /resume|curriculum|vitae|^cv$|profile|ประวัติ|ใบสมัคร/i;
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 8);
+/* หัวข้อ/ฉลากที่ไม่ใช่ชื่อคน — กันบรรทัดอย่าง "PERSONAL INFORMATION" หลุดมาเป็นชื่อ
+   ปิดท้ายด้วย (?![A-Za-z]) ไม่ใช่ \b เพราะอักษรไทยไม่ใช่ word character ของ JS regex
+   — \b หลังคำไทยจะไม่เกิดขอบเขต ทำให้ "ข้อมูลส่วนตัว" หลุดตะแกรง */
+const NAME_STOP_RE = /^(?:resume|curriculum\s*vitae|cv|profile|personal\s+(?:info(?:rmation)?|data|details)|contact(?:\s+(?:info(?:rmation)?|details))?|objective|career\s+objective|summary|about\s+me|education|experience|work\s+experience|skills?|languages?|references?|address|phone|tel|mobile|e-?mail|nationality|date\s+of\s+birth|position|applied|ประวัติ|ข้อมูลส่วนตัว|ใบสมัคร|สมัครงาน|ที่อยู่|เบอร์|โทรศัพท์|อีเมล|สัญชาติ|ศาสนา|วันเกิด|การศึกษา|ประสบการณ์|ทักษะ|ตำแหน่ง)(?![A-Za-z])/i;
+
+/* ข้อความนี้หน้าตาเหมือนชื่อคนไหม — ใช้ตรวจทุกช่องทางที่เดาชื่อ */
+function looksLikeName(s) {
+  const t = stripTitle(String(s || '').replace(/[|•·‧–—]/g, ' ').replace(/\s+/g, ' ').trim());
+  if (t.length < 3 || t.length > 60) return false;
+  if (/[@\d]/.test(t)) return false;                       // มีอีเมล/ตัวเลข = บรรทัดข้อมูลติดต่อ
+  if (/https?:|www\.|[:;<>{}()[\]/\\]/.test(t)) return false;
+  if (NAME_STOP_RE.test(t)) return false;
+  const letters = (t.match(/[A-Za-z฀-๿]/g) || []).length;
+  if (letters < t.length * 0.7) return false;              // สัญลักษณ์เยอะเกินไป
+  const words = t.split(' ').filter(Boolean);
+  return words.length >= 2 && words.length <= 5;
+}
+
+/* ชื่อจาก local part ของอีเมล: somchai.jaidee@ → "Somchai Jaidee" */
+function nameFromEmail(email) {
+  const local = String(email || '').split('@')[0];
+  if (!local || GENERIC_LOCAL_RE.test(local.replace(/\d+$/, ''))) return '';
+  const parts = local.replace(/\d+/g, ' ').split(/[._+-]+/).map(s => s.trim()).filter(s => s.length > 1);
+  if (!parts.length) return '';
+  return parts.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/* ชื่อจากชื่อไฟล์: "Resume_Somchai_Jaidee_2026.pdf" → "Somchai Jaidee" — ทางเลือกสุดท้าย */
+function nameFromFileName(fileName) {
+  const t = String(fileName || '')
+    .replace(/\.[A-Za-z0-9]+$/, '')
+    .replace(/[_+]+/g, ' ')
+    .replace(/-+/g, ' ')
+    .replace(/\b(?:resume|cv|curriculum\s*vitae|profile|application|applicant|updated?|final|copy|new|ver|v\d+)\b/gi, ' ')
+    .replace(/(?:เรซูเม่|ประวัติส่วนตัว|ประวัติ|ใบสมัครงาน|ใบสมัคร|สมัครงาน)/g, ' ')
+    .replace(/\d+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return looksLikeName(t) ? stripTitle(t) : '';
+}
+
+/* หาชื่อผู้สมัคร — ไล่จากหลักฐานที่หนักแน่นที่สุดลงไป
+   hints.bigText = ข้อความตัวโตสุดบนหน้าแรกของ PDF (เกือบทุก resume พิมพ์ชื่อตัวโตไว้บนสุด)
+   hints.fileName = ชื่อไฟล์ */
+function extractName(text, email, hints) {
+  hints = hints || {};
+  const src = String(text || '');
+  // 1) ฉลากชัดเจน ทั้งค่าอยู่บรรทัดเดียวกันและอยู่บรรทัดถัดไป (ฟอร์มใบสมัครมักขึ้นบรรทัดใหม่)
+  const LABEL = '(?:full\\s*name|name|ชื่อ\\s*[-–]?\\s*(?:นามสกุล|สกุล)|ชื่อจริง|ชื่อผู้สมัคร|ชื่อ)';
+  const sameLine = src.match(new RegExp('(?:^|\\n)[ \\t]*' + LABEL + '[ \\t]*[:：][ \\t]*([^\\n]{2,60})', 'i'));
+  if (sameLine) {
+    const v = stripTitle(sameLine[1].split(/\s{2,}|[|•·]/)[0].trim());
+    if (v && !/[@\d]/.test(v) && v.length >= 3) return v;
+  }
+  const nextLine = src.match(new RegExp('(?:^|\\n)[ \\t]*' + LABEL + '[ \\t]*[:：]?[ \\t]*\\n[ \\t]*([^\\n]{2,60})', 'i'));
+  if (nextLine && looksLikeName(nextLine[1])) return stripTitle(nextLine[1].trim());
+  // 2) ข้อความตัวโตสุดบนหน้าแรก (สัญญาณที่แม่นที่สุดใน PDF จริง)
+  if (looksLikeName(hints.bigText)) return stripTitle(String(hints.bigText).replace(/\s+/g, ' ').trim());
+  // 3) กวาดบรรทัดหัวกระดาษ — ตัดเป็นช่วง ๆ ก่อน เพราะ resume สมัยใหม่มักพิมพ์
+  //    "SOMCHAI JAIDEE | 081-234-5678 | somchai@gmail.com" รวมไว้บรรทัดเดียว
+  const lines = src.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 15);
+  const clean = s => stripTitle(String(s).replace(/\s+/g, ' ').trim());
   for (const line of lines) {
-    if (headerWords.test(line)) continue;
-    if (/[@\d]/.test(line)) continue;
-    const cleaned = stripTitle(line);
-    const words = cleaned.split(/\s+/);
-    if (words.length >= 2 && words.length <= 4 && cleaned.length <= 60) return cleaned;
+    // ไล่ทีละบรรทัดจากบนลงล่าง (ชื่ออยู่บนสุดเสมอ) — ในแต่ละบรรทัดลองทั้งบรรทัดก่อน
+    // ค่อยตัดเป็นช่วง ไม่งั้น "Jaidee, Somchai" จะโดนหั่นที่คอมมาจนเหลือคำเดียว
+    if (looksLikeName(line)) return clean(line);
+    for (const seg of line.split(/[|•·‧]|\t|\s{2,}|,/)) {
+      if (looksLikeName(seg)) return clean(seg);
+    }
   }
-  // 3) fallback: derive from email local part
-  if (email) {
-    const local = email.split('@')[0].replace(/[._\d]+/g, ' ').trim();
-    if (local) return local.replace(/\b\w/g, c => c.toUpperCase());
-  }
-  return '';
+  // 4) เดาจากอีเมล แล้วค่อยเดาจากชื่อไฟล์
+  return nameFromEmail(email) || nameFromFileName(hints.fileName) || '';
 }
 
 /* ── Experience (years) ──
@@ -894,25 +1038,78 @@ function scoreCandidate(parsed, job) {
   };
 }
 
-/* ── Full pipeline: raw text → parsed record ── */
-function parseResume(rawText) {
+/* ── Full pipeline: raw text → parsed record ──
+   hints (ไม่บังคับ) = { links, bigText, fileName } ที่ได้จากตัวอ่านไฟล์ — ช่วยให้หาชื่อ/อีเมลแม่นขึ้น */
+function parseResume(rawText, hints) {
+  hints = hints || {};
   const text = normText(rawText);
-  const email = extractEmail(text);
+  const emails = extractEmails(text, hints.links);
+  const email = emails[0] || '';
   const sections = extractSections(text);
+  const name = extractName(text, email, hints);
   const warnings = [];
   if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์อาจเป็นภาพสแกน (ไม่มี text layer)');
-  if (!email) warnings.push('ไม่พบอีเมลใน resume');
+  if (!email) warnings.push('ไม่พบอีเมลใน resume — กรอกเองได้ในช่องอีเมล');
+  if (!name) warnings.push('ไม่พบชื่อผู้สมัคร — กรอกเองได้ในช่องชื่อ');
+  if (emails.length > 1) warnings.push(`พบอีเมล ${emails.length} รายการ — ใช้ ${email} (อีเมลอื่น: ${emails.slice(1).join(', ')})`);
   // ถ้าแยกส่วนประสบการณ์ได้ ให้คำนวณช่วงปีเฉพาะส่วนนั้น (กันปีการศึกษาปนเป็นปีทำงาน)
   return {
     resumeText: text,
     sections,
     email,
+    emailsFound: emails,
     phone: extractPhone(text),
-    name: extractName(text, email),
+    name,
     expYears: extractExperienceYears(text, null, sections.experience != null ? sections.experience : text),
     education: extractEducation(text),
     warnings,
   };
+}
+
+/* ── PDF text item → ข้อความ ──
+   pdf.js ไม่ได้คืน "บรรทัด" แต่คืนชิ้นข้อความพร้อมพิกัด การต่อชิ้นด้วยการเติมช่องว่าง
+   ทุกครั้ง (โค้ดเดิม) ทำให้อีเมล/ชื่อที่ถูกแตกชิ้นกลางคำพังทันที เช่น
+   ["somchai.j", "@gmail.com"] → "somchai.j @gmail.com" ซึ่งหา regex ไม่เจอ
+   ที่ถูกคือดูช่องว่าง "จริง" บนหน้ากระดาษ: เว้นวรรคเมื่อระยะห่างแนวนอนกว้างพอเท่านั้น
+
+   items = text item จาก pdf.js (str, transform, width, height)
+   คืน { text, bigText } โดย bigText = บรรทัดตัวโตสุดในช่วงต้นหน้า (ใช้เดาชื่อ) */
+function pdfItemsToText(items) {
+  const lines = [];
+  for (const it of (items || [])) {
+    const s = it && it.str;
+    if (!s) continue;      // เก็บ item ที่เป็นช่องว่างล้วนไว้ด้วย — บางไฟล์ใช้มันคั่นคำจริง ๆ
+    const tr = it.transform || [1, 0, 0, 1, 0, 0];
+    const size = Math.abs(tr[3]) || Math.abs(it.height) || 10;
+    const x = tr[4], y = tr[5];
+    const w = typeof it.width === 'number' ? it.width : s.length * size * 0.5;
+    // บรรทัดเดียวกัน = พิกัดแนวตั้งใกล้กันไม่เกินครึ่งความสูงตัวอักษร
+    let line = lines.find(L => Math.abs(L.y - y) <= Math.max(2, Math.min(L.size, size) * 0.5));
+    if (!line) { line = { y, size, items: [] }; lines.push(line); }
+    line.size = Math.max(line.size, size);
+    line.items.push({ x, w, s, size });
+  }
+  lines.sort((a, b) => b.y - a.y);                       // PDF นับแกน Y จากล่างขึ้นบน
+  const texts = lines.map(L => {
+    L.items.sort((a, b) => a.x - b.x);
+    let out = '', prev = null;
+    for (const it of L.items) {
+      if (prev) {
+        const gap = it.x - (prev.x + prev.w);
+        const needSpace = gap > Math.max(prev.size, it.size) * 0.25;
+        if (needSpace && !/\s$/.test(out) && !/^\s/.test(it.s)) out += ' ';
+      }
+      out += it.s;
+      prev = it;
+    }
+    return out.trim();
+  });
+  // ชื่อผู้สมัครมักเป็นข้อความตัวโตสุดในช่วงต้นหน้า — เก็บไว้เป็นตัวช่วยเดาชื่อ
+  let bigText = '', bigSize = 0;
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    if (texts[i] && lines[i].size > bigSize) { bigSize = lines[i].size; bigText = texts[i]; }
+  }
+  return { text: texts.join('\n'), bigText };
 }
 </script>
 
@@ -1328,7 +1525,10 @@ function renderRetentionNote() {
   if (n) el.textContent = `⚠ มีผู้สมัคร ${n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด ${RETENTION_YEARS} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)`;
 }
 
-/* ── File text extraction ── */
+/* ── File text extraction ──
+   คืน { text, links, bigText } — links คือ hyperlink ในไฟล์ (บาง resume ใส่อีเมลไว้เป็น
+   ลิงก์ mailto: อย่างเดียว ข้อความที่เห็นเป็นแค่คำว่า "Email") · bigText คือข้อความตัวโตสุด
+   หน้าแรกของ PDF ใช้ช่วยเดาชื่อ */
 async function extractFileText(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith('.pdf')) {
@@ -1337,31 +1537,39 @@ async function extractFileText(file) {
     const buf = await file.arrayBuffer();
     // isEvalSupported:false — กัน PDF ที่ฝัง code (CVE-2024-4367) เพราะไฟล์มาจากผู้สมัครภายนอก
     const pdf = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise;
-    let out = '';
+    const pages = [];
+    const links = [];
+    let bigText = '';
     for (let p = 1; p <= pdf.numPages; p++) {
       const page = await pdf.getPage(p);
       const tc = await page.getTextContent();
-      // ใช้พิกัด Y (transform[5]) แยกบรรทัดจริง — ไม่งั้นทั้งหน้าจะกลายเป็นบรรทัดเดียว
-      let lastY = null;
-      for (const it of tc.items) {
-        const y = it.transform ? it.transform[5] : null;
-        if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) out += '\n';
-        else if (out && !out.endsWith('\n')) out += ' ';
-        out += it.str;
-        if (y !== null) lastY = y;
-      }
-      out += '\n';
+      const built = pdfItemsToText(tc.items);
+      pages.push(built.text);
+      if (p === 1) bigText = built.bigText;
+      // อีเมล/ลิงก์ที่ฝังเป็น annotation — ไม่อยู่ใน text layer จึงต้องอ่านแยก
+      try {
+        for (const a of await page.getAnnotations({ intent: 'display' })) {
+          const u = a && (a.url || a.unsafeUrl || (a.action && a.action.url));
+          if (u) links.push(u);
+        }
+      } catch (e) { /* PDF บางไฟล์ไม่มี annotation layer — ข้ามได้ */ }
     }
-    return out;
+    return { text: pages.join('\n'), links, bigText };
   }
   if (name.endsWith('.docx')) {
     if (!window.mammoth) throw new Error('mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
     const buf = await file.arrayBuffer();
     const res = await mammoth.extractRawText({ arrayBuffer: buf });
-    return res.value;
+    // extractRawText ทิ้ง hyperlink — แปลงเป็น HTML อีกรอบเพื่อเก็บ mailto: ที่ซ่อนอยู่
+    let links = [];
+    try {
+      const html = await mammoth.convertToHtml({ arrayBuffer: buf });
+      links = (String(html.value).match(/href="([^"]*)"/g) || []).map(h => h.slice(6, -1));
+    } catch (e) { /* ไฟล์เสียหรือ mammoth แปลงไม่ได้ — ใช้แค่ข้อความล้วน */ }
+    return { text: res.value, links, bigText: '' };
   }
   if (name.endsWith('.txt')) {
-    return await file.text();
+    return { text: await file.text(), links: [], bigText: '' };
   }
   throw new Error('รองรับเฉพาะ .pdf .docx .txt');
 }
@@ -1382,7 +1590,7 @@ async function handleFiles(fileList) {
     renderScanTable();
     try {
       const raw = await extractFileText(f);
-      const parsed = parseResume(raw);
+      const parsed = parseResume(raw.text, { links: raw.links, bigText: raw.bigText, fileName: f.name });
       const scored = scoreCandidate(parsed, job);
       Object.assign(row, parsed, scored, { status: 'ok' });
       // dedupe warning — เทียบทั้งฐานผู้สมัครและไฟล์อื่นใน batch เดียวกัน
@@ -1417,8 +1625,8 @@ function renderScanTable() {
     const added = r.added ? `<span class="badge pass">✓ เพิ่มแล้ว</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">＋ เพิ่ม</button>`;
     return `<tr>
       <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis" title="${esc(r.fileName)}">${esc(r.fileName)}</td>
-      <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">ไม่พบชื่อ</span>'}</td>
-      <td>${esc(r.email) || '—'}</td>
+      <td class="name-cell">${scanFieldHTML(r, 'name', 'ไม่พบชื่อ — พิมพ์เอง')}</td>
+      <td>${scanFieldHTML(r, 'email', 'ไม่พบอีเมล — พิมพ์เอง')}</td>
       <td>${scoreCell(r.id, r.score)}</td>
       <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
       <td>${warn || '<span class="badge pass">OK</span>'}</td>
@@ -1431,6 +1639,23 @@ function renderScanTable() {
   }).join('');
 }
 
+/* ชื่อ/อีเมลในตารางผลสแกนแก้ได้ทันที — ต่อให้ตัวอ่านพลาด HR ก็ไม่ต้องเพิ่มก่อนแล้วค่อยไปแก้ทีหลัง
+   (แถวที่เพิ่มเป็นผู้สมัครแล้วล็อกไว้ ต้องไปแก้ที่ระเบียนผู้สมัครแทน กันข้อมูลสองที่ไม่ตรงกัน) */
+function scanFieldHTML(r, field, placeholder) {
+  const v = esc(r[field] || '');
+  if (r.added) return v || '—';
+  return `<input class="scan-inp" value="${v}" placeholder="${esc(placeholder)}" spellcheck="false"
+    onchange="updateScanField('${r.id}','${field}',this.value)">`;
+}
+function updateScanField(id, field, val) {
+  const r = scanResults.find(x => x.id === id);
+  if (!r || r.added) return;
+  const v = String(val || '').trim();
+  r[field] = field === 'email' ? v.toLowerCase() : v;
+  const solved = field === 'email' ? 'ไม่พบอีเมล' : 'ไม่พบชื่อ';
+  if (v) r.warnings = (r.warnings || []).filter(w => !w.startsWith(solved));
+  renderScanTable();
+}
 function removeScan(id) { scanResults = scanResults.filter(r => r.id !== id); renderScanTable(); }
 function clearScan() { scanResults = []; renderScanTable(); }
 
@@ -2101,6 +2326,7 @@ function saveManualCand() {
   const typedPhone = document.getElementById('c_phone').value.trim();
   let warns = parsed.resumeText ? parsed.warnings.slice() : ['ไม่มีข้อความ resume — คะแนนเป็น 0'];
   if (typedEmail) warns = warns.filter(w => !w.includes('ไม่พบอีเมล'));
+  warns = warns.filter(w => !w.includes('ไม่พบชื่อผู้สมัคร'));   // ช่องนี้บังคับกรอกอยู่แล้ว
   // ค่าที่ HR พิมพ์เองต้องชนะค่าที่ระบบเดาจากข้อความ resume เสมอ
   DB.candidates.push(makeCandidate(parsed, scored, {
     name,
