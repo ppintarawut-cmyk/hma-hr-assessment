@@ -205,6 +205,9 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 .sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
+.ocr-opt { display: block; margin-top: 12px; font-size: 13px; cursor: pointer; }
+.ocr-opt input { margin-right: 6px; vertical-align: middle; }
+.ocr-opt .hint { display: block; margin: 2px 0 0 22px; }
 /* ช่องแก้ชื่อ/อีเมลในตารางผลสแกน — ดูเหมือนข้อความธรรมดาจนกว่าจะโฟกัส */
 .scan-inp { width: 100%; min-width: 120px; padding: 4px 6px; font: inherit; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 6px; }
 .scan-inp:hover { border-color: var(--gray-200); }
@@ -274,7 +277,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
   <!-- ============ SCANNER TAB ============ -->
   <div id="tab-scanner">
     <h1>Resume Scanner</h1>
-    <p class="page-sub">อัปโหลด resume (PDF / DOCX / TXT) ระบบจะดึงข้อมูล จับคู่ทักษะกับตำแหน่งงาน และให้คะแนนอัตโนมัติ</p>
+    <p class="page-sub">อัปโหลด resume (PDF / DOCX / TXT / รูปภาพ) ระบบจะดึงข้อมูล จับคู่ทักษะกับตำแหน่งงาน และให้คะแนนอัตโนมัติ</p>
 
     <div class="card">
       <div class="grid2">
@@ -290,9 +293,14 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
       <div class="dropzone" id="dropzone">
         <div class="dz-icon">📄</div>
         <div><b>ลากไฟล์ resume มาวางที่นี่</b> หรือคลิกเพื่อเลือกไฟล์</div>
-        <div class="hint" style="margin-top:6px">รองรับ .pdf .docx .txt — เลือกได้หลายไฟล์พร้อมกัน · ข้อมูลอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น server</div>
-        <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" style="display:none">
+        <div class="hint" style="margin-top:6px">รองรับ .pdf .docx .txt .jpg .png — เลือกได้หลายไฟล์พร้อมกัน · ข้อมูลอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น server</div>
+        <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp" style="display:none">
       </div>
+      <label class="ocr-opt">
+        <input type="checkbox" id="ocrToggle" checked>
+        <span>อ่านไฟล์สแกน/รูปภาพด้วย OCR (ไทย+อังกฤษ)</span>
+        <span class="hint">ใช้เฉพาะไฟล์ที่ไม่มีชั้นข้อความ · ครั้งแรกต้องโหลดชุดข้อมูลภาษา ~15 MB และใช้เวลาหลายสิบวินาทีต่อหน้า</span>
+      </label>
     </div>
 
     <div class="card" id="scanResultsCard" style="display:none">
@@ -701,6 +709,22 @@ function repairContactText(raw) {
     .replace(/(@[A-Za-z0-9.-]*)\.[ \t]*\n[ \t]*([A-Za-z]{2,})\b/g, '$1.$2');
 }
 
+/* เติมจุดหน้า TLD ที่หายไป: "gmailcom" → "gmail.com"
+   เรียง TLD ยาวก่อนสั้น ไม่งั้นตัดผิดที่ · รับเฉพาะ TLD ที่ยาวพอจะไม่ชนคำทั่วไป —
+   สั้นอย่าง .io/.th จะทำให้ "studio"/"smith" กลายเป็นโดเมนปลอม */
+const KNOWN_TLDS = ['co.th', 'com', 'net', 'org', 'edu', 'gov', 'info'];
+function insertMissingTldDot(domain) {
+  if (domain.includes('.')) return domain;
+  const low = domain.toLowerCase();
+  for (const tld of KNOWN_TLDS) {
+    const bare = tld.replace('.', '');
+    if (low.length > bare.length + 1 && low.endsWith(bare)) {
+      return domain.slice(0, -bare.length) + '.' + tld;
+    }
+  }
+  return domain;
+}
+
 /* คะแนนความน่าจะเป็น "อีเมลของผู้สมัครคนนี้" — ยิ่งน้อยยิ่งมาก่อน */
 function rankEmail(email, text, index) {
   const local = email.split('@')[0];
@@ -728,6 +752,13 @@ function extractEmails(text, links) {
   };
   collect(EMAIL_STRICT_RE, src, false);
   if (!found.size) collect(EMAIL_LOOSE_RE, repairContactText(src), true);
+  // ชั้นสุดท้าย: จุดหน้า TLD หายไป (OCR มองไม่เห็นจุดเล็ก ๆ) — "uncharink@gmailcom"
+  if (!found.size) {
+    for (const m of repairContactText(src).matchAll(/([A-Za-z0-9._%+-]+)@([A-Za-z0-9-]{5,})/g)) {
+      const e = (m[1] + '@' + insertMissingTldDot(m[2])).toLowerCase();
+      if (e.includes('.') && isPlausibleEmail(e) && !found.has(e)) found.set(e, m.index);
+    }
+  }
   const out = [...found.keys()].sort((a, b) =>
     (rankEmail(a, src, found.get(a)) - rankEmail(b, src, found.get(b))) || (found.get(a) - found.get(b)));
   // อีเมลจาก mailto: ต่อท้าย — เชื่อถือได้แต่บางทีเป็นลิงก์ของบริษัท จึงไม่แซงที่เจอในข้อความ
@@ -831,12 +862,15 @@ function extractName(text, email, hints) {
   if (looksLikeName(hints.bigText)) return stripTitle(String(hints.bigText).replace(/\s+/g, ' ').trim());
   // 3) กวาดบรรทัดหัวกระดาษ — ตัดเป็นช่วง ๆ ก่อน เพราะ resume สมัยใหม่มักพิมพ์
   //    "SOMCHAI JAIDEE | 081-234-5678 | somchai@gmail.com" รวมไว้บรรทัดเดียว
-  const lines = src.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 15);
+  // ข้อความจาก OCR ไม่มีข้อมูลลำดับ/ขนาดตัวอักษรให้เชื่อ และมักสลับคอลัมน์ปนกัน
+  // จึงดูแค่ 3 บรรทัดแรกแบบทั้งบรรทัด ไม่ตัดเป็นช่วง — ไม่งั้นจะได้เศษประโยคมาเป็นชื่อ
+  const lines = src.split('\n').map(l => l.trim()).filter(Boolean).slice(0, hints.ocr ? 3 : 15);
   const clean = s => stripTitle(String(s).replace(/\s+/g, ' ').trim());
   for (const line of lines) {
     // ไล่ทีละบรรทัดจากบนลงล่าง (ชื่ออยู่บนสุดเสมอ) — ในแต่ละบรรทัดลองทั้งบรรทัดก่อน
     // ค่อยตัดเป็นช่วง ไม่งั้น "Jaidee, Somchai" จะโดนหั่นที่คอมมาจนเหลือคำเดียว
     if (looksLikeName(line)) return clean(line);
+    if (hints.ocr) continue;
     for (const seg of line.split(/[|•·‧]|\t|\s{2,}|,/)) {
       if (looksLikeName(seg)) return clean(seg);
     }
@@ -1055,7 +1089,7 @@ function parseResume(rawText, hints) {
   const sections = extractSections(text);
   const name = extractName(text, email, hints);
   const warnings = [];
-  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์เป็นภาพสแกน/ถ่ายรูป (ไม่มี text layer) ระบบอ่านไม่ได้ ต้องกรอกข้อมูลเองหรือขอไฟล์ต้นฉบับที่เป็นข้อความ');
+  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์เป็นภาพสแกน/ถ่ายรูป (ไม่มี text layer) ลองเปิด OCR แล้วสแกนใหม่ หรือกรอกข้อมูลเอง');
   if (!email) warnings.push('ไม่พบอีเมลใน resume — กรอกเองได้ในช่องอีเมล');
   if (!name) warnings.push('ไม่พบชื่อผู้สมัคร — กรอกเองได้ในช่องชื่อ');
   if (emails.length > 1) warnings.push(`พบอีเมล ${emails.length} รายการ — ใช้ ${email} (อีเมลอื่น: ${emails.slice(1).join(', ')})`);
@@ -1532,12 +1566,88 @@ function renderRetentionNote() {
   if (n) el.textContent = `⚠ มีผู้สมัคร ${n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด ${RETENTION_YEARS} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)`;
 }
 
+/* ── OCR — ทางเดียวที่อ่าน resume ที่เป็นภาพสแกน/ถ่ายรูปได้ ──
+   ใช้ tesseract.js โหลดแบบ lazy: ไฟล์ปกติที่มีชั้นข้อความไม่ต้องแตะเน็ตเลย
+   จะโหลดก็ต่อเมื่อเจอไฟล์ที่ไม่มีข้อความจริง ๆ เพราะชุดข้อมูลภาษาไทยหนักหลายสิบ MB */
+const OCR_MIN_CHARS = 100;          // ข้อความ (ไม่นับช่องว่าง) น้อยกว่านี้ = ถือว่าไฟล์เป็นภาพ
+const OCR_LANGS = 'tha+eng';        // resume ไทยมักปนอังกฤษ ต้องอ่านทั้งคู่
+const OCR_SCALE = 2.5;              // 72dpi × 2.5 ≈ 180dpi — จุดคุ้มระหว่างความแม่นกับความเร็ว
+const OCR_MAX_PX = 2400;            // กันหน้ากระดาษใหญ่ผิดปกติกินหน่วยความจำจนแท็บดับ
+const TESSERACT_VER = '5.1.1';
+const TESSERACT_JS = `https://cdn.jsdelivr.net/npm/tesseract.js@${TESSERACT_VER}/dist/tesseract.min.js`;
+const TESSERACT_WORKER = `https://cdn.jsdelivr.net/npm/tesseract.js@${TESSERACT_VER}/dist/worker.min.js`;
+const TESSERACT_CORE = `https://cdn.jsdelivr.net/npm/tesseract.js-core@${TESSERACT_VER}/`;
+const TESSDATA_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
+
+const _scriptPromises = {};
+function loadScriptOnce(url) {
+  if (_scriptPromises[url]) return _scriptPromises[url];
+  return _scriptPromises[url] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = () => { delete _scriptPromises[url]; reject(new Error('โหลดไลบรารีไม่สำเร็จ (ต้องมีอินเทอร์เน็ต): ' + url)); };
+    document.head.appendChild(s);
+  });
+}
+
+let _ocrWorker = null, _ocrWorkerPromise = null, _ocrOnProgress = null;
+async function getOcrWorker() {
+  if (_ocrWorker) return _ocrWorker;
+  if (!_ocrWorkerPromise) {
+    _ocrWorkerPromise = (async () => {
+      await loadScriptOnce(TESSERACT_JS);
+      // logger ตั้งได้ครั้งเดียวตอนสร้าง worker — ส่งต่อให้งานที่กำลังทำอยู่ผ่านตัวแปรกลาง
+      const w = await Tesseract.createWorker(OCR_LANGS, 1, {
+        workerPath: TESSERACT_WORKER, corePath: TESSERACT_CORE, langPath: TESSDATA_PATH,
+        logger: m => { if (_ocrOnProgress) _ocrOnProgress(m); },
+      });
+      _ocrWorker = w;
+      return w;
+    })().catch(err => { _ocrWorkerPromise = null; throw err; });
+  }
+  return _ocrWorkerPromise;
+}
+
+/* อ่านข้อความจากภาพ (canvas / blob / File) — progress คืนค่า 0-1 */
+async function ocrImage(source, onProgress) {
+  const worker = await getOcrWorker();
+  _ocrOnProgress = m => {
+    if (onProgress && m && m.status === 'recognizing text') onProgress(m.progress || 0);
+  };
+  try {
+    const { data } = await worker.recognize(source);
+    return data.text || '';
+  } finally { _ocrOnProgress = null; }
+}
+
+/* วาดหน้า PDF ลง canvas เพื่อส่งให้ OCR */
+async function pdfPageToCanvas(page) {
+  let viewport = page.getViewport({ scale: OCR_SCALE });
+  const longest = Math.max(viewport.width, viewport.height);
+  if (longest > OCR_MAX_PX) viewport = page.getViewport({ scale: OCR_SCALE * (OCR_MAX_PX / longest) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas;
+}
+
 /* ── File text extraction ──
    คืน { text, links, bigText } — links คือ hyperlink ในไฟล์ (บาง resume ใส่อีเมลไว้เป็น
    ลิงก์ mailto: อย่างเดียว ข้อความที่เห็นเป็นแค่คำว่า "Email") · bigText คือข้อความตัวโตสุด
    หน้าแรกของ PDF ใช้ช่วยเดาชื่อ */
-async function extractFileText(file) {
+async function extractFileText(file, opts) {
+  opts = opts || {};
+  const onStatus = opts.onStatus || function () {};
   const name = file.name.toLowerCase();
+  if (/\.(jpe?g|png|webp|gif|bmp)$/.test(name)) {
+    // รูปภาพไม่มีชั้นข้อความอยู่แล้ว — OCR เป็นทางเดียว
+    if (!opts.ocr) throw new Error('ไฟล์รูปภาพต้องเปิด OCR ก่อน (ติ๊กช่อง "อ่านไฟล์สแกน/รูปภาพด้วย OCR")');
+    onStatus('เตรียม OCR…');
+    const text = await ocrImage(file, pct => onStatus(`OCR ${Math.round(pct * 100)}%`));
+    return { text, links: [], bigText: '', ocr: true };
+  }
   if (name.endsWith('.pdf')) {
     if (!window.pdfjsLib) throw new Error('pdf.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -1561,7 +1671,19 @@ async function extractFileText(file) {
         }
       } catch (e) { /* PDF บางไฟล์ไม่มี annotation layer — ข้ามได้ */ }
     }
-    return { text: pages.join('\n'), links, bigText };
+    const text = pages.join('\n');
+    // ไม่มีชั้นข้อความ (สแกน/ถ่ายรูปมาแปะ) → วาดทีละหน้าแล้วให้ OCR อ่าน
+    if (opts.ocr && text.replace(/\s/g, '').length < OCR_MIN_CHARS) {
+      const ocrPages = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const label = pdf.numPages > 1 ? ` (หน้า ${p}/${pdf.numPages})` : '';
+        onStatus('เตรียม OCR…' + label);
+        const canvas = await pdfPageToCanvas(await pdf.getPage(p));
+        ocrPages.push(await ocrImage(canvas, pct => onStatus(`OCR ${Math.round(pct * 100)}%${label}`)));
+      }
+      return { text: ocrPages.join('\n'), links, bigText: '', ocr: true };
+    }
+    return { text, links, bigText };
   }
   if (name.endsWith('.docx')) {
     if (!window.mammoth) throw new Error('mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
@@ -1578,7 +1700,7 @@ async function extractFileText(file) {
   if (name.endsWith('.txt')) {
     return { text: await file.text(), links: [], bigText: '' };
   }
-  throw new Error('รองรับเฉพาะ .pdf .docx .txt');
+  throw new Error('รองรับเฉพาะ .pdf .docx .txt และไฟล์รูปภาพ');
 }
 
 /* ── Scan flow ── */
@@ -1591,15 +1713,27 @@ async function handleFiles(fileList) {
   if (!files.length) return;
   toast(`กำลังสแกน ${files.length} ไฟล์…`);
 
+  const ocrEl = document.getElementById('ocrToggle');
+  const useOcr = !ocrEl || ocrEl.checked;
+
   for (const f of files) {
     const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing' };
     scanResults.push(row);
     renderScanTable();
     try {
-      const raw = await extractFileText(f);
-      const parsed = parseResume(raw.text, { links: raw.links, bigText: raw.bigText, fileName: f.name });
+      const raw = await extractFileText(f, {
+        ocr: useOcr,
+        // OCR กินเวลาหลายสิบวินาที ต้องบอกความคืบหน้า ไม่งั้นดูเหมือนแอปค้าง
+        onStatus: msg => { row.note = msg; renderScanTable(); },
+      });
+      row.note = '';
+      const parsed = parseResume(raw.text, { links: raw.links, bigText: raw.bigText, fileName: f.name, ocr: !!raw.ocr });
       const scored = scoreCandidate(parsed, job);
-      Object.assign(row, parsed, scored, { status: 'ok' });
+      Object.assign(row, parsed, scored, { status: 'ok', ocr: !!raw.ocr });
+      if (raw.ocr) {
+        // ข้อความจาก OCR มีโอกาสอ่านตัวอักษรเพี้ยน — ต้องบอกให้ HR ตรวจก่อนเชื่อคะแนน
+        row.warnings = [...(row.warnings || []), 'ข้อความมาจาก OCR (ไฟล์เป็นภาพ) — ตรวจชื่อ/อีเมล/คะแนนก่อนใช้งาน'];
+      }
       // dedupe warning — เทียบทั้งฐานผู้สมัครและไฟล์อื่นใน batch เดียวกัน
       const dup = parsed.email && (DB.candidates.some(c => c.email === parsed.email) ||
         scanResults.some(x => x !== row && x.email === parsed.email));
@@ -1621,17 +1755,18 @@ function renderScanTable() {
   const body = document.getElementById('scanBody');
   body.innerHTML = scanResults.map(r => {
     if (r.status === 'processing') {
-      return `<tr><td>${esc(r.fileName)}</td><td colspan="5" style="color:var(--gray-400)">⏳ กำลังประมวลผล…</td><td></td></tr>`;
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="5" style="color:var(--gray-400)">⏳ ${esc(r.note || 'กำลังประมวลผล…')}</td><td></td></tr>`;
     }
     if (r.status === 'error') {
       return `<tr><td>${esc(r.fileName)}</td><td colspan="5"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
         <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button></td></tr>`;
     }
     // ไฟล์ที่ไม่มี text layer ต้องเห็นชัดกว่าคำเตือนทั่วไป — สแกนยังไงคะแนนก็ 0 ต้องกรอกเอง
+    const tip = esc((r.warnings || []).join(' · '));
     const scanned = (r.warnings || []).some(w => w.includes('ภาพสแกน'));
-    const warn = scanned
-      ? ` <span class="badge fail" title="${esc((r.warnings || []).join(' · '))}">📷 ไฟล์เป็นภาพสแกน</span>`
-      : (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
+    const warn = scanned ? ` <span class="badge fail" title="${tip}">📷 ไฟล์เป็นภาพสแกน</span>`
+      : r.ocr ? ` <span class="badge pend" title="${tip}">🔍 อ่านด้วย OCR ⚠ ${r.warnings.length}</span>`
+      : (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${tip}">⚠ ${r.warnings.length}</span>` : '';
     const reqMiss = r.missingRequired.length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น: ${esc(r.missingRequired.join(', '))}">ขาดทักษะจำเป็น</span>` : '';
     const added = r.added ? `<span class="badge pass">✓ เพิ่มแล้ว</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">＋ เพิ่ม</button>`;
     return `<tr>
@@ -2702,6 +2837,12 @@ fi.addEventListener('change', () => { handleFiles(fi.files); fi.value = ''; });
 ['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
 dz.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+// จำสวิตช์ OCR ไว้ — คนที่ไม่เคยได้ไฟล์สแกนจะได้ไม่ต้องมาปิดใหม่ทุกครั้ง
+const OCR_PREF_KEY = 'hma_ats_ocr';
+const ocrToggle = document.getElementById('ocrToggle');
+ocrToggle.checked = localStorage.getItem(OCR_PREF_KEY) !== '0';
+ocrToggle.addEventListener('change', () => localStorage.setItem(OCR_PREF_KEY, ocrToggle.checked ? '1' : '0'));
 
 document.getElementById('scanJob').addEventListener('change', updateScanJobInfo);
 document.getElementById('backupBtn').addEventListener('click', onBackupClick);

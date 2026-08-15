@@ -146,6 +146,48 @@ def test_generic_mailbox_is_not_turned_into_a_name(open_ats):
     assert page.evaluate("() => extractName('Curriculum Vitae\\n2020', 'hr@hino.co.th')") == ""
 
 
+# ── ข้อความจาก OCR (ไฟล์สแกน) ────────────────────────────────────────────
+
+@pytest.mark.parametrize("domain, want", [
+    ("gmailcom", "gmail.com"),          # OCR มองไม่เห็นจุดเล็ก ๆ หน้า TLD
+    ("hotmailcom", "hotmail.com"),
+    ("abccoth", "abc.co.th"),
+    ("gmail.com", "gmail.com"),         # ปกติดีอยู่แล้ว ห้ามแตะ
+    ("studio", "studio"),               # .io สั้นเกินจะเดา — ต้องไม่กลายเป็น stud.io
+    ("smith", "smith"),                 # .th ก็เช่นกัน
+])
+def test_missing_tld_dot_is_restored_conservatively(open_ats, domain, want):
+    page = open_ats()
+    assert page.evaluate("(d) => insertMissingTldDot(d)", domain) == want
+
+
+def test_email_recovered_from_ocr_text(open_ats):
+    """เคสจริงจากไฟล์สแกน: OCR อ่านได้ 'uncharink@gmailcom'"""
+    page = open_ats()
+    assert page.evaluate(
+        "(t) => extractEmail(t)", "£2 uncharink@gmailcom") == "uncharink@gmail.com"
+
+
+def test_ocr_text_does_not_yield_sentence_fragments_as_a_name(open_ats):
+    """OCR ของ resume สองคอลัมน์จะสลับข้อความปนกัน — เดิมได้ชื่อว่า 'and shared'"""
+    page = open_ats()
+    ocr_text = ("ด2:      About Me\n"
+                "=        Highly accomplished finance professional with over 14 years of\n"
+                "5        progressive experience across trading, manufacturing, and shared\n"
+                "Uncharin  Accenture Solutions Co, Lid., Thailand")
+    got = page.evaluate("(t) => extractName(t, 'uncharink@gmail.com', { ocr: true })", ocr_text)
+    assert got == "Uncharink"      # เดาจากอีเมลแทน — ผิดนิดเดียว HR แก้ตัวเดียวจบ
+
+
+def test_column_splitting_still_works_for_normal_pdf_text(open_ats):
+    """โหมดปกติยังตัดบรรทัดเป็นช่วงเหมือนเดิม — ความระวังเรื่อง OCR ต้องไม่ลามมาที่นี่"""
+    page = open_ats()
+    got = page.evaluate(
+        "(t) => extractName(t, '', {})",
+        "SOMCHAI JAIDEE | 081-234-5678 | somchai@gmail.com")
+    assert got == "SOMCHAI JAIDEE"
+
+
 # ── การต่อ text item จาก PDF (ต้นตอของบั๊ก) ──────────────────────────────
 
 ITEMS = """[
