@@ -116,6 +116,30 @@ def test_name_falls_back_to_email_then_filename(open_ats):
         "Resume_Somchai_Jaidee_2026.pdf") == "Somchai Jaidee"
 
 
+@pytest.mark.parametrize("file_name, want", [
+    ("Resume_Somchai_Jaidee_2026.pdf", "Somchai Jaidee"),
+    ("CV-Somchai-Jaidee.pdf", "Somchai Jaidee"),
+    ("เรซูเม่ สมชาย ใจดี.pdf", "สมชาย ใจดี"),
+    # เคสจริง: เดิมได้ชื่อขยะ "K.Uncharin ResumeTranscript" เพราะ resume/transcript เขียนติดกัน
+    ("K.Uncharin_ResumeTranscript.pdf", ""),
+    # ชื่อไฟล์ที่ยาวเกินจะแยกชื่อคนออกได้แน่ ๆ — ต้องยอมแพ้ ไม่ใช่เดามั่ว
+    ("Prakaikan_Suksamai_Industrial_Engineer_Logistics_Resume.pdf", ""),
+])
+def test_filename_fallback_is_conservative(open_ats, file_name, want):
+    page = open_ats()
+    assert page.evaluate("(f) => nameFromFileName(f)", file_name) == want
+
+
+def test_scanned_pdf_warns_and_invents_nothing(open_ats):
+    """PDF ที่เป็นภาพสแกนล้วนจะได้ข้อความว่าง — ต้องเตือนให้ชัด ไม่ใช่เดาชื่อจากชื่อไฟล์"""
+    page = open_ats()
+    parsed = page.evaluate(
+        "() => parseResume('', { fileName: 'K.Uncharin_ResumeTranscript.pdf' })")
+    assert parsed["name"] == ""
+    assert parsed["email"] == ""
+    assert any("ภาพสแกน" in w for w in parsed["warnings"])
+
+
 def test_generic_mailbox_is_not_turned_into_a_name(open_ats):
     """hr@hino.co.th เป็นอีเมลองค์กร — ห้ามกลายเป็นผู้สมัครชื่อ "Hr" """
     page = open_ats()

@@ -791,17 +791,24 @@ function nameFromEmail(email) {
   return parts.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-/* ชื่อจากชื่อไฟล์: "Resume_Somchai_Jaidee_2026.pdf" → "Somchai Jaidee" — ทางเลือกสุดท้าย */
+/* ชื่อจากชื่อไฟล์: "Resume_Somchai_Jaidee.pdf" → "Somchai Jaidee" — ทางเลือกสุดท้าย
+   ต้องขี้ระแวงเป็นพิเศษ: ชื่อไฟล์เต็มไปด้วยคำที่ไม่ใช่ชื่อคน การเดาผิดแล้วใส่เป็นชื่อผู้สมัคร
+   แย่กว่าการยอมรับว่าหาไม่เจอ (เคสจริง "K.Uncharin_ResumeTranscript.pdf") */
 function nameFromFileName(fileName) {
   const t = String(fileName || '')
     .replace(/\.[A-Za-z0-9]+$/, '')
+    // คำเหล่านี้ตัดโดยไม่ต้องมีขอบเขตคำ — มักเขียนติดกันเป็น "ResumeTranscript"
+    .replace(/resume|curriculum\s*vitae|transcript|profile|application|portfolio|เรซูเม่|ประวัติส่วนตัว|ประวัติ|ใบสมัครงาน|ใบสมัคร|สมัครงาน/gi, ' ')
     .replace(/[_+]+/g, ' ')
     .replace(/-+/g, ' ')
-    .replace(/\b(?:resume|cv|curriculum\s*vitae|profile|application|applicant|updated?|final|copy|new|ver|v\d+)\b/gi, ' ')
-    .replace(/(?:เรซูเม่|ประวัติส่วนตัว|ประวัติ|ใบสมัครงาน|ใบสมัคร|สมัครงาน)/g, ' ')
+    .replace(/\b(?:cv|applicant|updated?|final|copy|new|ver|v\d+)\b/gi, ' ')
     .replace(/\d+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  // ทุกคำต้องเป็นตัวอักษรล้วน — "K.Uncharin" หรือ "af a e" ไม่ผ่าน
+  const words = t.split(' ').filter(Boolean);
+  if (words.length < 2 || words.length > 4) return '';
+  if (!words.every(w => w.length >= 2 && /^[A-Za-z฀-๿]+$/.test(w))) return '';
   return looksLikeName(t) ? stripTitle(t) : '';
 }
 
@@ -1048,7 +1055,7 @@ function parseResume(rawText, hints) {
   const sections = extractSections(text);
   const name = extractName(text, email, hints);
   const warnings = [];
-  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์อาจเป็นภาพสแกน (ไม่มี text layer)');
+  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์เป็นภาพสแกน/ถ่ายรูป (ไม่มี text layer) ระบบอ่านไม่ได้ ต้องกรอกข้อมูลเองหรือขอไฟล์ต้นฉบับที่เป็นข้อความ');
   if (!email) warnings.push('ไม่พบอีเมลใน resume — กรอกเองได้ในช่องอีเมล');
   if (!name) warnings.push('ไม่พบชื่อผู้สมัคร — กรอกเองได้ในช่องชื่อ');
   if (emails.length > 1) warnings.push(`พบอีเมล ${emails.length} รายการ — ใช้ ${email} (อีเมลอื่น: ${emails.slice(1).join(', ')})`);
@@ -1620,7 +1627,11 @@ function renderScanTable() {
       return `<tr><td>${esc(r.fileName)}</td><td colspan="5"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
         <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button></td></tr>`;
     }
-    const warn = (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
+    // ไฟล์ที่ไม่มี text layer ต้องเห็นชัดกว่าคำเตือนทั่วไป — สแกนยังไงคะแนนก็ 0 ต้องกรอกเอง
+    const scanned = (r.warnings || []).some(w => w.includes('ภาพสแกน'));
+    const warn = scanned
+      ? ` <span class="badge fail" title="${esc((r.warnings || []).join(' · '))}">📷 ไฟล์เป็นภาพสแกน</span>`
+      : (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
     const reqMiss = r.missingRequired.length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น: ${esc(r.missingRequired.join(', '))}">ขาดทักษะจำเป็น</span>` : '';
     const added = r.added ? `<span class="badge pass">✓ เพิ่มแล้ว</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">＋ เพิ่ม</button>`;
     return `<tr>
