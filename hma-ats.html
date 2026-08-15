@@ -367,11 +367,13 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
   <!-- ============ JOBS TAB ============ -->
   <div id="tab-jobs" style="display:none">
     <h1>ตำแหน่งงาน (Job Requisitions)</h1>
-    <p class="page-sub">กำหนดตำแหน่ง ทักษะที่ต้องการ และน้ำหนักคะแนน — เกณฑ์นี้ใช้คิดคะแนน match ตอนสแกน resume</p>
+    <p class="page-sub">กำหนดตำแหน่ง ทักษะที่ต้องการ และน้ำหนักคะแนน — เกณฑ์นี้ใช้คิดคะแนน match ตอนสแกน resume · มี JD เป็นไฟล์อยู่แล้วกด <b>นำเข้าจากไฟล์ JD</b> ให้ระบบกรอกให้</p>
 
     <div class="toolbar">
       <span></span><span class="topbar-spacer"></span>
       <button class="btn btn-secondary btn-sm" id="jobExportBtn">⬇ Export CSV</button>
+      <button class="btn btn-secondary btn-sm" id="jobImportBtn" title="อ่านชื่อตำแหน่ง หน้าที่ คุณสมบัติ และทักษะจากไฟล์ JD">📄 นำเข้าจากไฟล์ JD</button>
+      <input type="file" id="jobImportInput" accept=".pdf,.docx,.txt,.xlsx,.xls,.csv,.jpg,.jpeg,.png" style="display:none">
       <button class="btn btn-primary btn-sm" id="jobAddBtn">＋ เพิ่มตำแหน่ง</button>
     </div>
 
@@ -1107,6 +1109,186 @@ function parseResume(rawText, hints) {
   };
 }
 
+/* ── อ่าน JD จากไฟล์ → ค่าที่กรอกลงฟอร์มตำแหน่งงานได้เลย ──
+   JD จริงมาได้หลายทรง (PDF จากฝ่ายงาน, ตารางใน Excel, ข้อความวางมา) แต่โครงเหมือนกัน:
+   มีชื่อตำแหน่ง แผนก หน้าที่ และคุณสมบัติ — ดึงเท่าที่มั่นใจ ที่เหลือให้ HR เติมเอง */
+
+/* ฉลากที่ใช้กันจริงในเอกสาร JD ไทย/อังกฤษ */
+const JD_LABELS = {
+  title: /(?:^|\n)[ \t]*(?:ชื่อ)?ตำแหน่ง(?:งาน|ที่เปิดรับ|ที่รับสมัคร)?|(?:^|\n)[ \t]*(?:job\s*)?(?:position|title|job\s*title|role)/i,
+  dept: /(?:^|\n)[ \t]*(?:แผนก|ฝ่าย|หน่วยงาน|สังกัด)|(?:^|\n)[ \t]*(?:department|division|section)/i,
+};
+/* หัวข้อที่แบ่ง "หน้าที่งาน" ออกจาก "คุณสมบัติผู้สมัคร" */
+const QUALS_HEADING_RE = /(?:^|\n)[ \t]*(?:คุณสมบัติ(?:ผู้สมัคร|ของผู้สมัคร|เฉพาะตำแหน่ง)?|คุณสมบัติที่ต้องการ|สิ่งที่ต้องมี|qualifications?|requirements?|desired\s+skills?|skill\s+requirements?|who\s+you\s+are|what\s+you\s+(?:need|bring))[ \t]*:?[ \t]*(?:\n|$)/i;
+
+/* สาขาวิชาที่พบบ่อยใน JD — ใช้ตั้งคีย์เวิร์ดวุฒิให้ตรงกับคำที่จะเจอใน resume */
+const JD_FIELDS = [
+  ['engineering', 'วิศวกรรม'], ['business administration', 'บริหารธุรกิจ'], ['accounting', 'บัญชี'],
+  ['finance', 'การเงิน'], ['logistics', 'โลจิสติกส์'], ['supply chain', 'ซัพพลายเชน'],
+  ['computer', 'คอมพิวเตอร์'], ['information technology', 'เทคโนโลยีสารสนเทศ'],
+  ['human resource', 'ทรัพยากรบุคคล'], ['marketing', 'การตลาด'], ['science', 'วิทยาศาสตร์'],
+  ['statistics', 'สถิติ'], ['economics', 'เศรษฐศาสตร์'], ['law', 'นิติศาสตร์'],
+];
+
+/* ค่าที่อยู่หลังฉลาก — รับทั้ง "ตำแหน่ง: X" และฉลากขึ้นบรรทัดแล้วค่าอยู่บรรทัดถัดไป
+   ต้องครอบ source ด้วย (?: ) ก่อนต่อท้าย ไม่งั้น "A|B" + "C" จะกลายเป็น "A|BC"
+   คือส่วนที่ต่อท้ายจะผูกกับทางเลือกสุดท้ายทางเดียว */
+function jdLabelValue(text, labelRe) {
+  const label = '(?:' + labelRe.source + ')';
+  const m = String(text || '').match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*([^\\n]{2,80})', 'i'));
+  if (m && m[1] && m[1].trim()) return m[1].trim().replace(/[.,;]+$/, '');
+  const m2 = String(text || '').match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*\\n[ \\t]*([^\\n]{2,80})', 'i'));
+  return m2 && m2[1] ? m2[1].trim().replace(/[.,;]+$/, '') : '';
+}
+
+/* ประสบการณ์ "ขั้นต่ำ" ที่ JD ต้องการ — ต่างจาก resume ที่เอาค่ามากสุด
+   "3-5 ปี" → 3 · "อย่างน้อย 2 ปี" → 2 · เจอหลายที่เอาน้อยสุด (เกณฑ์ผ่านคือขั้นต่ำ) */
+function extractRequiredYears(text) {
+  const src = String(text || '');
+  const found = [];
+  const push = v => { const n = parseInt(v, 10); if (n >= 0 && n <= 40) found.push(n); };
+  for (const m of src.matchAll(/(\d{1,2})\s*[-–—]\s*\d{1,2}\s*(?:\+\s*)?(?:years?|yrs?|ปี)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(?:at\s*least|minimum(?:\s*of)?|min\.?|over|more\s*than|อย่างน้อย|ไม่ต่ำกว่า|ตั้งแต่)\s*(\d{1,2})\s*(?:\+\s*)?(?:years?|yrs?|ปี)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(\d{1,2})\s*(?:\+|ปีขึ้นไป|years?\s*(?:up|or\s*more)|ขึ้นไป)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(?:experience|ประสบการณ์)[^\n]{0,20}?(\d{1,2})\s*(?:years?|yrs?|ปี)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(\d{1,2})\s*(?:years?|yrs?|ปี)[^\n]{0,20}?(?:experience|ประสบการณ์)/gi)) push(m[1]);
+  // ข้อความสั้น = ค่าจากช่องตาราง ("3 ปี") ตัวเลขลอย ๆ ถือว่าคือคำตอบได้
+  // ไม่ใช้กับ JD เต็มฉบับ ไม่งั้น "สัญญาจ้าง 1 ปี" จะกลายเป็นเกณฑ์ประสบการณ์
+  if (!found.length && src.length <= 40) {
+    const m = src.match(/(\d{1,2})\s*(?:years?|yrs?|ปี)/i);
+    if (m) push(m[1]);
+  }
+  return found.length ? Math.min(...found) : 0;
+}
+
+/* คีย์เวิร์ดวุฒิ: ระดับปริญญา + สาขา เขียนทั้งไทยและอังกฤษเพื่อให้จับ resume ได้ทั้งสองภาษา */
+function extractEduKeywords(text) {
+  const low = String(text || '').toLowerCase();
+  const out = [];
+  if (/\bph\.?d\b|doctor(?:ate|al)|ปริญญาเอก/i.test(low)) out.push('phd', 'ปริญญาเอก');
+  else if (/\bmaster|\bm\.?sc\b|\bm\.?eng\b|\bmba\b|ปริญญาโท/i.test(low)) out.push('master', 'ปริญญาโท');
+  else if (/\bbachelor|\bb\.?sc\b|\bb\.?eng\b|\bbba\b|ปริญญาตรี|วุฒิ\s*ป\.?ตรี/i.test(low)) out.push('bachelor', 'ปริญญาตรี');
+  else if (/\bdiploma\b|ปวส/i.test(low)) out.push('diploma', 'ปวส');
+  // สาขาที่ถูกพูดถึงก่อนในเอกสารคือสาขาหลัก — ไม่ใช่สาขาที่มาก่อนในลิสต์ของเรา
+  let best = null, bestAt = Infinity;
+  for (const [en, th] of JD_FIELDS) {
+    const at = Math.min(...[low.indexOf(en), low.indexOf(th)].filter(i => i >= 0), Infinity);
+    if (at < bestAt) { bestAt = at; best = [en, th]; }
+  }
+  if (best) out.push(best[0], best[1]);
+  return out.join(', ');
+}
+
+/* แยกเนื้อ JD ออกจากส่วนคุณสมบัติ — ไม่เจอหัวข้อก็ยกทั้งก้อนเป็น JD */
+function splitJdAndQuals(text) {
+  const src = String(text || '').trim();
+  const m = src.match(QUALS_HEADING_RE);
+  if (!m || m.index === undefined) return { jd: src, quals: '' };
+  return { jd: src.slice(0, m.index).trim(), quals: src.slice(m.index + m[0].length).trim() };
+}
+
+/* ── JD ที่มาเป็นตาราง Excel ──
+   สองทรงที่เจอจริง: (ก) ฟอร์มสองคอลัมน์ ฉลาก|ค่า (ข) ตารางหลายตำแหน่ง มีแถวหัวคอลัมน์
+   ทรง (ก) แปลงเป็นข้อความ "ฉลาก : ค่า" แล้วส่งเข้า parseJD ตัวเดิม ทรง (ข) อ่านเป็นตำแหน่งทีละแถว */
+const JD_COLUMNS = [
+  { key: 'title', re: /ตำแหน่ง|position|job\s*title|^\s*title\s*$|^\s*role\s*$/i },
+  { key: 'dept', re: /แผนก|ฝ่าย|หน่วยงาน|สังกัด|department|division/i },
+  { key: 'quals', re: /คุณสมบัติ|qualification|requirement/i },
+  { key: 'jd', re: /^\s*jd\s*$|job\s*desc|รายละเอียดงาน|ลักษณะงาน|^หน้าที่|responsibilit/i },
+  { key: 'minExp', re: /ประสบการณ์|experience/i },
+  { key: 'eduKeywords', re: /วุฒิ|การศึกษา|education|degree/i },
+  { key: 'skills', re: /ทักษะ|skill|competenc/i },
+];
+
+function cellText(v) { return String(v == null ? '' : v).trim(); }
+
+/* แถวตาราง → ข้อความ · แถวที่มี 2 ช่องถือเป็น "ฉลาก : ค่า" */
+function sheetRowsToText(rows) {
+  return (rows || []).map(r => {
+    const cells = (r || []).map(cellText).filter(Boolean);
+    if (!cells.length) return '';
+    return cells.length === 2 ? cells[0] + ' : ' + cells[1] : cells.join(' ');
+  }).filter(Boolean).join('\n');
+}
+
+/* หาแถวหัวคอลัมน์ (ต้องมีคอลัมน์ชื่อตำแหน่ง + อีกอย่างน้อย 1 คอลัมน์ที่รู้จัก)
+   คืน { headerRow, map } — map = ดัชนีคอลัมน์ → key · ไม่เจอคืน null */
+function findJdHeader(rows) {
+  for (let i = 0; i < Math.min((rows || []).length, 20); i++) {
+    const cells = (rows[i] || []).map(cellText);
+    // ต้องมีอย่างน้อย 3 ช่อง ไม่งั้นฟอร์มสองคอลัมน์ (ฉลาก|ค่า) จะถูกเข้าใจผิดว่าเป็นหัวตาราง
+    // เช่นแถว ["ตำแหน่ง", "เจ้าหน้าที่จัดซื้อ"] ที่ค่ามีคำว่า "หน้าที่" อยู่ข้างใน
+    if (cells.filter(Boolean).length < 3) continue;
+    const map = {};
+    cells.forEach((c, idx) => {
+      if (!c || c.length > 40) return;
+      const hit = JD_COLUMNS.find(col => col.re.test(c));
+      if (hit && !Object.values(map).includes(hit.key)) map[idx] = hit.key;
+    });
+    const keys = Object.values(map);
+    if (keys.includes('title') && keys.length >= 2) return { headerRow: i, map };
+  }
+  return null;
+}
+
+/* ตารางหลายตำแหน่ง → รายการ job (ยังไม่ใส่ id — ผู้เรียกเป็นคนใส่) */
+function jdRowsToJobs(rows) {
+  const head = findJdHeader(rows);
+  if (!head) return [];
+  const jobs = [];
+  for (let i = head.headerRow + 1; i < rows.length; i++) {
+    const cells = (rows[i] || []).map(cellText);
+    if (!cells.filter(Boolean).length) continue;
+    const get = key => {
+      const idx = Object.keys(head.map).find(k => head.map[k] === key);
+      return idx === undefined ? '' : (cells[idx] || '');
+    };
+    const title = get('title');
+    if (!title || title.length > 80) continue;
+    const jd = get('jd'), quals = get('quals');
+    const blob = [title, jd, quals, get('skills')].filter(Boolean).join('\n');
+    jobs.push({
+      title, dept: get('dept').slice(0, 60), jd, quals,
+      minExp: extractRequiredYears(get('minExp') || blob),
+      eduKeywords: extractEduKeywords(get('eduKeywords') || blob),
+      skills: suggestSkillsFromText(blob).map(name => ({ name, weight: 3, required: false })),
+    });
+  }
+  return jobs;
+}
+
+/* ข้อความ JD → ค่าที่กรอกลงฟอร์มได้ · hints.bigText / hints.fileName ใช้เดาชื่อตำแหน่ง */
+function parseJD(text, hints) {
+  hints = hints || {};
+  const src = normText(text);
+  const { jd, quals } = splitJdAndQuals(src);
+  let title = jdLabelValue(src, JD_LABELS.title);
+  if (!title && hints.bigText && hints.bigText.length <= 80) title = hints.bigText.trim();
+  if (!title) {
+    // ไม่มีฉลาก — บรรทัดแรกที่ไม่ใช่หัวจดหมาย/ชื่อบริษัท มักเป็นชื่อตำแหน่ง
+    const first = src.split('\n').map(l => l.trim()).filter(Boolean)
+      .find(l => l.length >= 3 && l.length <= 80 && !/^(?:job\s*description|jd|ประกาศ|รับสมัคร|บริษัท|company)\b/i.test(l));
+    if (first) title = first;
+  }
+  if (!title && hints.fileName) {
+    // แทนตัวคั่นเป็นช่องว่างก่อน แล้วค่อยตัดคำ — "_" เป็น word character ของ JS regex
+    // ถ้าตัดคำก่อน \bjd\b จะไม่ match ใน "JD_Sales_Engineer"
+    title = String(hints.fileName).replace(/\.[A-Za-z0-9]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b(?:jd|job\s*description|ประกาศ|รับสมัคร|ใบขอกำลังคน)\b/gi, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+  return {
+    title: (title || '').slice(0, 80),
+    dept: jdLabelValue(src, JD_LABELS.dept).slice(0, 60),
+    minExp: extractRequiredYears(src),
+    eduKeywords: extractEduKeywords(src),
+    jd, quals,
+    skills: suggestSkillsFromText(src).map(name => ({ name, weight: 3, required: false })),
+    text: src,
+  };
+}
+
 /* ── PDF text item → ข้อความ ──
    pdf.js ไม่ได้คืน "บรรทัด" แต่คืนชิ้นข้อความพร้อมพิกัด การต่อชิ้นด้วยการเติมช่องว่าง
    ทุกครั้ง (โค้ดเดิม) ทำให้อีเมล/ชื่อที่ถูกแตกชิ้นกลางคำพังทันที เช่น
@@ -1701,6 +1883,70 @@ async function extractFileText(file, opts) {
     return { text: await file.text(), links: [], bigText: '' };
   }
   throw new Error('รองรับเฉพาะ .pdf .docx .txt และไฟล์รูปภาพ');
+}
+
+/* ── นำเข้า JD จากไฟล์ ──
+   PDF/DOCX/TXT/รูป ใช้ตัวอ่านชุดเดียวกับ resume (ได้ OCR ติดมาด้วย)
+   Excel/CSV ใช้ SheetJS โหลดตอนใช้จริงเท่านั้น */
+const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+async function readSpreadsheet(file) {
+  await loadScriptOnce(XLSX_URL);
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const sheets = wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, blankrows: false, defval: '' }));
+  // แผ่นแรกที่มีข้อมูลใช้เป็นตารางหลัก ส่วนข้อความรวมทุกแผ่น (JD อาจแยกแผ่นละหัวข้อ)
+  const rows = sheets.find(s => s.length) || [];
+  return { rows, text: sheets.map(sheetRowsToText).filter(Boolean).join('\n') };
+}
+
+async function importJDFile(file) {
+  const useOcr = (document.getElementById('ocrToggle') || {}).checked !== false;
+  try {
+    if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+      toast('กำลังอ่านไฟล์ Excel…');
+      const { rows, text } = await readSpreadsheet(file);
+      const jobs = jdRowsToJobs(rows);
+      // ตารางหลายตำแหน่ง → นำเข้าทีเดียวทั้งหมด · ตำแหน่งเดียว/ฟอร์ม → เปิดฟอร์มให้ตรวจก่อน
+      if (jobs.length > 1) {
+        if (!confirm(`พบ ${jobs.length} ตำแหน่งในไฟล์นี้\n\n${jobs.slice(0, 8).map(j => '· ' + j.title).join('\n')}` +
+          (jobs.length > 8 ? `\n· … อีก ${jobs.length - 8} ตำแหน่ง` : '') +
+          `\n\nนำเข้าทั้งหมดเลยไหม? (แก้ไขทีหลังได้)`)) return;
+        jobs.forEach(j => DB.jobs.push(Object.assign({
+          id: uid('j'), status: 'Open', jdUrl: '', qualsUrl: '',
+        }, j)));
+        saveDB(); renderAll();
+        toast(`นำเข้า ${jobs.length} ตำแหน่งแล้ว — ตรวจทักษะ/น้ำหนักคะแนนอีกครั้ง`);
+        return;
+      }
+      fillJobForm(jobs.length === 1
+        ? Object.assign({ text }, jobs[0])
+        : parseJD(text, { fileName: file.name }), file.name);
+      return;
+    }
+    toast('กำลังอ่านไฟล์ JD…');
+    const raw = await extractFileText(file, { ocr: useOcr, onStatus: msg => toast(msg) });
+    if (!String(raw.text || '').trim()) throw new Error('อ่านข้อความจากไฟล์ไม่ได้ — ถ้าเป็นไฟล์สแกนให้เปิด OCR ที่แท็บ Resume Scanner');
+    fillJobForm(parseJD(raw.text, { bigText: raw.bigText, fileName: file.name }), file.name);
+  } catch (err) {
+    toast('นำเข้า JD ไม่สำเร็จ: ' + (err.message || err));
+  }
+}
+
+/* เปิดฟอร์มตำแหน่งพร้อมเติมค่าที่อ่านได้ — ให้ HR ตรวจก่อนบันทึกเสมอ ไม่บันทึกให้เอง */
+function fillJobForm(p, fileName) {
+  openJobModal(null);
+  const set = (id, v) => { if (v) document.getElementById(id).value = v; };
+  set('j_title', p.title);
+  set('j_dept', p.dept);
+  set('j_edu', p.eduKeywords);
+  set('j_jd', p.jd);
+  set('j_quals', p.quals);
+  if (p.minExp) document.getElementById('j_minexp').value = p.minExp;
+  const rows = document.getElementById('skillRows');
+  if (p.skills && p.skills.length) rows.innerHTML = p.skills.map(skillRowHTML).join('');
+  const got = [p.title && 'ชื่อตำแหน่ง', p.dept && 'แผนก', p.minExp && 'ประสบการณ์',
+    p.eduKeywords && 'วุฒิ', p.quals && 'คุณสมบัติ', p.skills && p.skills.length && `ทักษะ ${p.skills.length} รายการ`].filter(Boolean);
+  toast(got.length ? `อ่านจาก ${fileName} ได้: ${got.join(' · ')} — ตรวจแล้วกดบันทึก` : `อ่าน ${fileName} แล้วแต่แยกหัวข้อไม่ได้ — เนื้อหาอยู่ในช่อง JD`);
 }
 
 /* ── Scan flow ── */
@@ -2856,6 +3102,12 @@ document.getElementById('clearScanBtn').addEventListener('click', clearScan);
 document.getElementById('seedBtn').addEventListener('click', seed);
 
 document.getElementById('jobAddBtn').addEventListener('click', () => openJobModal(null));
+const jobImportInput = document.getElementById('jobImportInput');
+document.getElementById('jobImportBtn').addEventListener('click', () => jobImportInput.click());
+jobImportInput.addEventListener('change', () => {
+  if (jobImportInput.files[0]) importJDFile(jobImportInput.files[0]);
+  jobImportInput.value = '';
+});
 document.getElementById('jobExportBtn').addEventListener('click', exportJobsCSV);
 document.getElementById('addSkillBtn').addEventListener('click', () => {
   document.getElementById('skillRows').insertAdjacentHTML('beforeend', skillRowHTML());
