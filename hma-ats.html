@@ -205,6 +205,27 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 .sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
+/* หน้า resume จริง + กล่องไฮไลต์ที่ปูทับตามพิกัดใน PDF */
+.rv-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.rv-host { max-height: 560px; overflow: auto; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 12px; }
+.rv-page { position: relative; margin: 0 auto 14px; box-shadow: 0 1px 6px rgba(0,0,0,.18); background: #fff; }
+.rv-page canvas { display: block; max-width: 100%; height: auto; }
+.rv-pagenum { position: absolute; right: 6px; bottom: 4px; font-size: 11px; color: var(--gray-400); background: rgba(255,255,255,.8); padding: 0 5px; border-radius: 4px; }
+/* mix-blend-mode: multiply ทำให้ตัวหนังสือใต้กล่องยังอ่านออก ไม่ถูกทับจนหาย */
+.rv-hit { position: absolute; background: var(--pass-b); mix-blend-mode: multiply; border-radius: 2px; pointer-events: auto; }
+[data-theme="dark"] .rv-hit { mix-blend-mode: screen; opacity: .55; }
+/* แถบโหมดทดสอบ — ต้องเห็นตลอดเวลา ไม่งั้นเผลอคิดว่าเป็นข้อมูลจริง */
+.demo-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 18px; font-size: 13px;
+  background: var(--pend-l); color: var(--pend); border-bottom: 2px solid var(--pend); }
+.demo-bar .demo-exit { margin-left: auto; color: var(--gray-700); font-size: 12px; }
+.ocr-opt { display: block; margin-top: 12px; font-size: 13px; cursor: pointer; }
+.ocr-opt input { margin-right: 6px; vertical-align: middle; }
+.ocr-opt .hint { display: block; margin: 2px 0 0 22px; }
+/* ช่องแก้ชื่อ/อีเมลในตารางผลสแกน — ดูเหมือนข้อความธรรมดาจนกว่าจะโฟกัส */
+.scan-inp { width: 100%; min-width: 120px; padding: 4px 6px; font: inherit; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 6px; }
+.scan-inp:hover { border-color: var(--gray-200); }
+.scan-inp:focus { outline: none; border-color: var(--teal); background: var(--white, #fff); }
+.scan-inp::placeholder { color: var(--gray-400); font-style: italic; }
 .kv { font-size: 13px; }
 .kv td { border: none; padding: 4px 8px 4px 0; }
 .kv td:first-child { color: var(--gray-400); white-space: nowrap; }
@@ -245,6 +266,12 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
 </head>
 <body>
 
+<div class="demo-bar" id="demoBar" style="display:none">
+  🧪 <b>โหมดทดสอบ</b> — ข้อมูลแยกจากของจริงคนละที่ · ปิดสำรองอัตโนมัติ · ไม่ดึงผลสอบจริง
+  <button class="btn btn-ghost btn-sm" id="demoClearBtn">ล้างข้อมูลทดสอบ</button>
+  <a href="?" class="demo-exit">ออกจากโหมดทดสอบ →</a>
+</div>
+
 <div class="topbar">
   <span class="brand">HMA</span>
   <span class="topbar-title">ATS — Applicant Tracking &amp; Resume Scanner</span>
@@ -269,7 +296,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
   <!-- ============ SCANNER TAB ============ -->
   <div id="tab-scanner">
     <h1>Resume Scanner</h1>
-    <p class="page-sub">อัปโหลด resume (PDF / DOCX / TXT) ระบบจะดึงข้อมูล จับคู่ทักษะกับตำแหน่งงาน และให้คะแนนอัตโนมัติ</p>
+    <p class="page-sub">อัปโหลด resume (PDF / DOCX / TXT / รูปภาพ) ระบบจะดึงข้อมูล จับคู่ทักษะกับตำแหน่งงาน และให้คะแนนอัตโนมัติ</p>
 
     <div class="card">
       <div class="grid2">
@@ -285,14 +312,19 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
       <div class="dropzone" id="dropzone">
         <div class="dz-icon">📄</div>
         <div><b>ลากไฟล์ resume มาวางที่นี่</b> หรือคลิกเพื่อเลือกไฟล์</div>
-        <div class="hint" style="margin-top:6px">รองรับ .pdf .docx .txt — เลือกได้หลายไฟล์พร้อมกัน · ข้อมูลอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น server</div>
-        <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" style="display:none">
+        <div class="hint" style="margin-top:6px">รองรับ .pdf .docx .txt .jpg .png — เลือกได้หลายไฟล์พร้อมกัน · ข้อมูลอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น server</div>
+        <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp" style="display:none">
       </div>
+      <label class="ocr-opt">
+        <input type="checkbox" id="ocrToggle" checked>
+        <span>อ่านไฟล์สแกน/รูปภาพด้วย OCR (ไทย+อังกฤษ)</span>
+        <span class="hint">ใช้เฉพาะไฟล์ที่ไม่มีชั้นข้อความ · ครั้งแรกต้องโหลดชุดข้อมูลภาษา ~15 MB และใช้เวลาหลายสิบวินาทีต่อหน้า</span>
+      </label>
     </div>
 
     <div class="card" id="scanResultsCard" style="display:none">
       <h2>ผลการสแกน</h2>
-      <p class="sub">ตรวจสอบข้อมูลที่ระบบดึงได้ก่อนกด "เพิ่มเป็นผู้สมัคร" — คลิก "รายละเอียด" เพื่อดูการคิดคะแนน</p>
+      <p class="sub">ตรวจสอบข้อมูลที่ระบบดึงได้ก่อนกด "เพิ่มเป็นผู้สมัคร" — ช่องชื่อ/อีเมลแก้ได้ทันทีถ้าระบบอ่านผิดหรืออ่านไม่เจอ · คลิก "รายละเอียด" เพื่อดูการคิดคะแนน</p>
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -354,11 +386,13 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
   <!-- ============ JOBS TAB ============ -->
   <div id="tab-jobs" style="display:none">
     <h1>ตำแหน่งงาน (Job Requisitions)</h1>
-    <p class="page-sub">กำหนดตำแหน่ง ทักษะที่ต้องการ และน้ำหนักคะแนน — เกณฑ์นี้ใช้คิดคะแนน match ตอนสแกน resume</p>
+    <p class="page-sub">กำหนดตำแหน่ง ทักษะที่ต้องการ และน้ำหนักคะแนน — เกณฑ์นี้ใช้คิดคะแนน match ตอนสแกน resume · มี JD เป็นไฟล์อยู่แล้วกด <b>นำเข้าจากไฟล์ JD</b> ให้ระบบกรอกให้</p>
 
     <div class="toolbar">
       <span></span><span class="topbar-spacer"></span>
       <button class="btn btn-secondary btn-sm" id="jobExportBtn">⬇ Export CSV</button>
+      <button class="btn btn-secondary btn-sm" id="jobImportBtn" title="อ่านชื่อตำแหน่ง หน้าที่ คุณสมบัติ และทักษะจากไฟล์ JD">📄 นำเข้าจากไฟล์ JD</button>
+      <input type="file" id="jobImportInput" accept=".pdf,.docx,.txt,.xlsx,.xls,.csv,.jpg,.jpeg,.png" style="display:none">
       <button class="btn btn-primary btn-sm" id="jobAddBtn">＋ เพิ่มตำแหน่ง</button>
     </div>
 
@@ -641,15 +675,133 @@ function normText(raw) {
     .replace(/\r\n?/g, '\n')
     .replace(/[​‌‍﻿]/g, '')
     .replace(/[   ]/g, ' ')
+    // ข้อความไทยจาก PDF เพี้ยนได้สองแบบ เพราะไฟล์เก็บ "ลำดับที่วาด" ไม่ใช่ลำดับที่พิมพ์
+    //   1. วรรณยุกต์มาก่อนสระ — "ผู้" ออกมาเป็น ผ+้+ู ทำให้ค้นคำว่า "ผู้สมัคร" ไม่เจอ
+    //      NFC เรียง combining mark ตาม canonical combining class ให้เอง
+    //   2. สระอำถูกวาดเป็นนิคหิต+สระอา ได้ "จํากัด"/"จำากัด" แทน "จำกัด"
+    // ทั้งสองแบบทำให้จับคู่ทักษะ/วุฒิ/หัวข้อภาษาไทยพลาดแบบเงียบ ๆ
+    .normalize('NFC')
+    .replace(/ํา/g, 'ำ')
+    .replace(/ำา/g, 'ำ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-/* ── Contact extraction ── */
-function extractEmail(text) {
-  const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return m ? m[0].toLowerCase() : '';
+/* ── Contact extraction ──
+   ปัญหาที่เจอจริง: resume ที่มีอีเมลชัดเจน แต่ระบบหาไม่เจอ เพราะ PDF ไม่ได้เก็บ
+   "ข้อความ" เป็นบรรทัด — pdf.js คืนมาเป็นชิ้น ๆ (text item) ตามรอยต่อฟอนต์/เคิร์นนิ่ง
+   ทำให้ somchai.j@gmail.com ออกมาเป็น "somchai.j@ gmail.com" หรือถูกตัดคนละบรรทัด
+   regex ตรง ๆ จึงพลาด ทั้งที่คนอ่านออก
+
+   วิธีแก้: หาแบบเข้มก่อน (พฤติกรรมเดิม ไม่มี false positive) ถ้าไม่เจอค่อยซ่อมข้อความ
+   แล้วหาแบบผ่อนปรน — ซ่อมเฉพาะ "สำเนาที่ใช้ค้นหา" ไม่แตะ resumeText ที่ HR เห็น */
+
+/* อีเมลรูปแบบมาตรฐาน (ไม่มีช่องว่างแทรก) */
+const EMAIL_STRICT_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}/g;
+/* แบบผ่อนปรน: ยอมให้มีช่องว่าง 1 ตัวขนาบ @ และจุด — ใช้เฉพาะตอนหาแบบเข้มไม่เจอ */
+const EMAIL_LOOSE_RE = new RegExp(
+  '[A-Za-z0-9_%+-]+(?:[ ]?[._][ ]?[A-Za-z0-9_%+-]+)*' +
+  '[ ]?@[ ]?' +
+  '[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?' +
+  '(?:[ ]?\\.[ ]?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*' +
+  '[ ]?\\.[ ]?[A-Za-z]{2,}', 'g');
+
+/* นามสกุลไฟล์ที่ไม่ใช่ TLD — กัน "photo@2x.png" หรือ "logo@2.jpg" กลายเป็นอีเมล */
+const NOT_TLD_RE = /^(?:png|jpe?g|gif|svg|webp|bmp|pdf|docx?|xlsx?|pptx?|zip|rar|txt|csv)$/i;
+/* อีเมลกลาง/อีเมลบริษัท — มักเป็นของผู้รับสมัคร ไม่ใช่ของผู้สมัคร จึงจัดอันดับไว้ท้าย */
+const GENERIC_LOCAL_RE = /^(?:no-?reply|donotreply|info|contact|admin|support|sales|hr|career|jobs?|recruit(?:ment)?|webmaster|office|service|team|mail|example|your|name|email)s?$/i;
+
+function isPlausibleEmail(e) {
+  if (!e || e.length > 254) return false;
+  const at = e.lastIndexOf('@');
+  const local = e.slice(0, at), domain = e.slice(at + 1);
+  if (!local || local.length > 64 || domain.length > 253) return false;
+  if (/\.\./.test(e) || /^\./.test(local) || /\.$/.test(local)) return false;
+  const tld = domain.split('.').pop();
+  return !NOT_TLD_RE.test(tld);
+}
+
+/* ซ่อมข้อความก่อนค้นหาอีเมล — เรียกเฉพาะตอนหาแบบเข้มไม่เจอ */
+function repairContactText(raw) {
+  let t = String(raw || '')
+    .replace(/[＠﹫]/g, '@')                       // อักขระเต็มความกว้าง (คีย์บอร์ดญี่ปุ่น/จีน)
+    .replace(/[．｡]/g, '.')
+    // เขียนกันสแปม: somchai(at)gmail(dot)com — รับเฉพาะแบบมีวงเล็บ
+    // (แบบไม่มีวงเล็บอย่าง "worked at hino.co.th" จะกลายเป็นอีเมลปลอม จึงไม่รับ)
+    .replace(/[ \t]*[([{<][ \t]*(?:at|แอท)[ \t]*[)\]}>][ \t]*/gi, '@')
+    .replace(/[ \t]*[([{<][ \t]*(?:dot|จุด)[ \t]*[)\]}>][ \t]*/gi, '.');
+  // อีเมลถูกตัดข้ามบรรทัด (คอลัมน์แคบ/กล่องข้อความใน PDF)
+  return t
+    .replace(/([A-Za-z0-9._%+-])[ \t]*\n[ \t]*@/g, '$1@')
+    .replace(/@[ \t]*\n[ \t]*([A-Za-z0-9])/g, '@$1')
+    .replace(/(@[A-Za-z0-9.-]*)\.[ \t]*\n[ \t]*([A-Za-z]{2,})\b/g, '$1.$2');
+}
+
+/* เติมจุดหน้า TLD ที่หายไป: "gmailcom" → "gmail.com"
+   เรียง TLD ยาวก่อนสั้น ไม่งั้นตัดผิดที่ · รับเฉพาะ TLD ที่ยาวพอจะไม่ชนคำทั่วไป —
+   สั้นอย่าง .io/.th จะทำให้ "studio"/"smith" กลายเป็นโดเมนปลอม */
+const KNOWN_TLDS = ['co.th', 'com', 'net', 'org', 'edu', 'gov', 'info'];
+function insertMissingTldDot(domain) {
+  if (domain.includes('.')) return domain;
+  const low = domain.toLowerCase();
+  for (const tld of KNOWN_TLDS) {
+    const bare = tld.replace('.', '');
+    if (low.length > bare.length + 1 && low.endsWith(bare)) {
+      return domain.slice(0, -bare.length) + '.' + tld;
+    }
+  }
+  return domain;
+}
+
+/* คะแนนความน่าจะเป็น "อีเมลของผู้สมัครคนนี้" — ยิ่งน้อยยิ่งมาก่อน */
+function rankEmail(email, text, index) {
+  const local = email.split('@')[0];
+  let rank = 0;
+  const labelled = new RegExp('(?:e-?mail|อีเมล|เมล)[^\\n]{0,20}' + escapeRe(email.slice(0, 12)), 'i');
+  if (!labelled.test(text)) rank += 4;                       // อยู่ติดคำว่า "อีเมล" = ของเจ้าตัวแน่นอน
+  const headEnd = text.split('\n').slice(0, 15).join('\n').length;
+  if (index > headEnd) rank += 2;                            // อยู่หัวกระดาษ = ข้อมูลติดต่อของเจ้าตัว
+  if (GENERIC_LOCAL_RE.test(local)) rank += 8;               // info@ / hr@ = อีเมลองค์กร
+  return rank;
+}
+
+/* คืนอีเมลทั้งหมดที่พบ เรียงตัวที่น่าจะเป็นของผู้สมัครไว้ก่อน
+   links = URL จาก hyperlink ในไฟล์ (mailto:) — บาง resume ใส่อีเมลไว้เป็นลิงก์เท่านั้น */
+function extractEmails(text, links) {
+  const src = String(text || '');
+  const found = new Map();                                   // email → ตำแหน่งแรกที่เจอ
+  const collect = (re, from, squash) => {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(from)) !== null) {
+      const e = (squash ? m[0].replace(/ /g, '') : m[0]).toLowerCase();
+      if (isPlausibleEmail(e) && !found.has(e)) found.set(e, m.index);
+    }
+  };
+  collect(EMAIL_STRICT_RE, src, false);
+  if (!found.size) collect(EMAIL_LOOSE_RE, repairContactText(src), true);
+  // ชั้นสุดท้าย: จุดหน้า TLD หายไป (OCR มองไม่เห็นจุดเล็ก ๆ) — "uncharink@gmailcom"
+  if (!found.size) {
+    for (const m of repairContactText(src).matchAll(/([A-Za-z0-9._%+-]+)@([A-Za-z0-9-]{5,})/g)) {
+      const e = (m[1] + '@' + insertMissingTldDot(m[2])).toLowerCase();
+      if (e.includes('.') && isPlausibleEmail(e) && !found.has(e)) found.set(e, m.index);
+    }
+  }
+  const out = [...found.keys()].sort((a, b) =>
+    (rankEmail(a, src, found.get(a)) - rankEmail(b, src, found.get(b))) || (found.get(a) - found.get(b)));
+  // อีเมลจาก mailto: ต่อท้าย — เชื่อถือได้แต่บางทีเป็นลิงก์ของบริษัท จึงไม่แซงที่เจอในข้อความ
+  (links || []).forEach(u => {
+    const m = String(u || '').match(/^\s*mailto:([^?\s]+)/i);
+    if (!m) return;
+    const e = decodeURIComponent(m[1]).toLowerCase();
+    if (isPlausibleEmail(e) && !out.includes(e)) out.push(e);
+  });
+  return out;
+}
+
+function extractEmail(text, links) {
+  return extractEmails(text, links)[0] || '';
 }
 
 function extractPhone(text) {
@@ -672,26 +824,93 @@ function stripTitle(s) {
     .replace(/^(?:นางสาว|นาย|นาง|ดร)\.?\s*/, '')
     .trim();
 }
-function extractName(text, email) {
-  // 1) explicit label (TH/EN)
-  const label = text.match(/(?:^|\n)\s*(?:name|ชื่อ(?:-นามสกุล|-สกุล|จริง)?)\s*[:：]\s*([^\n]{2,60})/i);
-  if (label) return stripTitle(label[1]);
-  // 2) first plausible line: 2-4 words, no digits/@, not a resume header
-  const headerWords = /resume|curriculum|vitae|^cv$|profile|ประวัติ|ใบสมัคร/i;
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 8);
+/* หัวข้อ/ฉลากที่ไม่ใช่ชื่อคน — กันบรรทัดอย่าง "PERSONAL INFORMATION" หลุดมาเป็นชื่อ
+   ปิดท้ายด้วย (?![A-Za-z]) ไม่ใช่ \b เพราะอักษรไทยไม่ใช่ word character ของ JS regex
+   — \b หลังคำไทยจะไม่เกิดขอบเขต ทำให้ "ข้อมูลส่วนตัว" หลุดตะแกรง */
+const NAME_STOP_RE = /^(?:resume|curriculum\s*vitae|cv|profile|personal\s+(?:info(?:rmation)?|data|details)|contact(?:\s+(?:info(?:rmation)?|details))?|objective|career\s+objective|summary|about\s+me|education|experience|work\s+experience|skills?|languages?|references?|address|phone|tel|mobile|e-?mail|nationality|date\s+of\s+birth|position|applied|ประวัติ|ข้อมูลส่วนตัว|ใบสมัคร|สมัครงาน|ที่อยู่|เบอร์|โทรศัพท์|อีเมล|สัญชาติ|ศาสนา|วันเกิด|การศึกษา|ประสบการณ์|ทักษะ|ตำแหน่ง)(?![A-Za-z])/i;
+
+/* ข้อความนี้หน้าตาเหมือนชื่อคนไหม — ใช้ตรวจทุกช่องทางที่เดาชื่อ */
+/* ตัดวงเล็บท้ายชื่อออก — "สมชาย ใจดี (Somchai Jaidee)" เป็นทรงที่พบบ่อยมากใน resume ไทย
+   เดิมบรรทัดนี้ตกทั้งบรรทัดเพราะมีวงเล็บ แล้วไปหยิบชื่อบริษัทจากบรรทัดล่างมาแทน */
+function stripParenthetical(s) {
+  return String(s || '').replace(/[（(][^）)]*[）)]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function looksLikeName(s) {
+  const t = stripTitle(stripParenthetical(String(s || '')).replace(/[|•·‧–—]/g, ' ').replace(/\s+/g, ' ').trim());
+  if (t.length < 3 || t.length > 60) return false;
+  if (/[@\d]/.test(t)) return false;                       // มีอีเมล/ตัวเลข = บรรทัดข้อมูลติดต่อ
+  if (/https?:|www\.|[:;<>{}()[\]/\\]/.test(t)) return false;
+  if (NAME_STOP_RE.test(t)) return false;
+  const letters = (t.match(/[A-Za-z฀-๿]/g) || []).length;
+  if (letters < t.length * 0.7) return false;              // สัญลักษณ์เยอะเกินไป
+  const words = t.split(' ').filter(Boolean);
+  return words.length >= 2 && words.length <= 5;
+}
+
+/* ชื่อจาก local part ของอีเมล: somchai.jaidee@ → "Somchai Jaidee" */
+function nameFromEmail(email) {
+  const local = String(email || '').split('@')[0];
+  if (!local || GENERIC_LOCAL_RE.test(local.replace(/\d+$/, ''))) return '';
+  const parts = local.replace(/\d+/g, ' ').split(/[._+-]+/).map(s => s.trim()).filter(s => s.length > 1);
+  if (!parts.length) return '';
+  return parts.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/* ชื่อจากชื่อไฟล์: "Resume_Somchai_Jaidee.pdf" → "Somchai Jaidee" — ทางเลือกสุดท้าย
+   ต้องขี้ระแวงเป็นพิเศษ: ชื่อไฟล์เต็มไปด้วยคำที่ไม่ใช่ชื่อคน การเดาผิดแล้วใส่เป็นชื่อผู้สมัคร
+   แย่กว่าการยอมรับว่าหาไม่เจอ (เคสจริง "K.Uncharin_ResumeTranscript.pdf") */
+function nameFromFileName(fileName) {
+  const t = String(fileName || '')
+    .replace(/\.[A-Za-z0-9]+$/, '')
+    // คำเหล่านี้ตัดโดยไม่ต้องมีขอบเขตคำ — มักเขียนติดกันเป็น "ResumeTranscript"
+    .replace(/resume|curriculum\s*vitae|transcript|profile|application|portfolio|เรซูเม่|ประวัติส่วนตัว|ประวัติ|ใบสมัครงาน|ใบสมัคร|สมัครงาน/gi, ' ')
+    .replace(/[_+]+/g, ' ')
+    .replace(/-+/g, ' ')
+    .replace(/\b(?:cv|applicant|updated?|final|copy|new|ver|v\d+)\b/gi, ' ')
+    .replace(/\d+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // ทุกคำต้องเป็นตัวอักษรล้วน — "K.Uncharin" หรือ "af a e" ไม่ผ่าน
+  const words = t.split(' ').filter(Boolean);
+  if (words.length < 2 || words.length > 4) return '';
+  if (!words.every(w => w.length >= 2 && /^[A-Za-z฀-๿]+$/.test(w))) return '';
+  return looksLikeName(t) ? stripTitle(t) : '';
+}
+
+/* หาชื่อผู้สมัคร — ไล่จากหลักฐานที่หนักแน่นที่สุดลงไป
+   hints.bigText = ข้อความตัวโตสุดบนหน้าแรกของ PDF (เกือบทุก resume พิมพ์ชื่อตัวโตไว้บนสุด)
+   hints.fileName = ชื่อไฟล์ */
+function extractName(text, email, hints) {
+  hints = hints || {};
+  const src = String(text || '');
+  // 1) ฉลากชัดเจน ทั้งค่าอยู่บรรทัดเดียวกันและอยู่บรรทัดถัดไป (ฟอร์มใบสมัครมักขึ้นบรรทัดใหม่)
+  const LABEL = '(?:full\\s*name|name|ชื่อ\\s*[-–]?\\s*(?:นามสกุล|สกุล)|ชื่อจริง|ชื่อผู้สมัคร|ชื่อ)';
+  const sameLine = src.match(new RegExp('(?:^|\\n)[ \\t]*' + LABEL + '[ \\t]*[:：][ \\t]*([^\\n]{2,60})', 'i'));
+  if (sameLine) {
+    const v = stripTitle(sameLine[1].split(/\s{2,}|[|•·]/)[0].trim());
+    if (v && !/[@\d]/.test(v) && v.length >= 3) return v;
+  }
+  const nextLine = src.match(new RegExp('(?:^|\\n)[ \\t]*' + LABEL + '[ \\t]*[:：]?[ \\t]*\\n[ \\t]*([^\\n]{2,60})', 'i'));
+  if (nextLine && looksLikeName(nextLine[1])) return stripTitle(nextLine[1].trim());
+  // 2) ข้อความตัวโตสุดบนหน้าแรก (สัญญาณที่แม่นที่สุดใน PDF จริง)
+  if (looksLikeName(hints.bigText)) return stripTitle(stripParenthetical(hints.bigText).replace(/\s+/g, ' ').trim());
+  // 3) กวาดบรรทัดหัวกระดาษ — ตัดเป็นช่วง ๆ ก่อน เพราะ resume สมัยใหม่มักพิมพ์
+  //    "SOMCHAI JAIDEE | 081-234-5678 | somchai@gmail.com" รวมไว้บรรทัดเดียว
+  // ข้อความจาก OCR ไม่มีข้อมูลลำดับ/ขนาดตัวอักษรให้เชื่อ และมักสลับคอลัมน์ปนกัน
+  // จึงดูแค่ 3 บรรทัดแรกแบบทั้งบรรทัด ไม่ตัดเป็นช่วง — ไม่งั้นจะได้เศษประโยคมาเป็นชื่อ
+  const lines = src.split('\n').map(l => l.trim()).filter(Boolean).slice(0, hints.ocr ? 3 : 15);
+  const clean = s => stripTitle(stripParenthetical(s).replace(/\s+/g, ' ').trim());
   for (const line of lines) {
-    if (headerWords.test(line)) continue;
-    if (/[@\d]/.test(line)) continue;
-    const cleaned = stripTitle(line);
-    const words = cleaned.split(/\s+/);
-    if (words.length >= 2 && words.length <= 4 && cleaned.length <= 60) return cleaned;
+    // ไล่ทีละบรรทัดจากบนลงล่าง (ชื่ออยู่บนสุดเสมอ) — ในแต่ละบรรทัดลองทั้งบรรทัดก่อน
+    // ค่อยตัดเป็นช่วง ไม่งั้น "Jaidee, Somchai" จะโดนหั่นที่คอมมาจนเหลือคำเดียว
+    if (looksLikeName(line)) return clean(line);
+    if (hints.ocr) continue;
+    for (const seg of line.split(/[|•·‧]|\t|\s{2,}|,/)) {
+      if (looksLikeName(seg)) return clean(seg);
+    }
   }
-  // 3) fallback: derive from email local part
-  if (email) {
-    const local = email.split('@')[0].replace(/[._\d]+/g, ' ').trim();
-    if (local) return local.replace(/\b\w/g, c => c.toUpperCase());
-  }
-  return '';
+  // 4) เดาจากอีเมล แล้วค่อยเดาจากชื่อไฟล์
+  return nameFromEmail(email) || nameFromFileName(hints.fileName) || '';
 }
 
 /* ── Experience (years) ──
@@ -894,25 +1113,420 @@ function scoreCandidate(parsed, job) {
   };
 }
 
-/* ── Full pipeline: raw text → parsed record ── */
-function parseResume(rawText) {
+/* ── Full pipeline: raw text → parsed record ──
+   hints (ไม่บังคับ) = { links, bigText, fileName } ที่ได้จากตัวอ่านไฟล์ — ช่วยให้หาชื่อ/อีเมลแม่นขึ้น */
+function parseResume(rawText, hints) {
+  hints = hints || {};
   const text = normText(rawText);
-  const email = extractEmail(text);
+  const emails = extractEmails(text, hints.links);
+  const email = emails[0] || '';
   const sections = extractSections(text);
+  const name = extractName(text, email, hints);
   const warnings = [];
-  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์อาจเป็นภาพสแกน (ไม่มี text layer)');
-  if (!email) warnings.push('ไม่พบอีเมลใน resume');
+  if (!text || text.length < 40) warnings.push('ข้อความที่ดึงได้สั้นมาก — ไฟล์เป็นภาพสแกน/ถ่ายรูป (ไม่มี text layer) ลองเปิด OCR แล้วสแกนใหม่ หรือกรอกข้อมูลเอง');
+  if (!email) warnings.push('ไม่พบอีเมลใน resume — กรอกเองได้ในช่องอีเมล');
+  if (!name) warnings.push('ไม่พบชื่อผู้สมัคร — กรอกเองได้ในช่องชื่อ');
+  if (emails.length > 1) warnings.push(`พบอีเมล ${emails.length} รายการ — ใช้ ${email} (อีเมลอื่น: ${emails.slice(1).join(', ')})`);
   // ถ้าแยกส่วนประสบการณ์ได้ ให้คำนวณช่วงปีเฉพาะส่วนนั้น (กันปีการศึกษาปนเป็นปีทำงาน)
   return {
     resumeText: text,
     sections,
     email,
+    emailsFound: emails,
     phone: extractPhone(text),
-    name: extractName(text, email),
+    name,
     expYears: extractExperienceYears(text, null, sections.experience != null ? sections.experience : text),
     education: extractEducation(text),
     warnings,
   };
+}
+
+/* ── อ่าน JD จากไฟล์ → ค่าที่กรอกลงฟอร์มตำแหน่งงานได้เลย ──
+   JD จริงมาได้หลายทรง (PDF จากฝ่ายงาน, ตารางใน Excel, ข้อความวางมา) แต่โครงเหมือนกัน:
+   มีชื่อตำแหน่ง แผนก หน้าที่ และคุณสมบัติ — ดึงเท่าที่มั่นใจ ที่เหลือให้ HR เติมเอง */
+
+/* ฉลากที่ใช้กันจริงในเอกสาร JD ไทย/อังกฤษ */
+const JD_LABELS = {
+  // ฟอร์มมาตรฐานมีทั้ง "ตำแหน่งภาษาไทย" (= ระดับพนักงาน) และ "ชื่อตำแหน่งตามขอบเขตงาน"
+  // (= ตำแหน่งจริง) ต้องลองตัวหลังก่อนเสมอ ไม่งั้นจะได้คำว่า "พนักงาน" มาเป็นชื่อตำแหน่ง
+  titleScope: /(?:^|\n)[ \t]*ชื่อตำแหน่งตามขอบเขตงาน|(?:^|\n)[ \t]*position\s*by\s*scope(?:\s*of\s*job)?/i,
+  title: /(?:^|\n)[ \t]*(?:ชื่อ)?ตำแหน่ง(?:งาน|ที่เปิดรับ|ที่รับสมัคร)?|(?:^|\n)[ \t]*(?:job\s*)?(?:position|title|job\s*title|role)/i,
+  dept: /(?:^|\n)[ \t]*(?:แผนก|ฝ่าย|หน่วยงาน|สังกัด)|(?:^|\n)[ \t]*(?:department|division|section)/i,
+};
+/* หัวข้อที่แบ่ง "หน้าที่งาน" ออกจาก "คุณสมบัติผู้สมัคร"
+   รับหัวข้อแบบ "Part 5: Qualification" / "ส่วนที่ 5 คุณสมบัติ" ด้วย เพราะฟอร์ม JD
+   มาตรฐานของบริษัทเรียงเป็น Part 1-6 และมักถูกส่งมาเป็น PDF ของฟอร์มเดียวกัน */
+const QUALS_HEADING_RE = /(?:^|\n)[ \t]*(?:(?:part|ส่วนที่)\s*\d+\s*[:：]?\s*)?(?:คุณสมบัติ(?:ผู้สมัคร|ของผู้สมัคร|เฉพาะตำแหน่ง)?|คุณสมบัติที่ต้องการ|สิ่งที่ต้องมี|qualifications?|requirements?|desired\s+skills?|skill\s+requirements?|who\s+you\s+are|what\s+you\s+(?:need|bring))[ \t]*:?[ \t]*(?:\n|$)/i;
+
+/* สาขาวิชาที่พบบ่อยใน JD — ใช้ตั้งคีย์เวิร์ดวุฒิให้ตรงกับคำที่จะเจอใน resume
+   ตัวที่ 3 คือคำพ้องที่ใช้ "จับ" เพิ่ม — ถ้าเจอคำพ้องจะใส่ลงคีย์เวิร์ดด้วย
+   เพราะ resume อาจเขียนคนละคำกับ JD (JD ว่า "ทรัพยากรมนุษย์" resume ว่า "ทรัพยากรบุคคล") */
+const JD_FIELDS = [
+  ['engineering', 'วิศวกรรม', ['วิศวกรรมศาสตร์']],
+  ['business administration', 'บริหารธุรกิจ', ['business management', 'การจัดการ']],
+  ['accounting', 'บัญชี'], ['finance', 'การเงิน'],
+  ['logistics', 'โลจิสติกส์'], ['supply chain', 'ซัพพลายเชน'],
+  ['computer', 'คอมพิวเตอร์', ['computer science', 'วิทยาการคอมพิวเตอร์']],
+  ['information technology', 'เทคโนโลยีสารสนเทศ'],
+  ['human resource', 'ทรัพยากรบุคคล', ['human resources', 'hr management', 'ทรัพยากรมนุษย์']],
+  ['marketing', 'การตลาด'], ['science', 'วิทยาศาสตร์'],
+  ['statistics', 'สถิติ'], ['economics', 'เศรษฐศาสตร์'], ['law', 'นิติศาสตร์'],
+];
+
+/* ค่าที่อยู่หลังฉลาก — รับทั้ง "ตำแหน่ง: X" และฉลากขึ้นบรรทัดแล้วค่าอยู่บรรทัดถัดไป
+   ต้องครอบ source ด้วย (?: ) ก่อนต่อท้าย ไม่งั้น "A|B" + "C" จะกลายเป็น "A|BC"
+   คือส่วนที่ต่อท้ายจะผูกกับทางเลือกสุดท้ายทางเดียว */
+function jdLabelValue(text, labelRe) {
+  const label = '(?:' + labelRe.source + ')';
+  // ฉลากในฟอร์มมักมีคำต่อท้าย ("ตำแหน่งภาษาไทย") ทำให้จับได้ทั้ง "ภาษาไทย : พนักงาน"
+  // ค่าจริงคือส่วนหลังโคลอนตัวสุดท้ายเสมอ
+  const tail = v => { const i = Math.max(v.lastIndexOf(':'), v.lastIndexOf('：')); return (i >= 0 ? v.slice(i + 1) : v).trim(); };
+  const m = String(text || '').match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*([^\\n]{2,80})', 'i'));
+  if (m && m[1] && tail(m[1])) return tail(m[1]).replace(/[.,;]+$/, '');
+  const m2 = String(text || '').match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*\\n[ \\t]*([^\\n]{2,80})', 'i'));
+  return m2 && m2[1] ? tail(m2[1]).replace(/[.,;]+$/, '') : '';
+}
+
+/* ประสบการณ์ "ขั้นต่ำ" ที่ JD ต้องการ — ต่างจาก resume ที่เอาค่ามากสุด
+   "3-5 ปี" → 3 · "อย่างน้อย 2 ปี" → 2 · เจอหลายที่เอาน้อยสุด (เกณฑ์ผ่านคือขั้นต่ำ) */
+function extractRequiredYears(text) {
+  const src = String(text || '');
+  const found = [];
+  const push = v => { const n = parseInt(v, 10); if (n >= 0 && n <= 40) found.push(n); };
+  for (const m of src.matchAll(/(\d{1,2})\s*[-–—]\s*\d{1,2}\s*(?:\+\s*)?(?:years?|yrs?|ปี)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(?:at\s*least|minimum(?:\s*of)?|min\.?|over|more\s*than|อย่างน้อย|ไม่ต่ำกว่า|ตั้งแต่)\s*(\d{1,2})\s*(?:\+\s*)?(?:years?|yrs?|ปี)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(\d{1,2})\s*(?:\+|ปีขึ้นไป|years?\s*(?:up|or\s*more)|ขึ้นไป)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(?:experience|ประสบการณ์)[^\n]{0,20}?(\d{1,2})\s*(?:years?|yrs?|ปี)/gi)) push(m[1]);
+  for (const m of src.matchAll(/(\d{1,2})\s*(?:years?|yrs?|ปี)[^\n]{0,20}?(?:experience|ประสบการณ์)/gi)) push(m[1]);
+  // ข้อความสั้น = ค่าจากช่องตาราง ("3 ปี") ตัวเลขลอย ๆ ถือว่าคือคำตอบได้
+  // ไม่ใช้กับ JD เต็มฉบับ ไม่งั้น "สัญญาจ้าง 1 ปี" จะกลายเป็นเกณฑ์ประสบการณ์
+  if (!found.length && src.length <= 40) {
+    const m = src.match(/(\d{1,2})\s*(?:years?|yrs?|ปี)/i);
+    if (m) push(m[1]);
+  }
+  return found.length ? Math.min(...found) : 0;
+}
+
+/* คีย์เวิร์ดวุฒิ: ระดับปริญญา + สาขา เขียนทั้งไทยและอังกฤษเพื่อให้จับ resume ได้ทั้งสองภาษา */
+function extractEduKeywords(text) {
+  const low = String(text || '').toLowerCase();
+  const out = [];
+  if (/\bph\.?d\b|doctor(?:ate|al)|ปริญญาเอก/i.test(low)) out.push('phd', 'ปริญญาเอก');
+  else if (/\bmaster|\bm\.?sc\b|\bm\.?eng\b|\bmba\b|ปริญญาโท/i.test(low)) out.push('master', 'ปริญญาโท');
+  else if (/\bbachelor|\bb\.?sc\b|\bb\.?eng\b|\bbba\b|ปริญญาตรี|วุฒิ\s*ป\.?ตรี/i.test(low)) out.push('bachelor', 'ปริญญาตรี');
+  else if (/\bdiploma\b|ปวส/i.test(low)) out.push('diploma', 'ปวส');
+  // สาขาที่ถูกพูดถึงก่อนในเอกสารคือสาขาหลัก — ไม่ใช่สาขาที่มาก่อนในลิสต์ของเรา
+  let best = null, bestAt = Infinity;
+  for (const f of JD_FIELDS) {
+    const terms = [f[0], f[1]].concat(f[2] || []);
+    const at = Math.min(...terms.map(t => low.indexOf(t)).filter(i => i >= 0), Infinity);
+    if (at < bestAt) { bestAt = at; best = f; }
+  }
+  if (best) {
+    out.push(best[0], best[1]);
+    // ใส่คำพ้องที่เอกสารใช้จริงลงไปด้วย จะได้จับ resume ที่เขียนคำเดียวกับ JD ได้
+    (best[2] || []).forEach(alias => { if (low.includes(alias)) out.push(alias); });
+  }
+  return out.join(', ');
+}
+
+/* แยกเนื้อ JD ออกจากส่วนคุณสมบัติ — ไม่เจอหัวข้อก็ยกทั้งก้อนเป็น JD */
+function splitJdAndQuals(text) {
+  const src = String(text || '').trim();
+  const m = src.match(QUALS_HEADING_RE);
+  if (!m || m.index === undefined) return { jd: src, quals: '' };
+  return { jd: src.slice(0, m.index).trim(), quals: src.slice(m.index + m[0].length).trim() };
+}
+
+/* ── JD ที่มาเป็นตาราง Excel ──
+   สองทรงที่เจอจริง: (ก) ฟอร์มสองคอลัมน์ ฉลาก|ค่า (ข) ตารางหลายตำแหน่ง มีแถวหัวคอลัมน์
+   ทรง (ก) แปลงเป็นข้อความ "ฉลาก : ค่า" แล้วส่งเข้า parseJD ตัวเดิม ทรง (ข) อ่านเป็นตำแหน่งทีละแถว */
+const JD_COLUMNS = [
+  { key: 'title', re: /ตำแหน่ง|position|job\s*title|^\s*title\s*$|^\s*role\s*$/i },
+  { key: 'dept', re: /แผนก|ฝ่าย|หน่วยงาน|สังกัด|department|division/i },
+  { key: 'quals', re: /คุณสมบัติ|qualification|requirement/i },
+  { key: 'jd', re: /^\s*jd\s*$|job\s*desc|รายละเอียดงาน|ลักษณะงาน|^หน้าที่|responsibilit/i },
+  { key: 'minExp', re: /ประสบการณ์|experience/i },
+  { key: 'eduKeywords', re: /วุฒิ|การศึกษา|education|degree/i },
+  { key: 'skills', re: /ทักษะ|skill|competenc/i },
+];
+
+function cellText(v) { return String(v == null ? '' : v).trim(); }
+
+/* แถวตาราง → ข้อความ · แถวที่มี 2 ช่องถือเป็น "ฉลาก : ค่า" */
+function sheetRowsToText(rows) {
+  return (rows || []).map(r => {
+    const cells = (r || []).map(cellText).filter(Boolean);
+    if (!cells.length) return '';
+    return cells.length === 2 ? cells[0] + ' : ' + cells[1] : cells.join(' ');
+  }).filter(Boolean).join('\n');
+}
+
+/* หาแถวหัวคอลัมน์ (ต้องมีคอลัมน์ชื่อตำแหน่ง + อีกอย่างน้อย 1 คอลัมน์ที่รู้จัก)
+   คืน { headerRow, map } — map = ดัชนีคอลัมน์ → key · ไม่เจอคืน null */
+function findJdHeader(rows) {
+  for (let i = 0; i < Math.min((rows || []).length, 20); i++) {
+    const cells = (rows[i] || []).map(cellText);
+    // ต้องมีอย่างน้อย 3 ช่อง ไม่งั้นฟอร์มสองคอลัมน์ (ฉลาก|ค่า) จะถูกเข้าใจผิดว่าเป็นหัวตาราง
+    // เช่นแถว ["ตำแหน่ง", "เจ้าหน้าที่จัดซื้อ"] ที่ค่ามีคำว่า "หน้าที่" อยู่ข้างใน
+    if (cells.filter(Boolean).length < 3) continue;
+    const map = {};
+    cells.forEach((c, idx) => {
+      if (!c || c.length > 40) return;
+      const hit = JD_COLUMNS.find(col => col.re.test(c));
+      if (hit && !Object.values(map).includes(hit.key)) map[idx] = hit.key;
+    });
+    const keys = Object.values(map);
+    if (keys.includes('title') && keys.length >= 2) return { headerRow: i, map };
+  }
+  return null;
+}
+
+/* ตารางหลายตำแหน่ง → รายการ job (ยังไม่ใส่ id — ผู้เรียกเป็นคนใส่) */
+function jdRowsToJobs(rows) {
+  const head = findJdHeader(rows);
+  if (!head) return [];
+  const jobs = [];
+  for (let i = head.headerRow + 1; i < rows.length; i++) {
+    const cells = (rows[i] || []).map(cellText);
+    if (!cells.filter(Boolean).length) continue;
+    const get = key => {
+      const idx = Object.keys(head.map).find(k => head.map[k] === key);
+      return idx === undefined ? '' : (cells[idx] || '');
+    };
+    const title = get('title');
+    if (!title || title.length > 80) continue;
+    const jd = get('jd'), quals = get('quals');
+    const blob = [title, jd, quals, get('skills')].filter(Boolean).join('\n');
+    jobs.push({
+      title, dept: get('dept').slice(0, 60), jd, quals,
+      minExp: extractRequiredYears(get('minExp') || blob),
+      eduKeywords: extractEduKeywords(get('eduKeywords') || blob),
+      skills: suggestSkillsFromText(blob).map(name => ({ name, weight: 3, required: false })),
+    });
+  }
+  return jobs;
+}
+
+/* ── ฟอร์ม JD มาตรฐาน (Part 1-6 / ส่วนที่ 1-6) ──
+   เอกสาร "Job Description (แบบบรรยายลักษณะงาน)" ของบริษัทเป็นตารางที่ merge ช่องเยอะ
+   อ่านจากแถวโดยตรงดีกว่าแปลงเป็นข้อความก่อน เพราะยังรู้ว่าอะไรคือฉลากอะไรคือค่า
+   และรู้ว่าบรรทัดไหนอยู่ Part ไหน — Part 3+4 คือเนื้องาน, Part 5 คือคุณสมบัติ,
+   Part 6 คือ Core Competency ซึ่งตรงกับ "เกณฑ์ทักษะ" ของระบบพอดี */
+const JD_FORM_FIELDS = [
+  // ชื่อตามขอบเขตงานคือตำแหน่งจริง ส่วน "ตำแหน่งภาษาไทย" เป็นระดับพนักงาน (พนักงาน/หัวหน้า)
+  { key: 'titleScope', re: /ชื่อตำแหน่งตามขอบเขตงาน|position\s*by\s*scope/i },
+  { key: 'titleGrade', re: /^ตำแหน่งภาษาไทย|position\s*english\s*name|job\s*title/i },
+  { key: 'dept', re: /^สังกัด|section\s*\(?\s*de[ap]+artment/i },
+  { key: 'division', re: /division|ฝ่ายงาน/i },
+];
+/* หัวคอลัมน์ใน Part 6 และรหัสเอกสาร — ไม่ใช่ชื่อความสามารถ */
+const JD_FORM_NOISE_RE = /^(?:core|functional|managerial)\s*competency$|^\(?(?:ความสามารถหลัก|สมรรถนะเพิ่มเติมในงาน|ความสามารถในการบริหารจัดการ)\)?$|^[A-Z]{2,}-[A-Z0-9-]{2,}$/i;
+/* คำนำหน้าที่ทำให้ความสามารถกลายเป็นวลียาวจนไม่มีทางตรงกับข้อความใน resume */
+const COMPETENCY_PREFIX_RE = /^(?:ทักษะ(?:การ|ด้าน|ใน)?|ความรู้(?:ด้าน|เกี่ยวกับ|ใน)?|การมี|ความสามารถ(?:ใน|ด้าน)?|มีความ|ความ)\s*/;
+
+function rowCells(r) { return (r || []).map(cellText).filter(Boolean); }
+
+/* ใช่ฟอร์มนี้ไหม — ดูจากหัวข้อ Part/ส่วนที่ ตั้งแต่ 2 อันขึ้นไป */
+function isJdForm(rows) {
+  let parts = 0;
+  for (const r of (rows || []).slice(0, 80)) {
+    const first = rowCells(r)[0] || '';
+    if (/^(?:part|ส่วนที่)\s*\d/i.test(first) && ++parts >= 2) return true;
+  }
+  return false;
+}
+
+/* ความสามารถ 1 ข้อ → ชื่อทักษะที่ใช้คิดคะแนนได้จริง
+   ถ้าตรงกับคลังทักษะให้ใช้ตัวคลัง (มีคำพ้องครบกว่า) ไม่งั้นเก็บวลีเดิมไว้
+   แล้วเติมแก่นคำเป็นคำพ้อง — "ทักษะการวิเคราะห์ข้อมูล" ไม่มีใน resume แต่ "วิเคราะห์ข้อมูล" มี */
+function competencyToSkill(phrase) {
+  const p = String(phrase || '').replace(/\s+/g, ' ').trim();
+  if (!p) return '';
+  const lib = SKILL_LIBRARY.find(name => skillSynonyms(name).some(t => textHasTerm(p.toLowerCase(), t)));
+  if (lib) return lib;
+  const core = p.replace(COMPETENCY_PREFIX_RE, '').trim();
+  return core && core !== p ? p + '/' + core : p;
+}
+
+/* ฟอร์ม JD → ค่าที่กรอกลงฟอร์มตำแหน่งงานได้ */
+function parseJdForm(rows) {
+  const found = {};
+  const sections = {};                       // เลข Part → บรรทัดในส่วนนั้น
+  const competencies = [];
+  let part = 0;
+
+  for (const r of (rows || [])) {
+    const cells = rowCells(r);
+    if (!cells.length) continue;
+    const head = cells[0];
+    const m = head.match(/^(?:part|ส่วนที่)\s*(\d+)/i);
+    if (m) { part = parseInt(m[1], 10); continue; }      // บรรทัดหัวข้อไม่เก็บเป็นเนื้อหา
+
+    const field = JD_FORM_FIELDS.find(f => f.re.test(head));
+    if (field && cells[1] && !found[field.key]) found[field.key] = cells[1];
+
+    if (part === 6) {
+      cells.forEach(c => {
+        if (JD_FORM_NOISE_RE.test(c)) return;
+        c.split(/[,、]/).forEach(one => { const t = one.trim(); if (t.length >= 2) competencies.push(t); });
+      });
+      continue;
+    }
+    (sections[part] = sections[part] || []).push(cells.join(' '));
+  }
+
+  const sec = n => (sections[n] || []).join('\n').trim();
+  const jd = [sec(3), sec(4)].filter(Boolean).join('\n\n');
+  const quals = sec(5);
+  const all = Object.values(sections).map(v => v.join('\n')).join('\n') + '\n' + competencies.join('\n');
+
+  // ความสามารถจากฟอร์มมาก่อน (เป็นเกณฑ์ที่บริษัทเขียนไว้เอง) แล้วค่อยเติมจากคลัง
+  const names = [];
+  const seen = new Set();
+  const add = n => { const k = n.toLowerCase(); if (n && !seen.has(k)) { seen.add(k); names.push(n); } };
+  competencies.map(competencyToSkill).forEach(add);
+  suggestSkillsFromText(all).forEach(add);
+
+  return {
+    title: (found.titleScope || found.titleGrade || '').slice(0, 80),
+    dept: (found.dept || found.division || '').slice(0, 60),
+    minExp: extractRequiredYears(quals || all),
+    eduKeywords: extractEduKeywords(quals || all),
+    jd, quals,
+    skills: names.map(name => ({ name, weight: 3, required: false })),
+    text: normText(all),
+  };
+}
+
+/* ข้อความ JD → ค่าที่กรอกลงฟอร์มได้ · hints.bigText / hints.fileName ใช้เดาชื่อตำแหน่ง */
+function parseJD(text, hints) {
+  hints = hints || {};
+  const src = normText(text);
+  const { jd, quals } = splitJdAndQuals(src);
+  let title = jdLabelValue(src, JD_LABELS.titleScope) || jdLabelValue(src, JD_LABELS.title);
+  if (!title && hints.bigText && hints.bigText.length <= 80) title = hints.bigText.trim();
+  if (!title) {
+    // ไม่มีฉลาก — บรรทัดแรกที่ไม่ใช่หัวจดหมาย/ชื่อบริษัท มักเป็นชื่อตำแหน่ง
+    const first = src.split('\n').map(l => l.trim()).filter(Boolean)
+      .find(l => l.length >= 3 && l.length <= 80 && !/^(?:job\s*description|jd|ประกาศ|รับสมัคร|บริษัท|company)\b/i.test(l));
+    if (first) title = first;
+  }
+  if (!title && hints.fileName) {
+    // แทนตัวคั่นเป็นช่องว่างก่อน แล้วค่อยตัดคำ — "_" เป็น word character ของ JS regex
+    // ถ้าตัดคำก่อน \bjd\b จะไม่ match ใน "JD_Sales_Engineer"
+    title = String(hints.fileName).replace(/\.[A-Za-z0-9]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b(?:jd|job\s*description|ประกาศ|รับสมัคร|ใบขอกำลังคน)\b/gi, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+  return {
+    title: (title || '').slice(0, 80),
+    dept: jdLabelValue(src, JD_LABELS.dept).slice(0, 60),
+    minExp: extractRequiredYears(src),
+    eduKeywords: extractEduKeywords(src),
+    jd, quals,
+    skills: suggestSkillsFromText(src).map(name => ({ name, weight: 3, required: false })),
+    text: src,
+  };
+}
+
+/* ── PDF text item → ข้อความ ──
+   pdf.js ไม่ได้คืน "บรรทัด" แต่คืนชิ้นข้อความพร้อมพิกัด การต่อชิ้นด้วยการเติมช่องว่าง
+   ทุกครั้ง (โค้ดเดิม) ทำให้อีเมล/ชื่อที่ถูกแตกชิ้นกลางคำพังทันที เช่น
+   ["somchai.j", "@gmail.com"] → "somchai.j @gmail.com" ซึ่งหา regex ไม่เจอ
+   ที่ถูกคือดูช่องว่าง "จริง" บนหน้ากระดาษ: เว้นวรรคเมื่อระยะห่างแนวนอนกว้างพอเท่านั้น
+
+   items = text item จาก pdf.js (str, transform, width, height)
+   คืนบรรทัดพร้อมของเดิมของแต่ละชิ้น (part.item) และตำแหน่งเริ่มต้นในบรรทัด (part.start)
+   เพื่อให้หน้าแสดง resume จริงย้อนจากช่วงตัวอักษรที่ match กลับไปเป็นกล่องบนหน้ากระดาษได้
+   — ตัวไฮไลต์กับตัวคิดคะแนนจึงอ่านข้อความชุดเดียวกันเป๊ะ ไม่มีทางเหลื่อมกัน */
+function pdfItemsToLines(items) {
+  const lines = [];
+  for (const it of (items || [])) {
+    const raw = it && it.str;
+    if (!raw) continue;    // เก็บ item ที่เป็นช่องว่างล้วนไว้ด้วย — บางไฟล์ใช้มันคั่นคำจริง ๆ
+    // ซ่อมสระ/วรรณยุกต์ไทยทีละชิ้น (ไม่ trim) เพื่อให้ offset ในบรรทัดยังตรงกับชิ้นเดิมเสมอ
+    const s = raw.normalize('NFC').replace(/ํา/g, 'ำ').replace(/ำา/g, 'ำ');
+    const tr = it.transform || [1, 0, 0, 1, 0, 0];
+    const size = Math.abs(tr[3]) || Math.abs(it.height) || 10;
+    const x = tr[4], y = tr[5];
+    const w = typeof it.width === 'number' ? it.width : s.length * size * 0.5;
+    // บรรทัดเดียวกัน = พิกัดแนวตั้งใกล้กันไม่เกินครึ่งความสูงตัวอักษร
+    let line = lines.find(L => Math.abs(L.y - y) <= Math.max(2, Math.min(L.size, size) * 0.5));
+    if (!line) { line = { y, size, parts: [] }; lines.push(line); }
+    line.size = Math.max(line.size, size);
+    line.parts.push({ x, w, s, size, item: it });
+  }
+  lines.sort((a, b) => b.y - a.y);                       // PDF นับแกน Y จากล่างขึ้นบน
+  for (const L of lines) {
+    L.parts.sort((a, b) => a.x - b.x);
+    let out = '', prev = null;
+    for (const p of L.parts) {
+      if (prev) {
+        const gap = p.x - (prev.x + prev.w);
+        const needSpace = gap > Math.max(prev.size, p.size) * 0.25;
+        if (needSpace && !/\s$/.test(out) && !/^\s/.test(p.s)) out += ' ';
+      }
+      p.start = out.length;                              // ตัวอักษรตัวแรกของชิ้นนี้อยู่ตรงไหนในบรรทัด
+      out += p.s;
+      prev = p;
+    }
+    L.text = out;
+  }
+  return lines;
+}
+
+/* คืน { text, bigText } โดย bigText = บรรทัดตัวโตสุดในช่วงต้นหน้า (ใช้เดาชื่อ) */
+function pdfItemsToText(items) {
+  const lines = pdfItemsToLines(items);
+  const texts = lines.map(L => L.text.trim());
+  // ชื่อผู้สมัครมักเป็นข้อความตัวโตสุดในช่วงต้นหน้า — เก็บไว้เป็นตัวช่วยเดาชื่อ
+  let bigText = '', bigSize = 0;
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    if (texts[i] && lines[i].size > bigSize) { bigSize = lines[i].size; bigText = texts[i]; }
+  }
+  return { text: texts.join('\n'), bigText };
+}
+
+/* ── ความกว้างโดยประมาณของข้อความ (ใช้วางกล่องไฮไลต์บนหน้า PDF) ──
+   PDF มักเก็บทั้งบรรทัดเป็นชิ้นเดียว รู้แค่ความกว้างรวม การหาว่าคำหนึ่งอยู่ตรงไหน
+   จึงต้องเฉลี่ยเอา — แต่สระบน/ล่างและวรรณยุกต์ไทยลอยอยู่เหนือ-ใต้ตัวอักษร ไม่กินความกว้าง
+   ถ้านับเท่าตัวอื่นกล่องจะเลื่อนไปทางขวาสะสมเรื่อย ๆ ในบรรทัดที่มีภาษาไทย */
+const THAI_ZERO_WIDTH_RE = /[ัิ-ฺ็-๎]/;
+function textAdvance(s, from, to) {
+  let w = 0;
+  for (let i = Math.max(0, from); i < Math.min(to, s.length); i++) {
+    if (THAI_ZERO_WIDTH_RE.test(s[i])) continue;
+    w += s[i] === ' ' ? 0.6 : 1;                         // ช่องว่างแคบกว่าตัวอักษรทั่วไป
+  }
+  return w;
+}
+
+/* ── หาช่วงตัวอักษรของคำที่ match ── */
+/* คืน [{start, end, term}] ตามกติกาเดียวกับ textHasTerm:
+   ASCII ต้องเป็นคำเต็ม (ไม่ใช่ส่วนหนึ่งของคำอื่น) · ไทยจับแบบ substring */
+function findTermRanges(text, terms) {
+  const src = String(text || '');
+  const low = src.toLowerCase();
+  const out = [];
+  (terms || []).forEach(term => {
+    const t = String(term || '').toLowerCase();
+    if (!t) return;
+    if (/^[\x00-\x7F]+$/.test(t)) {
+      const re = new RegExp('(?:^|[^a-z0-9])(' + escapeRe(t) + ')(?:$|[^a-z0-9])', 'gi');
+      let m;
+      while ((m = re.exec(low)) !== null) {
+        const start = m.index + m[0].indexOf(m[1]);
+        out.push({ start, end: start + m[1].length, term });
+        re.lastIndex = start + m[1].length;              // เดินต่อจากท้ายคำ กันวนไม่รู้จบ
+      }
+    } else {
+      let i = low.indexOf(t);
+      while (i >= 0) { out.push({ start: i, end: i + t.length, term }); i = low.indexOf(t, i + t.length); }
+    }
+  });
+  return out.sort((a, b) => a.start - b.start);
 }
 </script>
 
@@ -922,7 +1536,13 @@ function parseResume(rawText) {
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Storage ── */
-const ATS_KEY = 'hma_ats_v1';
+/* ── โหมดทดสอบ (?demo=1) ──
+   ทดลองใช้งานโดยไม่แตะข้อมูลผู้สมัครจริง — แยกทั้งสามทางที่ข้อมูลจริงเข้า/ออก
+   (1) เก็บคนละ key ใน localStorage (2) ปิดสำรองอัตโนมัติ ไม่ให้ทับไฟล์ backup จริง
+   (3) ไม่ดึงผลสอบจาก Firestore ซึ่งเป็นข้อมูลบุคคลจริงของระบบสอบ
+   เลิกโหมดทดสอบแค่เอา ?demo=1 ออก — ข้อมูลจริงอยู่ครบเหมือนเดิม */
+const DEMO = /(?:^|[?&#])demo(?:=1|=true|\b)/i.test(location.search + location.hash);
+const ATS_KEY = DEMO ? 'hma_ats_demo' : 'hma_ats_v1';
 const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
 /* เทมเพลตอีเมลเริ่มต้น — ผู้ใช้แก้/เพิ่ม/ลบ/ผูกสถานะได้เอง เก็บใน DB.emailTemplates (เข้า backup ด้วย)
    {name} {position} {company} จะถูกแทนค่าตอนร่าง · stage = สถานะที่ใช้เทมเพลตนี้เป็นค่าเริ่มต้น (เว้นว่าง = ไม่ผูก) */
@@ -1117,6 +1737,7 @@ function examResultHTML(rec) {
 
 function cloudSectionHTML(r) {
   const head = '<div class="section-title">☁ ผลสอบจากระบบ HMA Testing</div>';
+  if (DEMO) return head + '<div class="hint">ปิดในโหมดทดสอบ — ผลสอบเป็นข้อมูลบุคคลจริง จึงไม่ดึงมาแสดง</div>';
   if (!FB.db) return head + '<div class="hint">โหลด Firebase ไม่ได้ (ออฟไลน์ หรือถูก ad-blocker บล็อก) — แสดงผลสอบไม่ได้</div>';
   if (!FB.user) {
     return head + `<div class="hint" style="margin-bottom:8px">ล็อกอินด้วยบัญชี admin เดียวกับระบบสอบ เพื่อดึงผลสอบ (อ่านอย่างเดียว)</div>
@@ -1144,6 +1765,7 @@ function refreshCloudSection() {
   }
 }
 async function fetchExamRecords(force) {
+  if (DEMO) return;                              // ไม่แตะข้อมูลบุคคลจริงในโหมดทดสอบ
   if (!FB.db || !FB.user || FB.fetching) return;
   if (FB.records && !force) return;
   FB.fetching = true; FB.error = null;
@@ -1233,6 +1855,7 @@ function renderBackupStatus(state) {
     ok:         [`✓ สำรองล่าสุด ${lastBackupAt ? lastBackupAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`, '📁 Backup'],
     error:      ['⚠ เขียนไฟล์สำรองไม่สำเร็จ', '📁 Backup'],
     manual:     ['browser นี้ไม่รองรับ backup อัตโนมัติ', '⬇ สำรอง (JSON)'],
+    demo:       ['โหมดทดสอบ — ปิดสำรองอัตโนมัติ', '⬇ ดาวน์โหลด (JSON)'],
   };
   const [s, b] = map[state] || map.off;
   st.textContent = s; btn.textContent = b;
@@ -1272,6 +1895,8 @@ async function setupBackup() {
   } catch (e) { /* ผู้ใช้กดยกเลิก picker */ }
 }
 async function onBackupClick() {
+  // โหมดทดสอบดาวน์โหลดไฟล์ได้ แต่ห้ามผูก handle อัตโนมัติ ไม่งั้นจะไปทับ backup จริงใน OneDrive
+  if (DEMO) { downloadBackup(); return; }
   if (!FSA_OK) { downloadBackup(); return; }
   if (!backupHandle) { await setupBackup(); return; }
   const q = await backupHandle.queryPermission({ mode: 'readwrite' });
@@ -1283,6 +1908,8 @@ async function onBackupClick() {
   toast('สำรองข้อมูลแล้ว');
 }
 async function initBackup() {
+  // ไม่อ่าน handle ของจริงเลยในโหมดทดสอบ — ไม่มี handle ก็ไม่มีทางเขียนทับ
+  if (DEMO) { renderBackupStatus('demo'); return; }
   if (!FSA_OK) { renderBackupStatus('manual'); return; }
   try { backupHandle = (await idbGet('backupHandle')) || null; } catch (e) { backupHandle = null; }
   if (!backupHandle) { renderBackupStatus('off'); return; }
@@ -1328,42 +1955,311 @@ function renderRetentionNote() {
   if (n) el.textContent = `⚠ มีผู้สมัคร ${n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด ${RETENTION_YEARS} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)`;
 }
 
-/* ── File text extraction ── */
-async function extractFileText(file) {
+/* ── OCR — ทางเดียวที่อ่าน resume ที่เป็นภาพสแกน/ถ่ายรูปได้ ──
+   ใช้ tesseract.js โหลดแบบ lazy: ไฟล์ปกติที่มีชั้นข้อความไม่ต้องแตะเน็ตเลย
+   จะโหลดก็ต่อเมื่อเจอไฟล์ที่ไม่มีข้อความจริง ๆ เพราะชุดข้อมูลภาษาไทยหนักหลายสิบ MB */
+const OCR_MIN_CHARS = 100;          // ข้อความ (ไม่นับช่องว่าง) น้อยกว่านี้ = ถือว่าไฟล์เป็นภาพ
+const OCR_LANGS = 'tha+eng';        // resume ไทยมักปนอังกฤษ ต้องอ่านทั้งคู่
+const OCR_SCALE = 2.5;              // 72dpi × 2.5 ≈ 180dpi — จุดคุ้มระหว่างความแม่นกับความเร็ว
+const OCR_MAX_PX = 2400;            // กันหน้ากระดาษใหญ่ผิดปกติกินหน่วยความจำจนแท็บดับ
+const TESSERACT_VER = '5.1.1';
+const TESSERACT_JS = `https://cdn.jsdelivr.net/npm/tesseract.js@${TESSERACT_VER}/dist/tesseract.min.js`;
+const TESSERACT_WORKER = `https://cdn.jsdelivr.net/npm/tesseract.js@${TESSERACT_VER}/dist/worker.min.js`;
+const TESSERACT_CORE = `https://cdn.jsdelivr.net/npm/tesseract.js-core@${TESSERACT_VER}/`;
+const TESSDATA_PATH = 'https://tessdata.projectnaptha.com/4.0.0';
+
+const _scriptPromises = {};
+function loadScriptOnce(url) {
+  if (_scriptPromises[url]) return _scriptPromises[url];
+  return _scriptPromises[url] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = () => { delete _scriptPromises[url]; reject(new Error('โหลดไลบรารีไม่สำเร็จ (ต้องมีอินเทอร์เน็ต): ' + url)); };
+    document.head.appendChild(s);
+  });
+}
+
+let _ocrWorker = null, _ocrWorkerPromise = null, _ocrOnProgress = null;
+async function getOcrWorker() {
+  if (_ocrWorker) return _ocrWorker;
+  if (!_ocrWorkerPromise) {
+    _ocrWorkerPromise = (async () => {
+      await loadScriptOnce(TESSERACT_JS);
+      // logger ตั้งได้ครั้งเดียวตอนสร้าง worker — ส่งต่อให้งานที่กำลังทำอยู่ผ่านตัวแปรกลาง
+      const w = await Tesseract.createWorker(OCR_LANGS, 1, {
+        workerPath: TESSERACT_WORKER, corePath: TESSERACT_CORE, langPath: TESSDATA_PATH,
+        logger: m => { if (_ocrOnProgress) _ocrOnProgress(m); },
+      });
+      _ocrWorker = w;
+      return w;
+    })().catch(err => { _ocrWorkerPromise = null; throw err; });
+  }
+  return _ocrWorkerPromise;
+}
+
+/* อ่านข้อความจากภาพ (canvas / blob / File) — progress คืนค่า 0-1 */
+async function ocrImage(source, onProgress) {
+  const worker = await getOcrWorker();
+  _ocrOnProgress = m => {
+    if (onProgress && m && m.status === 'recognizing text') onProgress(m.progress || 0);
+  };
+  try {
+    const { data } = await worker.recognize(source);
+    return data.text || '';
+  } finally { _ocrOnProgress = null; }
+}
+
+/* วาดหน้า PDF ลง canvas เพื่อส่งให้ OCR */
+async function pdfPageToCanvas(page) {
+  let viewport = page.getViewport({ scale: OCR_SCALE });
+  const longest = Math.max(viewport.width, viewport.height);
+  if (longest > OCR_MAX_PX) viewport = page.getViewport({ scale: OCR_SCALE * (OCR_MAX_PX / longest) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas;
+}
+
+/* ── File text extraction ──
+   คืน { text, links, bigText } — links คือ hyperlink ในไฟล์ (บาง resume ใส่อีเมลไว้เป็น
+   ลิงก์ mailto: อย่างเดียว ข้อความที่เห็นเป็นแค่คำว่า "Email") · bigText คือข้อความตัวโตสุด
+   หน้าแรกของ PDF ใช้ช่วยเดาชื่อ */
+async function extractFileText(file, opts) {
+  opts = opts || {};
+  const onStatus = opts.onStatus || function () {};
   const name = file.name.toLowerCase();
+  if (/\.(jpe?g|png|webp|gif|bmp)$/.test(name)) {
+    // รูปภาพไม่มีชั้นข้อความอยู่แล้ว — OCR เป็นทางเดียว
+    if (!opts.ocr) throw new Error('ไฟล์รูปภาพต้องเปิด OCR ก่อน (ติ๊กช่อง "อ่านไฟล์สแกน/รูปภาพด้วย OCR")');
+    onStatus('เตรียม OCR…');
+    const text = await ocrImage(file, pct => onStatus(`OCR ${Math.round(pct * 100)}%`));
+    return { text, links: [], bigText: '', ocr: true };
+  }
   if (name.endsWith('.pdf')) {
     if (!window.pdfjsLib) throw new Error('pdf.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const buf = await file.arrayBuffer();
     // isEvalSupported:false — กัน PDF ที่ฝัง code (CVE-2024-4367) เพราะไฟล์มาจากผู้สมัครภายนอก
     const pdf = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise;
-    let out = '';
+    const pages = [];
+    const links = [];
+    let bigText = '';
     for (let p = 1; p <= pdf.numPages; p++) {
       const page = await pdf.getPage(p);
       const tc = await page.getTextContent();
-      // ใช้พิกัด Y (transform[5]) แยกบรรทัดจริง — ไม่งั้นทั้งหน้าจะกลายเป็นบรรทัดเดียว
-      let lastY = null;
-      for (const it of tc.items) {
-        const y = it.transform ? it.transform[5] : null;
-        if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) out += '\n';
-        else if (out && !out.endsWith('\n')) out += ' ';
-        out += it.str;
-        if (y !== null) lastY = y;
-      }
-      out += '\n';
+      const built = pdfItemsToText(tc.items);
+      pages.push(built.text);
+      if (p === 1) bigText = built.bigText;
+      // อีเมล/ลิงก์ที่ฝังเป็น annotation — ไม่อยู่ใน text layer จึงต้องอ่านแยก
+      try {
+        for (const a of await page.getAnnotations({ intent: 'display' })) {
+          const u = a && (a.url || a.unsafeUrl || (a.action && a.action.url));
+          if (u) links.push(u);
+        }
+      } catch (e) { /* PDF บางไฟล์ไม่มี annotation layer — ข้ามได้ */ }
     }
-    return out;
+    const text = pages.join('\n');
+    // ไม่มีชั้นข้อความ (สแกน/ถ่ายรูปมาแปะ) → วาดทีละหน้าแล้วให้ OCR อ่าน
+    if (opts.ocr && text.replace(/\s/g, '').length < OCR_MIN_CHARS) {
+      const ocrPages = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const label = pdf.numPages > 1 ? ` (หน้า ${p}/${pdf.numPages})` : '';
+        onStatus('เตรียม OCR…' + label);
+        const canvas = await pdfPageToCanvas(await pdf.getPage(p));
+        ocrPages.push(await ocrImage(canvas, pct => onStatus(`OCR ${Math.round(pct * 100)}%${label}`)));
+      }
+      return { text: ocrPages.join('\n'), links, bigText: '', ocr: true };
+    }
+    return { text, links, bigText };
   }
   if (name.endsWith('.docx')) {
     if (!window.mammoth) throw new Error('mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
     const buf = await file.arrayBuffer();
     const res = await mammoth.extractRawText({ arrayBuffer: buf });
-    return res.value;
+    // extractRawText ทิ้ง hyperlink — แปลงเป็น HTML อีกรอบเพื่อเก็บ mailto: ที่ซ่อนอยู่
+    let links = [];
+    try {
+      const html = await mammoth.convertToHtml({ arrayBuffer: buf });
+      links = (String(html.value).match(/href="([^"]*)"/g) || []).map(h => h.slice(6, -1));
+    } catch (e) { /* ไฟล์เสียหรือ mammoth แปลงไม่ได้ — ใช้แค่ข้อความล้วน */ }
+    return { text: res.value, links, bigText: '' };
   }
   if (name.endsWith('.txt')) {
-    return await file.text();
+    return { text: await file.text(), links: [], bigText: '' };
   }
-  throw new Error('รองรับเฉพาะ .pdf .docx .txt');
+  throw new Error('รองรับเฉพาะ .pdf .docx .txt และไฟล์รูปภาพ');
+}
+
+/* ── นำเข้า JD จากไฟล์ ──
+   PDF/DOCX/TXT/รูป ใช้ตัวอ่านชุดเดียวกับ resume (ได้ OCR ติดมาด้วย)
+   Excel/CSV ใช้ SheetJS โหลดตอนใช้จริงเท่านั้น */
+const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+async function readSpreadsheet(file) {
+  await loadScriptOnce(XLSX_URL);
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const sheets = wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, blankrows: false, defval: '' }));
+  // แผ่นแรกที่มีข้อมูลใช้เป็นตารางหลัก ส่วนข้อความรวมทุกแผ่น (JD อาจแยกแผ่นละหัวข้อ)
+  const rows = sheets.find(s => s.length) || [];
+  return { rows, text: sheets.map(sheetRowsToText).filter(Boolean).join('\n') };
+}
+
+async function importJDFile(file) {
+  const useOcr = (document.getElementById('ocrToggle') || {}).checked !== false;
+  try {
+    if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+      toast('กำลังอ่านไฟล์ Excel…');
+      const { rows, text } = await readSpreadsheet(file);
+      // ฟอร์ม JD มาตรฐานอ่านจากแถวโดยตรง — ยังรู้ว่าอะไรคือฉลาก อะไรคือค่า และอยู่ Part ไหน
+      if (isJdForm(rows)) { fillJobForm(parseJdForm(rows), file.name); return; }
+      const jobs = jdRowsToJobs(rows);
+      // ตารางหลายตำแหน่ง → นำเข้าทีเดียวทั้งหมด · ตำแหน่งเดียว/ฟอร์ม → เปิดฟอร์มให้ตรวจก่อน
+      if (jobs.length > 1) {
+        if (!confirm(`พบ ${jobs.length} ตำแหน่งในไฟล์นี้\n\n${jobs.slice(0, 8).map(j => '· ' + j.title).join('\n')}` +
+          (jobs.length > 8 ? `\n· … อีก ${jobs.length - 8} ตำแหน่ง` : '') +
+          `\n\nนำเข้าทั้งหมดเลยไหม? (แก้ไขทีหลังได้)`)) return;
+        jobs.forEach(j => DB.jobs.push(Object.assign({
+          id: uid('j'), status: 'Open', jdUrl: '', qualsUrl: '',
+        }, j)));
+        saveDB(); renderAll();
+        toast(`นำเข้า ${jobs.length} ตำแหน่งแล้ว — ตรวจทักษะ/น้ำหนักคะแนนอีกครั้ง`);
+        return;
+      }
+      fillJobForm(jobs.length === 1
+        ? Object.assign({ text }, jobs[0])
+        : parseJD(text, { fileName: file.name }), file.name);
+      return;
+    }
+    toast('กำลังอ่านไฟล์ JD…');
+    const raw = await extractFileText(file, { ocr: useOcr, onStatus: msg => toast(msg) });
+    if (!String(raw.text || '').trim()) throw new Error('อ่านข้อความจากไฟล์ไม่ได้ — ถ้าเป็นไฟล์สแกนให้เปิด OCR ที่แท็บ Resume Scanner');
+    fillJobForm(parseJD(raw.text, { bigText: raw.bigText, fileName: file.name }), file.name);
+  } catch (err) {
+    toast('นำเข้า JD ไม่สำเร็จ: ' + (err.message || err));
+  }
+}
+
+/* เปิดฟอร์มตำแหน่งพร้อมเติมค่าที่อ่านได้ — ให้ HR ตรวจก่อนบันทึกเสมอ ไม่บันทึกให้เอง */
+function fillJobForm(p, fileName) {
+  openJobModal(null);
+  const set = (id, v) => { if (v) document.getElementById(id).value = v; };
+  set('j_title', p.title);
+  set('j_dept', p.dept);
+  set('j_edu', p.eduKeywords);
+  set('j_jd', p.jd);
+  set('j_quals', p.quals);
+  if (p.minExp) document.getElementById('j_minexp').value = p.minExp;
+  const rows = document.getElementById('skillRows');
+  if (p.skills && p.skills.length) rows.innerHTML = p.skills.map(skillRowHTML).join('');
+  const got = [p.title && 'ชื่อตำแหน่ง', p.dept && 'แผนก', p.minExp && 'ประสบการณ์',
+    p.eduKeywords && 'วุฒิ', p.quals && 'คุณสมบัติ', p.skills && p.skills.length && `ทักษะ ${p.skills.length} รายการ`].filter(Boolean);
+  toast(got.length ? `อ่านจาก ${fileName} ได้: ${got.join(' · ')} — ตรวจแล้วกดบันทึก` : `อ่าน ${fileName} แล้วแต่แยกหัวข้อไม่ได้ — เนื้อหาอยู่ในช่อง JD`);
+}
+
+/* ── แสดงหน้า resume จริงพร้อมไฮไลต์คำที่ใช้คิดคะแนน ──
+   วาดหน้า PDF ลง canvas แล้วปูกล่องไฮไลต์ทับตามพิกัดของ text item
+   ใช้บรรทัดชุดเดียวกับตัวคิดคะแนน (pdfItemsToLines) กล่องจึงตรงกับสิ่งที่นับคะแนนจริง
+   ไฟล์ต้นฉบับเก็บไว้ในหน่วยความจำระหว่าง session เท่านั้น ไม่ลงดิสก์/localStorage */
+const PREVIEW_SCALE = 1.6;
+const previewCache = new WeakMap();   // File → หน้าเอกสารที่วาดแล้ว กันวาดซ้ำตอนสลับแท็บ
+
+async function renderResumePreview(host, file, matchedSkills) {
+  host.innerHTML = '<div class="hint">⏳ กำลังเปิดไฟล์…</div>';
+  const terms = [];
+  (matchedSkills || []).forEach(name => skillSynonyms(name).forEach(t => { if (t) terms.push(t); }));
+  try {
+    if (!window.pdfjsLib) throw new Error('pdf.js ยังโหลดไม่เสร็จ');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    let pages = previewCache.get(file);
+    if (!pages) {
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false }).promise;
+      pages = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const viewport = page.getViewport({ scale: PREVIEW_SCALE });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        pages.push({ canvas, viewport, lines: pdfItemsToLines((await page.getTextContent()).items) });
+      }
+      previewCache.set(file, pages);
+    }
+
+    host.innerHTML = '';
+    let hits = 0;
+    pages.forEach((pg, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'rv-page';
+      wrap.style.width = pg.canvas.width + 'px';
+      wrap.appendChild(pg.canvas);
+      const label = document.createElement('div');
+      label.className = 'rv-pagenum';
+      label.textContent = `หน้า ${i + 1}/${pages.length}`;
+      wrap.appendChild(label);
+      pg.lines.forEach(L => {
+        findTermRanges(L.text, terms).forEach(range => {
+          // ช่วงตัวอักษรอาจกินหลายชิ้น — วาดกล่องแยกทีละชิ้นที่ทับกับช่วงนั้น
+          L.parts.forEach(part => {
+            const ps = part.start, pe = ps + part.s.length;
+            const from = Math.max(range.start, ps), to = Math.min(range.end, pe);
+            if (to <= from || !part.s.length) return;
+            const box = highlightBox(part, from - ps, to - ps, pg.viewport);
+            if (!box) return;
+            box.title = range.term;
+            wrap.appendChild(box);
+            hits++;
+          });
+        });
+      });
+      host.appendChild(wrap);
+    });
+    return hits;
+  } catch (err) {
+    host.innerHTML = `<div class="warn-box">เปิดหน้า resume ไม่ได้: ${esc(err.message || String(err))}</div>`;
+    return 0;
+  }
+}
+
+/* พิกัดของชิ้นข้อความ → กล่อง <div> บน canvas · from/to = ช่วงตัวอักษรภายในชิ้นนั้น
+   ตำแหน่งในแนวนอนเฉลี่ยจากความกว้างรวมของชิ้น (ดู textAdvance) จึงคลาดได้เล็กน้อย
+   ในฟอนต์ที่ตัวอักษรกว้างไม่เท่ากันมาก ๆ */
+function highlightBox(part, from, to, viewport) {
+  const tx = pdfjsLib.Util.transform(viewport.transform, part.item.transform);
+  const h = Math.hypot(tx[2], tx[3]) || part.size * viewport.scale;
+  const w = part.w * viewport.scale;
+  const total = textAdvance(part.s, 0, part.s.length);
+  if (!(w > 0) || !(h > 0) || !total) return null;
+  const left = w * (textAdvance(part.s, 0, from) / total);
+  const width = w * (textAdvance(part.s, from, to) / total);
+  const box = document.createElement('div');
+  box.className = 'rv-hit';
+  box.style.left = (tx[4] + left) + 'px';
+  box.style.top = (tx[5] - h) + 'px';
+  box.style.width = Math.max(width, 2) + 'px';
+  box.style.height = (h * 1.15) + 'px';
+  return box;
+}
+
+/* สลับระหว่างหน้าจริงกับข้อความที่ดึงได้ */
+async function toggleResumeView(id, mode) {
+  const r = (scanResults.find(x => x.id === id)) || null;
+  const host = document.getElementById('rvHost');
+  const status = document.getElementById('rvStatus');
+  if (!r || !host) return;
+  document.querySelectorAll('#rvToggle button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  if (mode === 'text') {
+    host.innerHTML = `<div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+    status.textContent = 'ข้อความที่ระบบดึงได้จากไฟล์ (ของดิบ ไม่ได้ตกแต่ง)';
+    return;
+  }
+  status.textContent = '';
+  const hits = await renderResumePreview(host, r.file, r.matched);
+  status.textContent = hits
+    ? `ไฮไลต์ ${hits} จุดที่ตรงกับทักษะของตำแหน่งนี้ — จุดเหล่านี้คือที่มาของคะแนนทักษะ`
+    : 'ไม่พบคำที่ตรงกับทักษะของตำแหน่งนี้ในหน้าเอกสาร';
 }
 
 /* ── Scan flow ── */
@@ -1376,15 +2272,29 @@ async function handleFiles(fileList) {
   if (!files.length) return;
   toast(`กำลังสแกน ${files.length} ไฟล์…`);
 
+  const ocrEl = document.getElementById('ocrToggle');
+  const useOcr = !ocrEl || ocrEl.checked;
+
   for (const f of files) {
-    const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing' };
+    // เก็บ File ไว้กับแถวเพื่อเปิดดูหน้าจริงตอนกดรายละเอียด — อยู่ในหน่วยความจำเท่านั้น
+    // makeCandidate สร้าง record ด้วยฟิลด์ที่ระบุชัดเจน ไฟล์จึงไม่หลุดลง DB/ไฟล์สำรอง
+    const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing', file: f };
     scanResults.push(row);
     renderScanTable();
     try {
-      const raw = await extractFileText(f);
-      const parsed = parseResume(raw);
+      const raw = await extractFileText(f, {
+        ocr: useOcr,
+        // OCR กินเวลาหลายสิบวินาที ต้องบอกความคืบหน้า ไม่งั้นดูเหมือนแอปค้าง
+        onStatus: msg => { row.note = msg; renderScanTable(); },
+      });
+      row.note = '';
+      const parsed = parseResume(raw.text, { links: raw.links, bigText: raw.bigText, fileName: f.name, ocr: !!raw.ocr });
       const scored = scoreCandidate(parsed, job);
-      Object.assign(row, parsed, scored, { status: 'ok' });
+      Object.assign(row, parsed, scored, { status: 'ok', ocr: !!raw.ocr });
+      if (raw.ocr) {
+        // ข้อความจาก OCR มีโอกาสอ่านตัวอักษรเพี้ยน — ต้องบอกให้ HR ตรวจก่อนเชื่อคะแนน
+        row.warnings = [...(row.warnings || []), 'ข้อความมาจาก OCR (ไฟล์เป็นภาพ) — ตรวจชื่อ/อีเมล/คะแนนก่อนใช้งาน'];
+      }
       // dedupe warning — เทียบทั้งฐานผู้สมัครและไฟล์อื่นใน batch เดียวกัน
       const dup = parsed.email && (DB.candidates.some(c => c.email === parsed.email) ||
         scanResults.some(x => x !== row && x.email === parsed.email));
@@ -1406,19 +2316,24 @@ function renderScanTable() {
   const body = document.getElementById('scanBody');
   body.innerHTML = scanResults.map(r => {
     if (r.status === 'processing') {
-      return `<tr><td>${esc(r.fileName)}</td><td colspan="5" style="color:var(--gray-400)">⏳ กำลังประมวลผล…</td><td></td></tr>`;
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="5" style="color:var(--gray-400)">⏳ ${esc(r.note || 'กำลังประมวลผล…')}</td><td></td></tr>`;
     }
     if (r.status === 'error') {
       return `<tr><td>${esc(r.fileName)}</td><td colspan="5"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
         <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button></td></tr>`;
     }
-    const warn = (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
+    // ไฟล์ที่ไม่มี text layer ต้องเห็นชัดกว่าคำเตือนทั่วไป — สแกนยังไงคะแนนก็ 0 ต้องกรอกเอง
+    const tip = esc((r.warnings || []).join(' · '));
+    const scanned = (r.warnings || []).some(w => w.includes('ภาพสแกน'));
+    const warn = scanned ? ` <span class="badge fail" title="${tip}">📷 ไฟล์เป็นภาพสแกน</span>`
+      : r.ocr ? ` <span class="badge pend" title="${tip}">🔍 อ่านด้วย OCR ⚠ ${r.warnings.length}</span>`
+      : (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${tip}">⚠ ${r.warnings.length}</span>` : '';
     const reqMiss = r.missingRequired.length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น: ${esc(r.missingRequired.join(', '))}">ขาดทักษะจำเป็น</span>` : '';
     const added = r.added ? `<span class="badge pass">✓ เพิ่มแล้ว</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">＋ เพิ่ม</button>`;
     return `<tr>
       <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis" title="${esc(r.fileName)}">${esc(r.fileName)}</td>
-      <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">ไม่พบชื่อ</span>'}</td>
-      <td>${esc(r.email) || '—'}</td>
+      <td class="name-cell">${scanFieldHTML(r, 'name', 'ไม่พบชื่อ — พิมพ์เอง')}</td>
+      <td>${scanFieldHTML(r, 'email', 'ไม่พบอีเมล — พิมพ์เอง')}</td>
       <td>${scoreCell(r.id, r.score)}</td>
       <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
       <td>${warn || '<span class="badge pass">OK</span>'}</td>
@@ -1431,6 +2346,23 @@ function renderScanTable() {
   }).join('');
 }
 
+/* ชื่อ/อีเมลในตารางผลสแกนแก้ได้ทันที — ต่อให้ตัวอ่านพลาด HR ก็ไม่ต้องเพิ่มก่อนแล้วค่อยไปแก้ทีหลัง
+   (แถวที่เพิ่มเป็นผู้สมัครแล้วล็อกไว้ ต้องไปแก้ที่ระเบียนผู้สมัครแทน กันข้อมูลสองที่ไม่ตรงกัน) */
+function scanFieldHTML(r, field, placeholder) {
+  const v = esc(r[field] || '');
+  if (r.added) return v || '—';
+  return `<input class="scan-inp" value="${v}" placeholder="${esc(placeholder)}" spellcheck="false"
+    onchange="updateScanField('${r.id}','${field}',this.value)">`;
+}
+function updateScanField(id, field, val) {
+  const r = scanResults.find(x => x.id === id);
+  if (!r || r.added) return;
+  const v = String(val || '').trim();
+  r[field] = field === 'email' ? v.toLowerCase() : v;
+  const solved = field === 'email' ? 'ไม่พบอีเมล' : 'ไม่พบชื่อ';
+  if (v) r.warnings = (r.warnings || []).filter(w => !w.startsWith(solved));
+  renderScanTable();
+}
 function removeScan(id) { scanResults = scanResults.filter(r => r.id !== id); renderScanTable(); }
 function clearScan() { scanResults = []; renderScanTable(); }
 
@@ -1759,8 +2691,29 @@ function detailHTML(r) {
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
     ${r.stage ? `<div id="scSection">${scorecardSectionHTML(r)}</div>` : ''}
     ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
-    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
-    <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+    ${resumeViewerHTML(r)}`;
+}
+
+/* หน้า resume จริง — ดูได้เฉพาะผลสแกนใน session นี้ เพราะไฟล์ต้นฉบับไม่ได้ถูกเก็บลง DB
+   (localStorage มีโควตาแค่ ~5MB · ผู้สมัครที่บันทึกแล้วจึงเหลือแต่ข้อความที่ดึงได้) */
+function resumeViewerHTML(r) {
+  const head = `<div class="section-title">resume ของผู้สมัคร <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = คำที่ตรงกับทักษะของตำแหน่ง (ที่มาของคะแนนทักษะ)</span></div>`;
+  const canPreview = r.file && /\.pdf$/i.test(r.file.name || '');
+  if (!canPreview) {
+    const why = r.file ? 'ไฟล์นี้ไม่ใช่ PDF จึงแสดงได้แค่ข้อความที่ดึงได้'
+      : 'ผู้สมัครที่บันทึกแล้วเก็บเฉพาะข้อความ ไม่ได้เก็บไฟล์ต้นฉบับ — ดูหน้าจริงได้ที่แท็บสแกนตอนอัปโหลด';
+    return head + `<div class="hint" style="margin-bottom:6px">${why}</div>
+      <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+  }
+  return head + `
+    <div class="rv-bar">
+      <span class="seg" id="rvToggle">
+        <button data-mode="page" class="active" onclick="toggleResumeView('${r.id}','page')">📄 หน้าจริง</button>
+        <button data-mode="text" onclick="toggleResumeView('${r.id}','text')">📝 ข้อความที่ดึงได้</button>
+      </span>
+      <span class="hint" id="rvStatus"></span>
+    </div>
+    <div class="rv-host" id="rvHost"><div class="hint">⏳ กำลังเปิดไฟล์…</div></div>`;
 }
 function sectionsHTML(sections, matched) {
   if (!sections) return '';
@@ -1779,6 +2732,8 @@ function showScanDetail(id) {
   document.getElementById('detailTitle').textContent = 'ผลสแกน — ' + (r.name || r.fileName);
   document.getElementById('detailBody').innerHTML = detailHTML(r);
   document.getElementById('detailModalBg').classList.add('open');
+  // วาดหน้าจริงหลังโมดัลเปิดแล้ว — เป็นงานหนัก ไม่ควรหน่วงการเปิดโมดัล
+  if (document.getElementById('rvHost')) toggleResumeView(id, 'page');
 }
 function showCandDetail(id) {
   const c = DB.candidates.find(x => x.id === id);
@@ -2101,6 +3056,7 @@ function saveManualCand() {
   const typedPhone = document.getElementById('c_phone').value.trim();
   let warns = parsed.resumeText ? parsed.warnings.slice() : ['ไม่มีข้อความ resume — คะแนนเป็น 0'];
   if (typedEmail) warns = warns.filter(w => !w.includes('ไม่พบอีเมล'));
+  warns = warns.filter(w => !w.includes('ไม่พบชื่อผู้สมัคร'));   // ช่องนี้บังคับกรอกอยู่แล้ว
   // ค่าที่ HR พิมพ์เองต้องชนะค่าที่ระบบเดาจากข้อความ resume เสมอ
   DB.candidates.push(makeCandidate(parsed, scored, {
     name,
@@ -2466,6 +3422,12 @@ fi.addEventListener('change', () => { handleFiles(fi.files); fi.value = ''; });
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
 dz.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
 
+// จำสวิตช์ OCR ไว้ — คนที่ไม่เคยได้ไฟล์สแกนจะได้ไม่ต้องมาปิดใหม่ทุกครั้ง
+const OCR_PREF_KEY = 'hma_ats_ocr';
+const ocrToggle = document.getElementById('ocrToggle');
+ocrToggle.checked = localStorage.getItem(OCR_PREF_KEY) !== '0';
+ocrToggle.addEventListener('change', () => localStorage.setItem(OCR_PREF_KEY, ocrToggle.checked ? '1' : '0'));
+
 document.getElementById('scanJob').addEventListener('change', updateScanJobInfo);
 document.getElementById('backupBtn').addEventListener('click', onBackupClick);
 document.getElementById('restoreBtn').addEventListener('click', () => document.getElementById('restoreInput').click());
@@ -2478,6 +3440,12 @@ document.getElementById('clearScanBtn').addEventListener('click', clearScan);
 document.getElementById('seedBtn').addEventListener('click', seed);
 
 document.getElementById('jobAddBtn').addEventListener('click', () => openJobModal(null));
+const jobImportInput = document.getElementById('jobImportInput');
+document.getElementById('jobImportBtn').addEventListener('click', () => jobImportInput.click());
+jobImportInput.addEventListener('change', () => {
+  if (jobImportInput.files[0]) importJDFile(jobImportInput.files[0]);
+  jobImportInput.value = '';
+});
 document.getElementById('jobExportBtn').addEventListener('click', exportJobsCSV);
 document.getElementById('addSkillBtn').addEventListener('click', () => {
   document.getElementById('skillRows').insertAdjacentHTML('beforeend', skillRowHTML());
@@ -2536,6 +3504,16 @@ themeBtn.addEventListener('click', () => {
   renderCharts();
 });
 applyTheme(localStorage.getItem('hma_theme') || 'light');
+
+if (DEMO) {
+  document.getElementById('demoBar').style.display = '';
+  document.title = '🧪 ทดสอบ — ' + document.title;   // แท็บเบราว์เซอร์ต้องแยกออกด้วย
+  document.getElementById('demoClearBtn').addEventListener('click', () => {
+    if (!confirm('ล้างข้อมูลทดสอบทั้งหมด?\n\nลบเฉพาะข้อมูลในโหมดทดสอบ — ข้อมูลผู้สมัครจริงไม่ถูกแตะต้อง')) return;
+    localStorage.removeItem(ATS_KEY);
+    location.reload();
+  });
+}
 
 setCandView(candView);   // ตั้ง active ปุ่ม toggle ตามค่าที่บันทึกไว้
 renderAll();
