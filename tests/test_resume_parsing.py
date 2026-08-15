@@ -98,6 +98,16 @@ def test_headings_are_never_taken_as_a_name(open_ats, line):
     assert page.evaluate("(s) => looksLikeName(s)", line) is False
 
 
+@pytest.mark.parametrize("line, want", [
+    ("สมชาย ใจดี (Somchai Jaidee)", "สมชาย ใจดี"),      # ทรงที่พบบ่อยมากใน resume ไทย
+    ("Somchai Jaidee (Sales Manager)", "Somchai Jaidee"),
+])
+def test_name_line_with_a_parenthetical(open_ats, line, want):
+    """เดิมบรรทัดนี้ตกทั้งบรรทัดเพราะมีวงเล็บ แล้วไปหยิบชื่อบริษัทจากบรรทัดล่างมาแทน"""
+    page = open_ats()
+    assert page.evaluate("(t) => extractName(t, '')", line + "\n2562 - ปัจจุบัน, บริษัทตัวอย่าง จำกัด") == want
+
+
 def test_name_from_largest_font_on_first_page(open_ats):
     """เกือบทุก resume พิมพ์ชื่อตัวโตสุดไว้บนสุด — ใช้เป็นตัวช่วยเมื่อกวาดบรรทัดไม่เจอ"""
     page = open_ats()
@@ -144,6 +154,35 @@ def test_generic_mailbox_is_not_turned_into_a_name(open_ats):
     """hr@hino.co.th เป็นอีเมลองค์กร — ห้ามกลายเป็นผู้สมัครชื่อ "Hr" """
     page = open_ats()
     assert page.evaluate("() => extractName('Curriculum Vitae\\n2020', 'hr@hino.co.th')") == ""
+
+
+# ── ข้อความไทยที่เพี้ยนมาจาก PDF ─────────────────────────────────────────
+
+def test_thai_tone_mark_order_is_normalised(open_ats):
+    """PDF เก็บลำดับที่ "วาด" — วรรณยุกต์โผล่มาก่อนสระ ทำให้ค้นคำไทยไม่เจอทั้งที่ตาอ่านออก"""
+    page = open_ats()
+    drawn = "ผู้สมัคร"      # ผ + ้ + ู + สมัคร
+    assert drawn != "ผู้สมัคร"                                       # ก่อน normalise ยังไม่ตรง
+    assert page.evaluate("(t) => normText(t)", drawn) == "ผู้สมัคร"
+
+
+@pytest.mark.parametrize("raw", [
+    "จำากัด",     # จ + ำ + า + กัด — สระอำซ้ำสระอา
+    "จํากัด",     # จ + ํ + า + กัด — นิคหิต + สระอา
+])
+def test_sara_am_is_recomposed(open_ats, raw):
+    """ฟอนต์วาดสระอำเป็นนิคหิต+สระอา ทำให้ได้ "จำากัด"/"จํากัด" แทน "จำกัด" """
+    page = open_ats()
+    assert page.evaluate("(t) => normText(t)", raw) == "จำกัด"
+
+
+def test_thai_skill_matching_survives_pdf_mangling(open_ats):
+    """ผลลัพธ์ที่แท้จริงของการ normalise — ทักษะภาษาไทยต้องยังจับคู่ได้"""
+    page = open_ats()
+    mangled = "ประสบการณ์ทำางาน"  # ประสบการณ์ทำางาน
+    got = page.evaluate(
+        "(t) => matchSkills(normText(t), [{name:'ทำงาน', weight:1}]).matched.length", mangled)
+    assert got == 1
 
 
 # ── ข้อความจาก OCR (ไฟล์สแกน) ────────────────────────────────────────────

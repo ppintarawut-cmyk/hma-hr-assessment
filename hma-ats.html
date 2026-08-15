@@ -205,6 +205,10 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 .sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
+/* แถบโหมดทดสอบ — ต้องเห็นตลอดเวลา ไม่งั้นเผลอคิดว่าเป็นข้อมูลจริง */
+.demo-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 18px; font-size: 13px;
+  background: var(--pend-l); color: var(--pend); border-bottom: 2px solid var(--pend); }
+.demo-bar .demo-exit { margin-left: auto; color: var(--gray-700); font-size: 12px; }
 .ocr-opt { display: block; margin-top: 12px; font-size: 13px; cursor: pointer; }
 .ocr-opt input { margin-right: 6px; vertical-align: middle; }
 .ocr-opt .hint { display: block; margin: 2px 0 0 22px; }
@@ -252,6 +256,12 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
 </style>
 </head>
 <body>
+
+<div class="demo-bar" id="demoBar" style="display:none">
+  🧪 <b>โหมดทดสอบ</b> — ข้อมูลแยกจากของจริงคนละที่ · ปิดสำรองอัตโนมัติ · ไม่ดึงผลสอบจริง
+  <button class="btn btn-ghost btn-sm" id="demoClearBtn">ล้างข้อมูลทดสอบ</button>
+  <a href="?" class="demo-exit">ออกจากโหมดทดสอบ →</a>
+</div>
 
 <div class="topbar">
   <span class="brand">HMA</span>
@@ -656,6 +666,14 @@ function normText(raw) {
     .replace(/\r\n?/g, '\n')
     .replace(/[​‌‍﻿]/g, '')
     .replace(/[   ]/g, ' ')
+    // ข้อความไทยจาก PDF เพี้ยนได้สองแบบ เพราะไฟล์เก็บ "ลำดับที่วาด" ไม่ใช่ลำดับที่พิมพ์
+    //   1. วรรณยุกต์มาก่อนสระ — "ผู้" ออกมาเป็น ผ+้+ู ทำให้ค้นคำว่า "ผู้สมัคร" ไม่เจอ
+    //      NFC เรียง combining mark ตาม canonical combining class ให้เอง
+    //   2. สระอำถูกวาดเป็นนิคหิต+สระอา ได้ "จํากัด"/"จำากัด" แทน "จำกัด"
+    // ทั้งสองแบบทำให้จับคู่ทักษะ/วุฒิ/หัวข้อภาษาไทยพลาดแบบเงียบ ๆ
+    .normalize('NFC')
+    .replace(/ํา/g, 'ำ')
+    .replace(/ำา/g, 'ำ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -803,8 +821,13 @@ function stripTitle(s) {
 const NAME_STOP_RE = /^(?:resume|curriculum\s*vitae|cv|profile|personal\s+(?:info(?:rmation)?|data|details)|contact(?:\s+(?:info(?:rmation)?|details))?|objective|career\s+objective|summary|about\s+me|education|experience|work\s+experience|skills?|languages?|references?|address|phone|tel|mobile|e-?mail|nationality|date\s+of\s+birth|position|applied|ประวัติ|ข้อมูลส่วนตัว|ใบสมัคร|สมัครงาน|ที่อยู่|เบอร์|โทรศัพท์|อีเมล|สัญชาติ|ศาสนา|วันเกิด|การศึกษา|ประสบการณ์|ทักษะ|ตำแหน่ง)(?![A-Za-z])/i;
 
 /* ข้อความนี้หน้าตาเหมือนชื่อคนไหม — ใช้ตรวจทุกช่องทางที่เดาชื่อ */
+/* ตัดวงเล็บท้ายชื่อออก — "สมชาย ใจดี (Somchai Jaidee)" เป็นทรงที่พบบ่อยมากใน resume ไทย
+   เดิมบรรทัดนี้ตกทั้งบรรทัดเพราะมีวงเล็บ แล้วไปหยิบชื่อบริษัทจากบรรทัดล่างมาแทน */
+function stripParenthetical(s) {
+  return String(s || '').replace(/[（(][^）)]*[）)]/g, ' ').replace(/\s+/g, ' ').trim();
+}
 function looksLikeName(s) {
-  const t = stripTitle(String(s || '').replace(/[|•·‧–—]/g, ' ').replace(/\s+/g, ' ').trim());
+  const t = stripTitle(stripParenthetical(String(s || '')).replace(/[|•·‧–—]/g, ' ').replace(/\s+/g, ' ').trim());
   if (t.length < 3 || t.length > 60) return false;
   if (/[@\d]/.test(t)) return false;                       // มีอีเมล/ตัวเลข = บรรทัดข้อมูลติดต่อ
   if (/https?:|www\.|[:;<>{}()[\]/\\]/.test(t)) return false;
@@ -861,13 +884,13 @@ function extractName(text, email, hints) {
   const nextLine = src.match(new RegExp('(?:^|\\n)[ \\t]*' + LABEL + '[ \\t]*[:：]?[ \\t]*\\n[ \\t]*([^\\n]{2,60})', 'i'));
   if (nextLine && looksLikeName(nextLine[1])) return stripTitle(nextLine[1].trim());
   // 2) ข้อความตัวโตสุดบนหน้าแรก (สัญญาณที่แม่นที่สุดใน PDF จริง)
-  if (looksLikeName(hints.bigText)) return stripTitle(String(hints.bigText).replace(/\s+/g, ' ').trim());
+  if (looksLikeName(hints.bigText)) return stripTitle(stripParenthetical(hints.bigText).replace(/\s+/g, ' ').trim());
   // 3) กวาดบรรทัดหัวกระดาษ — ตัดเป็นช่วง ๆ ก่อน เพราะ resume สมัยใหม่มักพิมพ์
   //    "SOMCHAI JAIDEE | 081-234-5678 | somchai@gmail.com" รวมไว้บรรทัดเดียว
   // ข้อความจาก OCR ไม่มีข้อมูลลำดับ/ขนาดตัวอักษรให้เชื่อ และมักสลับคอลัมน์ปนกัน
   // จึงดูแค่ 3 บรรทัดแรกแบบทั้งบรรทัด ไม่ตัดเป็นช่วง — ไม่งั้นจะได้เศษประโยคมาเป็นชื่อ
   const lines = src.split('\n').map(l => l.trim()).filter(Boolean).slice(0, hints.ocr ? 3 : 15);
-  const clean = s => stripTitle(String(s).replace(/\s+/g, ' ').trim());
+  const clean = s => stripTitle(stripParenthetical(s).replace(/\s+/g, ' ').trim());
   for (const line of lines) {
     // ไล่ทีละบรรทัดจากบนลงล่าง (ชื่ออยู่บนสุดเสมอ) — ในแต่ละบรรทัดลองทั้งบรรทัดก่อน
     // ค่อยตัดเป็นช่วง ไม่งั้น "Jaidee, Somchai" จะโดนหั่นที่คอมมาจนเหลือคำเดียว
@@ -1342,7 +1365,13 @@ function pdfItemsToText(items) {
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Storage ── */
-const ATS_KEY = 'hma_ats_v1';
+/* ── โหมดทดสอบ (?demo=1) ──
+   ทดลองใช้งานโดยไม่แตะข้อมูลผู้สมัครจริง — แยกทั้งสามทางที่ข้อมูลจริงเข้า/ออก
+   (1) เก็บคนละ key ใน localStorage (2) ปิดสำรองอัตโนมัติ ไม่ให้ทับไฟล์ backup จริง
+   (3) ไม่ดึงผลสอบจาก Firestore ซึ่งเป็นข้อมูลบุคคลจริงของระบบสอบ
+   เลิกโหมดทดสอบแค่เอา ?demo=1 ออก — ข้อมูลจริงอยู่ครบเหมือนเดิม */
+const DEMO = /(?:^|[?&#])demo(?:=1|=true|\b)/i.test(location.search + location.hash);
+const ATS_KEY = DEMO ? 'hma_ats_demo' : 'hma_ats_v1';
 const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
 /* เทมเพลตอีเมลเริ่มต้น — ผู้ใช้แก้/เพิ่ม/ลบ/ผูกสถานะได้เอง เก็บใน DB.emailTemplates (เข้า backup ด้วย)
    {name} {position} {company} จะถูกแทนค่าตอนร่าง · stage = สถานะที่ใช้เทมเพลตนี้เป็นค่าเริ่มต้น (เว้นว่าง = ไม่ผูก) */
@@ -1537,6 +1566,7 @@ function examResultHTML(rec) {
 
 function cloudSectionHTML(r) {
   const head = '<div class="section-title">☁ ผลสอบจากระบบ HMA Testing</div>';
+  if (DEMO) return head + '<div class="hint">ปิดในโหมดทดสอบ — ผลสอบเป็นข้อมูลบุคคลจริง จึงไม่ดึงมาแสดง</div>';
   if (!FB.db) return head + '<div class="hint">โหลด Firebase ไม่ได้ (ออฟไลน์ หรือถูก ad-blocker บล็อก) — แสดงผลสอบไม่ได้</div>';
   if (!FB.user) {
     return head + `<div class="hint" style="margin-bottom:8px">ล็อกอินด้วยบัญชี admin เดียวกับระบบสอบ เพื่อดึงผลสอบ (อ่านอย่างเดียว)</div>
@@ -1564,6 +1594,7 @@ function refreshCloudSection() {
   }
 }
 async function fetchExamRecords(force) {
+  if (DEMO) return;                              // ไม่แตะข้อมูลบุคคลจริงในโหมดทดสอบ
   if (!FB.db || !FB.user || FB.fetching) return;
   if (FB.records && !force) return;
   FB.fetching = true; FB.error = null;
@@ -1653,6 +1684,7 @@ function renderBackupStatus(state) {
     ok:         [`✓ สำรองล่าสุด ${lastBackupAt ? lastBackupAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`, '📁 Backup'],
     error:      ['⚠ เขียนไฟล์สำรองไม่สำเร็จ', '📁 Backup'],
     manual:     ['browser นี้ไม่รองรับ backup อัตโนมัติ', '⬇ สำรอง (JSON)'],
+    demo:       ['โหมดทดสอบ — ปิดสำรองอัตโนมัติ', '⬇ ดาวน์โหลด (JSON)'],
   };
   const [s, b] = map[state] || map.off;
   st.textContent = s; btn.textContent = b;
@@ -1692,6 +1724,8 @@ async function setupBackup() {
   } catch (e) { /* ผู้ใช้กดยกเลิก picker */ }
 }
 async function onBackupClick() {
+  // โหมดทดสอบดาวน์โหลดไฟล์ได้ แต่ห้ามผูก handle อัตโนมัติ ไม่งั้นจะไปทับ backup จริงใน OneDrive
+  if (DEMO) { downloadBackup(); return; }
   if (!FSA_OK) { downloadBackup(); return; }
   if (!backupHandle) { await setupBackup(); return; }
   const q = await backupHandle.queryPermission({ mode: 'readwrite' });
@@ -1703,6 +1737,8 @@ async function onBackupClick() {
   toast('สำรองข้อมูลแล้ว');
 }
 async function initBackup() {
+  // ไม่อ่าน handle ของจริงเลยในโหมดทดสอบ — ไม่มี handle ก็ไม่มีทางเขียนทับ
+  if (DEMO) { renderBackupStatus('demo'); return; }
   if (!FSA_OK) { renderBackupStatus('manual'); return; }
   try { backupHandle = (await idbGet('backupHandle')) || null; } catch (e) { backupHandle = null; }
   if (!backupHandle) { renderBackupStatus('off'); return; }
@@ -3166,6 +3202,16 @@ themeBtn.addEventListener('click', () => {
   renderCharts();
 });
 applyTheme(localStorage.getItem('hma_theme') || 'light');
+
+if (DEMO) {
+  document.getElementById('demoBar').style.display = '';
+  document.title = '🧪 ทดสอบ — ' + document.title;   // แท็บเบราว์เซอร์ต้องแยกออกด้วย
+  document.getElementById('demoClearBtn').addEventListener('click', () => {
+    if (!confirm('ล้างข้อมูลทดสอบทั้งหมด?\n\nลบเฉพาะข้อมูลในโหมดทดสอบ — ข้อมูลผู้สมัครจริงไม่ถูกแตะต้อง')) return;
+    localStorage.removeItem(ATS_KEY);
+    location.reload();
+  });
+}
 
 setCandView(candView);   // ตั้ง active ปุ่ม toggle ตามค่าที่บันทึกไว้
 renderAll();
