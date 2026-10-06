@@ -210,6 +210,15 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .kv td:first-child { color: var(--gray-400); white-space: nowrap; }
 .warn-box { background: var(--pend-l); color: var(--pend); border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 12px; }
 mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px; padding: 0 1px; font-weight: 600; }
+mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; padding: 0 1px; font-weight: 600; }
+[data-theme="dark"] mark.ai { background: #5b21b6; color: #f5f3ff; }
+.badge.ai-high { background: #f3e8ff; color: #7c3aed; }
+.badge.ai-medium { background: var(--pend-l); color: var(--pend); }
+.badge.ai-low { background: var(--gray-100); color: var(--gray-500); }
+[data-theme="dark"] .badge.ai-high { background: #2e1065; color: #c4b5fd; }
+.ai-fill-high { background: #7c3aed; } .ai-fill-medium { background: var(--pend); } .ai-fill-low { background: var(--gray-400); }
+.ai-line { padding: 8px 0; border-top: 1px dashed var(--gray-200); font-size: 12.5px; }
+.ai-line:first-child { border-top: none; }
 .tpl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--gray-200); }
 .tpl-row:first-child { border-top: none; }
 .info-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; min-width: 18px; border-radius: 50%; border: 1px solid var(--gray-300); background: var(--white); color: var(--gray-500); font-weight: 800; font-size: 11px; line-height: 1; cursor: pointer; padding: 0; }
@@ -296,7 +305,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
       <div class="tbl-wrap">
         <table>
           <thead><tr>
-            <th>ไฟล์</th><th>ชื่อ</th><th>อีเมล</th><th>คะแนน Match</th><th>ทักษะที่พบ</th><th>สถานะ</th><th></th>
+            <th>ไฟล์</th><th>ชื่อ</th><th>อีเมล</th><th>คะแนน Match</th><th>ทักษะที่พบ</th><th>สัญญาณ AI</th><th>สถานะ</th><th></th>
           </tr></thead>
           <tbody id="scanBody"></tbody>
         </table>
@@ -329,6 +338,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
         <option value="score">เรียงตามคะแนน ↓</option>
         <option value="date">เรียงตามวันที่ ↓</option>
         <option value="name">เรียงตามชื่อ A-Z</option>
+        <option value="ai">เรียงตามสัญญาณ AI ↓</option>
       </select>
       <button class="btn btn-secondary btn-sm" id="candExportBtn">⬇ Export CSV</button>
       <button class="btn btn-primary btn-sm" id="candAddBtn">＋ เพิ่มด้วยตนเอง</button>
@@ -339,7 +349,7 @@ mark.hl { background: var(--pass-b); color: var(--gray-900); border-radius: 3px;
     <div class="tbl-wrap" id="candTableWrap">
       <table id="candTable">
         <thead><tr>
-          <th>#</th><th>ผู้สมัคร</th><th>ตำแหน่ง</th><th>คะแนน Match</th><th>สัมภาษณ์</th><th>ทักษะ</th><th>ประสบการณ์</th><th>สถานะ</th><th>วันที่</th><th></th>
+          <th>#</th><th>ผู้สมัคร</th><th>ตำแหน่ง</th><th>คะแนน Match</th><th>สัมภาษณ์</th><th>สัญญาณ AI</th><th>ทักษะ</th><th>ประสบการณ์</th><th>สถานะ</th><th>วันที่</th><th></th>
         </tr></thead>
         <tbody id="candBody"></tbody>
       </table>
@@ -914,6 +924,179 @@ function parseResume(rawText) {
     warnings,
   };
 }
+
+/* ── ตรวจจับการใช้ AI เขียน resume — decision 0005 ──
+   heuristic ล้วน ทำงานในเครื่อง (ไม่ส่ง resume ไปบริการภายนอก — decision 0001)
+   ให้คะแนน "สัญญาณ" 0–100 รายบรรทัด → รายส่วนของ resume → ทั้งฉบับ
+   เป็นข้อมูลช่วยตัดสินใจ ไม่ใช่คำตัดสิน และไม่มีผลกับคะแนน Match */
+const AI_DETECT_VERSION = 1;   // เปลี่ยนเมื่อแก้กฎ — record ที่เก็บสรุปเวอร์ชันเก่าจะถูกคำนวณใหม่
+const AI_MIN_CHARS = 200;      // ข้อความสั้นกว่านี้ (ไม่นับช่องว่าง) ประเมินไม่ได้
+const AI_W = { artifact: 60, markdown: 25, emoji: 10, phrase: 15 };   // แต้มต่อ 1 สัญญาณในบรรทัด
+const AI_LINE_FLAG = 30;       // บรรทัดที่ได้ ≥ นี้ถูกแสดงเป็น "บรรทัดที่น่าสงสัย"
+
+/* ข้อความค้างจากแชตบอต / placeholder / ร่องรอย citation — สัญญาณแรงสุด */
+const AI_ARTIFACTS = [
+  { label: 'ข้อความค้างจากแชตบอต', re: /\bas an ai\b|\bas a(?:n ai)? language model\b|ในฐานะ(?:ที่เป็น)?\s*(?:ai|เอไอ|ปัญญาประดิษฐ์)/i },
+  { label: 'ข้อความค้างจากแชตบอต', re: /^(?:certainly|sure|absolutely|of course)[!,.]?\s+(?:here|below)\b|\bhere(?:'s| is) (?:a |an |your )?(?:revised |updated |polished |improved |professional |tailored )*(?:version|resume|cv|summary|cover letter|profile)\b/i },
+  { label: 'ข้อความค้างจากแชตบอต', re: /\bi hope (?:this|that) helps\b|\blet me know if you(?:'d| would)? (?:like|want|need)\b|\bfeel free to (?:adjust|customi[sz]e|modify|tailor)\b/i },
+  { label: 'ข้อความค้างจากแชตบอต', re: /แน่นอน(?:ครับ|ค่ะ)?\s*[!！]?\s*(?:นี่คือ|ต่อไปนี้คือ|ด้านล่างนี้)|หวังว่า(?:ข้อมูล)?(?:นี้|นี่)?จะเป็นประโยชน์|สามารถปรับแก้(?:ได้)?ตามต้องการ/ },
+  { label: 'ร่องรอย citation ของ ChatGPT', re: /contentReference\[|oaicite|【\d+(?::\d+)?†|\bturn\d+(?:search|view|news)\d+\b/i },
+  { label: 'placeholder ที่ยังไม่ได้แทนค่า', re: /\[(?:your|insert|enter|company|job|position|candidate|name|date|city|university|x+)\b[^\]\n]{0,40}\]|\[(?:ระบุ|ใส่|ชื่อ|กรอก)[^\]\n]{0,40}\]/i },
+];
+/* markdown ที่ติดมากับการคัดลอกจากหน้าแชต */
+const AI_MARKDOWN = /\*\*[^*\n]{2,80}\*\*|^#{1,4}\s+\S/;
+/* emoji นำหน้า bullet (✅ 🚀 ✨ …) — สไตล์ที่ AI ชอบใช้ */
+const AI_EMOJI_BULLET = /^\s*(?:[✅✨⭐➡✔]|\uD83C[\uDF00-\uDFFF]|\uD83D[\uDC00-\uDEFF]|\uD83E[\uDD00-\uDEFF])/;
+
+/* คำ/สำนวนที่ AI ใช้บ่อยใน resume — คนก็ใช้ได้ จึงต้องเจอหลายคำถึงจะนับว่าแรง
+   ระวังศัพท์เทคนิคยานยนต์/โลจิสติกส์ของ HMA: ไม่ใส่ 'harness' (wire harness), 'ขับเคลื่อน' (ระบบขับเคลื่อน),
+   'ส่งมอบ' (ส่งมอบรถ/สินค้า) แบบเดี่ยว ๆ — ใช้เฉพาะรูปสำนวนเต็ม */
+const AI_PHRASES_EN = [
+  'results-driven', 'results-oriented', 'proven track record', 'track record of success', 'passionate about',
+  'highly motivated', 'fast-paced environment', "in today's fast-paced", 'ever-evolving', 'ever-changing',
+  'leverage', 'leveraging', 'leveraged', 'spearheaded', 'orchestrated', 'championed',
+  'seamless', 'seamlessly', 'delve', 'delved', 'tapestry', 'testament to', 'in the realm of',
+  'navigate the complexities', 'multifaceted', 'holistic', 'pivotal', 'instrumental in',
+  'foster', 'fostering', 'fostered', 'synergy', 'synergies', 'cutting-edge', 'robust',
+  'meticulous', 'meticulously', 'adept at', 'showcasing', 'unwavering', 'commitment to excellence',
+  'drive innovation', 'driving innovation', 'innovative solutions', 'streamline', 'streamlined', 'streamlining',
+  'elevate', 'elevating', 'empower', 'empowering', 'harnessing the power', 'thrive in', 'eager to contribute',
+  'valuable asset', 'a wealth of', 'deep understanding of', 'keen eye for', 'dynamic team', 'dynamic environment',
+  'furthermore', 'moreover', 'additionally', 'align with', 'aligns with', 'i am confident that', 'i am excited to',
+];
+const AI_PHRASES_TH = [
+  'ด้วยความมุ่งมั่น', 'มุ่งมั่นที่จะ', 'ขับเคลื่อนองค์กร', 'ขับเคลื่อนธุรกิจ', 'ยกระดับ', 'ผลักดันให้', 'สร้างสรรค์นวัตกรรม', 'ในยุคที่',
+  'ในโลกที่เปลี่ยนแปลง', 'อย่างยั่งยืน', 'บูรณาการ', 'สร้างคุณค่า', 'สร้างผลลัพธ์', 'ตอบโจทย์',
+  'ทักษะที่หลากหลาย', 'ประสบการณ์ที่หลากหลาย', 'พร้อมเรียนรู้สิ่งใหม่', 'พร้อมรับความท้าทาย', 'ความท้าทายใหม่',
+  'เติบโตไปพร้อมกับองค์กร', 'ส่งมอบคุณค่า', 'อย่างมีกลยุทธ์', 'เชิงกลยุทธ์', 'ขีดความสามารถ', 'เต็มศักยภาพ',
+  'ศักยภาพสูงสุด', 'ยิ่งไปกว่านั้น', 'ไม่เพียงแต่', 'มีส่วนสำคัญในการ', 'เป็นกำลังสำคัญ', 'ความเป็นเลิศ',
+  'หลงใหล', 'ด้วยประสบการณ์กว่า',
+];
+/* "not only … but also" ข้ามคำได้ จึงจับแยกด้วย regex */
+const AI_PHRASE_RES = [/\bnot only\b[^.\n]{1,60}\bbut also\b/i];
+
+/* หัวข้อส่วนของ resume — ใช้ SECTION_DEFS เดิม + ส่วนสรุปประวัติ (จุดที่ AI ถูกใช้บ่อยสุด)
+   แยกไว้ที่นี่ ไม่แก้ SECTION_DEFS เพื่อไม่ให้กระทบการคำนวณปีประสบการณ์ */
+const AI_SECTION_DEFS = [
+  { key: 'summary', re: /^(?:(?:professional|career|executive|personal)\s+)?(?:summary|profile|objective)\b|^about\s+me\b|^(?:ข้อมูลโดยย่อ|สรุปประวัติ|เกี่ยวกับ(?:ฉัน|ตัวเอง|ตนเอง)|วัตถุประสงค์|เป้าหมายในการทำงาน|จุดมุ่งหมาย)/i },
+  ...SECTION_DEFS,
+];
+const AI_SECTION_LABELS = {
+  header: 'ส่วนหัว / ข้อมูลติดต่อ', summary: 'สรุปประวัติ / Profile', experience: 'ประสบการณ์ทำงาน',
+  education: 'การศึกษา', skills: 'ทักษะ',
+};
+const AI_SECTION_ORDER = ['header', 'summary', 'experience', 'education', 'skills'];
+
+function aiLevel(score) { return score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low'; }
+
+/* หาสัญญาณทั้งหมดใน 1 บรรทัด — คืน { score, reasons:[{type,label}], terms:[คำที่พบ] } */
+function aiScanLine(line) {
+  const t = String(line || '').trim();
+  const reasons = [], terms = [];
+  if (!t) return { score: 0, reasons, terms };
+  const seenArt = new Set();
+  AI_ARTIFACTS.forEach(a => {
+    const m = t.match(a.re);
+    if (!m) return;
+    terms.push(m[0]);
+    if (!seenArt.has(a.label)) { seenArt.add(a.label); reasons.push({ type: 'artifact', label: a.label }); }
+  });
+  const md = t.match(AI_MARKDOWN);
+  if (md) { reasons.push({ type: 'markdown', label: 'markdown ค้าง (** หรือ #)' }); terms.push(md[0]); }
+  if (AI_EMOJI_BULLET.test(t)) reasons.push({ type: 'emoji', label: 'emoji นำหน้าบรรทัด' });
+  const low = t.toLowerCase();
+  const phrases = [];
+  AI_PHRASES_EN.forEach(p => { if (textHasTerm(low, p)) phrases.push(p); });
+  AI_PHRASES_TH.forEach(p => { if (low.includes(p)) phrases.push(p); });
+  AI_PHRASE_RES.forEach(re => { const m = t.match(re); if (m) phrases.push(m[0]); });
+  if (phrases.length) {
+    reasons.push({ type: 'phrase', label: `สำนวนที่ AI ใช้บ่อย ×${phrases.length}`, count: phrases.length });
+    terms.push(...phrases);
+  }
+  const score = reasons.reduce((s, r) => s + (r.type === 'phrase' ? AI_W.phrase * r.count : AI_W[r.type]), 0);
+  return { score: Math.min(100, score), reasons, terms };
+}
+
+/* คะแนนของกลุ่มบรรทัด (ส่วนหนึ่ง หรือทั้งฉบับ)
+   สำนวนคิดตาม "ความหนาแน่นต่อ 1,000 ตัวอักษร" เพื่อไม่ให้ resume ยาวเสียเปรียบ
+   และถ้าเจอสำนวนแค่ 1 คำ เพดานอยู่ที่ 20 (คนเขียนเองก็ใช้ได้) */
+function aiGroupScore(lines) {
+  let artifacts = 0, markdown = 0, emoji = 0, phrases = 0, chars = 0;
+  lines.forEach(l => {
+    chars += l.text.replace(/\s/g, '').length;
+    l.reasons.forEach(r => {
+      if (r.type === 'artifact') artifacts++;
+      else if (r.type === 'markdown') markdown++;
+      else if (r.type === 'emoji') emoji++;
+      else if (r.type === 'phrase') phrases += r.count;
+    });
+  });
+  const density = chars ? phrases / chars * 1000 : 0;
+  const phraseScore = Math.min(phrases >= 2 ? 70 : 20, density * 6);
+  const score = Math.min(100, Math.round(artifacts * AI_W.artifact + markdown * 20 + Math.min(emoji, 3) * 5 + phraseScore));
+  return { score, artifacts, markdown, emoji, phrases };
+}
+
+/* สัญญาณระดับทั้งฉบับ: ใช้ em dash (—) ถี่
+   (ไม่ใช้ "ความยาวประโยคสม่ำเสมอ" — ลองแล้วจับ resume ที่คนเขียนเองสั้น ๆ ผิดบ่อยเกินไป) */
+function aiDocSignals(text) {
+  const out = [];
+  // นับเฉพาะ em dash ระหว่างคำ — ไม่นับช่วงปี (2019—2022) ที่มาจากการดึงข้อความ PDF
+  const dashes = (text.match(/[^\d\s]\s?—\s?[^\d\s]/g) || []).length;
+  const chars = text.replace(/\s/g, '').length;
+  if (dashes >= 3 && chars && dashes / chars * 1000 >= 2) out.push({ label: `ใช้ em dash (—) ถี่ ${dashes} ครั้ง`, pts: 10 });
+  return out;
+}
+
+/* ผลเต็ม — ใช้ในโมดัลรายละเอียด (คำนวณใหม่ทุกครั้งที่เปิด ไม่เก็บลง record) */
+function detectAIWriting(rawText) {
+  const text = normText(rawText);
+  const chars = text.replace(/\s/g, '').length;
+  if (chars < AI_MIN_CHARS) {
+    return { v: AI_DETECT_VERSION, score: null, level: 'na', sections: [], lines: [], docSignals: [], chars };
+  }
+  const lines = [];
+  let cur = 'header';
+  text.split('\n').forEach((raw, idx) => {
+    const t = raw.trim();
+    if (!t) return;
+    if (t.length <= 80) {
+      const def = AI_SECTION_DEFS.find(d => d.re.test(t));
+      if (def) cur = def.key;
+    }
+    lines.push(Object.assign({ idx, text: t, section: cur }, aiScanLine(t)));
+  });
+
+  const sections = AI_SECTION_ORDER
+    .map(key => {
+      const ls = lines.filter(l => l.section === key);
+      if (!ls.length) return null;
+      const g = aiGroupScore(ls);
+      return Object.assign({ key, label: AI_SECTION_LABELS[key], level: aiLevel(g.score),
+        flagged: ls.filter(l => l.score >= AI_LINE_FLAG).length }, g);
+    })
+    .filter(Boolean);
+
+  const docSignals = aiDocSignals(text);
+  const whole = aiGroupScore(lines);
+  // ทั้งฉบับ = ค่าสูงกว่าระหว่าง (ส่วนที่แรงที่สุด) กับ (ภาพรวม) — AI มักถูกใช้เฉพาะบางส่วน
+  // เช่นเขียนสรุปประวัติ ถ้าเฉลี่ยทั้งฉบับสัญญาณจะถูกกลบ
+  const peak = sections.reduce((m, s) => Math.max(m, s.score), 0);
+  const score = Math.min(100, Math.max(peak, whole.score) + docSignals.reduce((s, d) => s + d.pts, 0));
+  return {
+    v: AI_DETECT_VERSION, score, level: aiLevel(score), sections, docSignals, chars,
+    lines: lines.filter(l => l.score >= AI_LINE_FLAG),
+  };
+}
+
+/* สรุปขนาดเล็กสำหรับเก็บบน record (ตาราง/บอร์ด/CSV/dashboard) — ไม่เก็บข้อความซ้ำ */
+function aiSummary(rawText) {
+  const d = detectAIWriting(rawText);
+  return {
+    v: d.v, score: d.score, level: d.level,
+    parts: d.sections.filter(s => s.level !== 'low').map(s => s.key),
+  };
+}
 </script>
 
 <script>
@@ -1074,6 +1257,76 @@ function showScoreInfo(id) {
   document.getElementById('scoreModalBg').classList.add('open');
 }
 function jobById(id) { return DB.jobs.find(j => j.id === id); }
+
+/* ── สัญญาณการใช้ AI (decision 0005) ──
+   record เก่า/ไฟล์สำรองที่ยังไม่มีสรุป หรือสรุปจากกฎเวอร์ชันเก่า → คำนวณจาก resumeText ตอนใช้งาน
+   (ค่าจะถูกบันทึกไปพร้อม saveDB ครั้งถัดไป) */
+const AI_LEVEL_TEXT = {
+  high:   { short: 'สูง',       long: 'สัญญาณใช้ AI สูง' },
+  medium: { short: 'ปานกลาง',   long: 'มีสัญญาณใช้ AI บางส่วน' },
+  low:    { short: 'ต่ำ',        long: 'สัญญาณใช้ AI ต่ำ' },
+  na:     { short: 'ประเมินไม่ได้', long: 'ข้อความสั้นเกินไป — ประเมินไม่ได้' },
+};
+function aiOf(r) {
+  if (!r.ai || r.ai.v !== AI_DETECT_VERSION) r.ai = aiSummary(r.resumeText || '');
+  return r.ai;
+}
+function aiBadge(r, compact) {
+  const a = aiOf(r);
+  if (a.level === 'na') return '<span class="badge na" title="ข้อความ resume สั้นเกินไป — ประเมินไม่ได้">—</span>';
+  const parts = a.parts.map(k => AI_SECTION_LABELS[k] || k).join(', ');
+  const title = AI_LEVEL_TEXT[a.level].long + (parts ? ' — ส่วนที่พบ: ' + parts : '') + ' (ใช้ประกอบการพิจารณาเท่านั้น)';
+  return `<span class="badge ai-${a.level}" title="${esc(title)}">🤖 ${compact ? a.score : a.score + ' · ' + AI_LEVEL_TEXT[a.level].short}</span>`;
+}
+/* ครอบคำที่เป็นสัญญาณด้วย <mark class="ai"> — escape ก่อนแล้วค่อยครอบ เหมือน highlightResume */
+function aiHighlightLine(text, terms) {
+  const html = esc(text || '');
+  const alt = [...new Set((terms || []).map(t => esc(t)).filter(Boolean))]
+    .sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+  return alt ? html.replace(new RegExp('(' + alt + ')', 'gi'), '<mark class="ai">$1</mark>') : html;
+}
+function aiSectionHTML(r) {
+  const d = detectAIWriting(r.resumeText || '');
+  const head = '<div class="section-title">🤖 ตรวจจับการใช้ AI เขียน resume</div>';
+  const note = `<p class="hint" style="margin-bottom:10px">ประเมินจากสัญญาณในข้อความ (สำนวนที่ AI ใช้บ่อย ข้อความค้างจากแชตบอต placeholder และรูปแบบประโยค)
+    ประมวลผลในเครื่องนี้เท่านั้น · <b>เป็นข้อมูลประกอบ ไม่ใช่หลักฐานชี้ขาด</b> และไม่มีผลกับคะแนน Match —
+    การใช้ AI ช่วยเรียบเรียงไม่ได้แปลว่าข้อมูลเป็นเท็จ แนะนำให้ถามตัวอย่างงานจริงในส่วนที่ถูกระบุตอนสัมภาษณ์</p>`;
+  if (d.level === 'na') return head + note + `<div class="hint">${AI_LEVEL_TEXT.na.long} (${d.chars} ตัวอักษร ต้องมีอย่างน้อย ${AI_MIN_CHARS})</div>`;
+
+  const rows = d.sections.map(s => {
+    const bits = [];
+    if (s.artifacts) bits.push(`ข้อความค้างจากแชตบอต/placeholder ${s.artifacts}`);
+    if (s.markdown) bits.push(`markdown ค้าง ${s.markdown}`);
+    if (s.phrases) bits.push(`สำนวน AI ${s.phrases} คำ`);
+    if (s.emoji) bits.push(`emoji bullet ${s.emoji}`);
+    return `<div class="break-row">
+      <b>${esc(s.label)}</b>
+      <div>
+        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(bits.join(' · ') || 'ไม่พบสัญญาณ')}${s.flagged ? ` · ${s.flagged} บรรทัดน่าสงสัย` : ''}</div>
+        <div class="score-track"><div class="score-fill ai-fill-${s.level}" style="width:${s.score}%"></div></div>
+      </div>
+      <span class="break-pts"><span class="badge ai-${s.level}">${s.score} · ${AI_LEVEL_TEXT[s.level].short}</span></span>
+    </div>`;
+  }).join('');
+
+  const doc = d.docSignals.length
+    ? `<div style="margin-top:8px">${d.docSignals.map(x => `<span class="chip miss">${esc(x.label)} +${x.pts}</span>`).join('')}</div>` : '';
+  // แสดงบรรทัดที่แรงสุด 15 บรรทัด แต่เรียงตามลำดับใน resume ให้อ่านต่อเนื่อง
+  const shown = d.lines.slice().sort((a, b) => b.score - a.score).slice(0, 15).sort((a, b) => a.idx - b.idx);
+  const lines = shown.map(l => `<div class="ai-line">
+      <div style="margin-bottom:3px"><span class="badge ai-${aiLevel(l.score)}">${esc(AI_SECTION_LABELS[l.section] || l.section)}</span>
+        ${l.reasons.map(x => `<span class="chip miss">${esc(x.label)}</span>`).join('')}</div>
+      <div>${aiHighlightLine(l.text, l.terms)}</div>
+    </div>`).join('');
+  const more = d.lines.length > shown.length ? `<div class="hint">…และอีก ${d.lines.length - shown.length} บรรทัด</div>` : '';
+
+  return `${head}${note}
+    <div style="margin-bottom:6px"><span class="badge ai-${d.level}" style="font-size:13px">🤖 ${d.score}/100 · ${AI_LEVEL_TEXT[d.level].long}</span></div>
+    <div class="hint" style="margin-bottom:4px">แยกตามส่วนของ resume (ระบบระบุส่วนอัตโนมัติจากหัวข้อ)</div>
+    ${rows}${doc}
+    <div class="section-title">บรรทัดที่พบสัญญาณ <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="ai">ไฮไลต์</mark> = คำ/ข้อความที่เป็นสัญญาณ</span></div>
+    ${lines || '<div class="hint">ไม่มีบรรทัดที่เข้าเกณฑ์น่าสงสัย</div>'}${more}`;
+}
 
 /* ── ผลสอบจาก hma-testing-system (Firestore, read-only) — decision 0003 ──
    join ด้วยอีเมลผู้สมัคร · ต้อง sign-in ด้วยบัญชี admin เดียวกับระบบสอบ 1 ครั้ง
@@ -1406,10 +1659,10 @@ function renderScanTable() {
   const body = document.getElementById('scanBody');
   body.innerHTML = scanResults.map(r => {
     if (r.status === 'processing') {
-      return `<tr><td>${esc(r.fileName)}</td><td colspan="5" style="color:var(--gray-400)">⏳ กำลังประมวลผล…</td><td></td></tr>`;
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="6" style="color:var(--gray-400)">⏳ กำลังประมวลผล…</td><td></td></tr>`;
     }
     if (r.status === 'error') {
-      return `<tr><td>${esc(r.fileName)}</td><td colspan="5"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="6"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
         <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button></td></tr>`;
     }
     const warn = (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
@@ -1421,6 +1674,7 @@ function renderScanTable() {
       <td>${esc(r.email) || '—'}</td>
       <td>${scoreCell(r.id, r.score)}</td>
       <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
+      <td>${aiBadge(r)}</td>
       <td>${warn || '<span class="badge pass">OK</span>'}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick="showScanDetail('${r.id}')">รายละเอียด</button>
@@ -1450,6 +1704,7 @@ function makeCandidate(parsed, scored, extras) {
     matched: scored.matched, missing: scored.missing, missingRequired: scored.missingRequired,
     stage: 'Applied', addedAt: new Date().toISOString(),
     scorecards: [],
+    ai: aiSummary(parsed.resumeText),
   }, extras || {});
 }
 function scanToCandidate(r) {
@@ -1755,6 +2010,7 @@ function detailHTML(r) {
     <div class="section-title">ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div>
     <div>${chips || '<span style="color:var(--gray-400)">ตำแหน่งนี้ไม่ได้กำหนดทักษะ</span>'}</div>
     ${jobRefHTML(job)}
+    ${aiSectionHTML(r)}
     ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">✉ ร่างอีเมลถึงผู้สมัคร</button></div>` : ''}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
     ${r.stage ? `<div id="scSection">${scorecardSectionHTML(r)}</div>` : ''}
@@ -1976,6 +2232,7 @@ function filteredCandidates(applyStage) {
   });
   if (sort === 'score') rows.sort((a, b) => b.score - a.score);
   else if (sort === 'date') rows.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+  else if (sort === 'ai') rows.sort((a, b) => (aiOf(b).score ?? -1) - (aiOf(a).score ?? -1));
   else rows.sort((a, b) => a.name.localeCompare(b.name));
   return rows;
 }
@@ -2002,6 +2259,7 @@ function renderCandTable() {
       <td>${esc(job ? job.title : '—')}</td>
       <td>${scoreCell(c.id, c.score)}</td>
       <td>${scorecardCell(c)}</td>
+      <td>${aiBadge(c)}</td>
       <td>${(c.matched || []).length}/${(c.matched || []).length + (c.missing || []).length}${reqMiss}</td>
       <td>${c.expYears || 0} ปี</td>
       <td><select class="inline" onchange="setStage('${c.id}', this.value)">
@@ -2025,7 +2283,7 @@ function candCardHTML(c) {
   return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
     <div class="kc-name">${esc(c.name)}${reqMiss}</div>
     <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
-    <div class="kc-foot">${scoreCell(c.id, c.score)}${scorecardChip(c)}
+    <div class="kc-foot">${scoreCell(c.id, c.score)}${scorecardChip(c)}${['medium', 'high'].includes(aiOf(c).level) ? aiBadge(c, true) : ''}
       <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
     </div>
   </div>`;
@@ -2155,7 +2413,7 @@ async function exportCSV() {
   if (FB.db && FB.user && !FB.records) { try { await fetchExamRecords(); } catch (e) { /* ปล่อยผ่าน */ } }
   const codes = examCodesInRecords();
 
-  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Interview Score', 'Interview Rounds', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
+  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Interview Score', 'Interview Rounds', 'AI Signal', 'AI Level', 'AI Sections', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
   codes.forEach(c => head.push((TEST_LABELS[c] || c) + ' Score', (TEST_LABELS[c] || c) + ' Result'));
   const rows = [head];
   rows0.forEach(c => {
@@ -2166,6 +2424,8 @@ async function exportCSV() {
     const row = [c.name, c.email, c.phone, job ? job.title : '', c.score,
       (sc && sc.total != null) ? sc.total : '',
       (c.scorecards || []).length || '',
+      aiOf(c).score ?? '', AI_LEVEL_TEXT[aiOf(c).level].short,
+      aiOf(c).parts.map(k => AI_SECTION_LABELS[k] || k).join('; '),
       (c.matched || []).join('; '), (c.missing || []).join('; '),
       c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)];
     if (codes.length) {
@@ -2358,6 +2618,8 @@ function renderDashboard() {
   const avgScore = cs.length ? Math.round(cs.reduce((s, c) => s + c.score, 0) / cs.length) : 0;
   const hi = cs.filter(c => c.score >= 70).length;
   const hired = cs.filter(c => c.stage === 'Hired').length;
+  const aiHigh = cs.filter(c => aiOf(c).level === 'high').length;
+  const aiMed = cs.filter(c => aiOf(c).level === 'medium').length;
   const kpis = [
     { val: cs.length, lbl: 'ผู้สมัครทั้งหมด', sub: 'ทุกตำแหน่ง' },
     { val: DB.jobs.filter(j => j.status === 'Open').length, lbl: 'ตำแหน่งเปิดรับ', sub: `จากทั้งหมด ${DB.jobs.length}` },
@@ -2365,6 +2627,7 @@ function renderDashboard() {
     { val: hi, lbl: 'ผู้สมัครคะแนน ≥ 70', sub: cs.length ? Math.round(hi / cs.length * 100) + '% ของทั้งหมด' : '—', accent: true },
     { val: cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length, lbl: 'อยู่ระหว่างคัดเลือก', sub: 'active pipeline' },
     { val: hired, lbl: 'รับเข้าทำงาน', sub: cs.length ? Math.round(hired / cs.length * 100) + '% conversion' : '—' },
+    { val: aiHigh, lbl: 'สัญญาณใช้ AI สูง', sub: `ปานกลาง ${aiMed} ราย · ใช้ประกอบเท่านั้น` },
   ];
   document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
     <div class="kpi"><div class="kpi-val ${k.accent ? 'accent' : ''}">${k.val}</div>
@@ -2432,6 +2695,8 @@ function seed() {
     { job: j1, name: 'Nattaya Srisuk', text: `Nattaya Srisuk\nEmail: nattaya.s@example.com\nTel: 081-234-5678\n\nEXPERIENCE — 4 years in industrial sales\n2021 - Present  Senior Sales Executive, ABC Motors\n- Negotiation with fleet customers, managed CRM (Salesforce)\n- Prepared quotations in Microsoft Excel\n\nEDUCATION\nB.Eng Industrial Engineering, Chulalongkorn University\nBusiness English proficiency (TOEIC 850)` },
     { job: j1, name: 'Kittipong Wattana', text: `Kittipong Wattana\nkittipong.w@example.com\n089-876-5432\n\nประสบการณ์ 1 ปี — พนักงานขายหน้าร้าน\n2024 - ปัจจุบัน ร้านอะไหล่ยนต์\n- งานขายและบริการลูกค้า\n\nการศึกษา: ปวส. เครื่องกล` },
     { job: j2, name: 'Ploy Boonmee', text: `Ploy Boonmee\nploy.b@example.com\n02-123-4567\n\nHR OFFICER — 3 years experience\n2022 - Present  HR Generalist, XYZ Co.\n- Recruitment end-to-end, onboarding\n- Payroll processing, labor law compliance\n- Advanced Excel (VLOOKUP, Pivot)\n\nEDUCATION: BBA Human Resource Management, Thammasat University` },
+    // ตัวอย่างที่ส่วน "สรุปประวัติ" เขียนด้วย AI แต่ส่วนประสบการณ์เขียนเอง — ไว้สาธิตการระบุว่า AI ถูกใช้ส่วนไหน
+    { job: j2, name: 'Warunee Chaiyo', text: `Warunee Chaiyo\nwarunee.c@example.com\n086-555-1212\n\nPROFESSIONAL SUMMARY\nResults-driven HR professional with a proven track record of fostering a dynamic and inclusive workplace.\nPassionate about leveraging data-driven insights to streamline recruitment and elevate the employee experience.\nAdept at navigating the complexities of labor law while driving innovation in a fast-paced environment.\nHere is a polished version of your resume summary. Feel free to adjust it to fit [Company Name].\n\nEXPERIENCE\n2023 - Present  Recruitment Officer, DEF Logistics\n- คัดกรองใบสมัครและนัดสัมภาษณ์ประมาณ 40 คนต่อเดือน\n- ทำเอกสารเงินเดือนและประกันสังคม\n\nEDUCATION\nB.A. Psychology, Kasetsart University` },
   ];
   samples.forEach(s => {
     const parsed = parseResume(s.text);
@@ -2442,7 +2707,7 @@ function seed() {
     }));
   });
   saveDB(); renderAll();
-  toast('โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 3 ผู้สมัคร');
+  toast('โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 4 ผู้สมัคร');
 }
 
 /* ── Orchestration & events ── */
