@@ -217,6 +217,8 @@ mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; paddi
 .badge.ai-low { background: var(--gray-100); color: var(--gray-500); }
 [data-theme="dark"] .badge.ai-high { background: #2e1065; color: #c4b5fd; }
 .ai-fill-high { background: #7c3aed; } .ai-fill-medium { background: var(--pend); } .ai-fill-low { background: var(--gray-400); }
+.tl-row { display: grid; grid-template-columns: 110px 110px 1fr; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px dashed var(--gray-200); font-size: 13px; }
+.tl-row:first-child { border-top: none; }
 .ai-line { padding: 8px 0; border-top: 1px dashed var(--gray-200); font-size: 12.5px; }
 .ai-line:first-child { border-top: none; }
 .tpl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--gray-200); }
@@ -339,12 +341,14 @@ mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; paddi
         <option value="date">เรียงตามวันที่ ↓</option>
         <option value="name">เรียงตามชื่อ A-Z</option>
         <option value="ai">เรียงตามสัญญาณ AI ↓</option>
+        <option value="stuck">เรียงตามวันที่ค้างในสถานะ ↓</option>
       </select>
       <button class="btn btn-secondary btn-sm" id="candExportBtn">⬇ Export CSV</button>
       <button class="btn btn-primary btn-sm" id="candAddBtn">＋ เพิ่มด้วยตนเอง</button>
     </div>
 
     <div class="warn-box" id="retentionNote" style="display:none"></div>
+    <div class="warn-box" id="stuckNote" style="display:none"></div>
 
     <div class="tbl-wrap" id="candTableWrap">
       <table id="candTable">
@@ -415,6 +419,21 @@ mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; paddi
       <h2>Pipeline สถานะผู้สมัคร</h2>
       <p class="sub">ผู้สมัครแยกตามสถานะปัจจุบัน</p>
       <div class="chart-box" style="height:220px"><canvas id="chartStage"></canvas></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="card">
+        <h2>เวลาเฉลี่ยในแต่ละสถานะ (วัน)</h2>
+        <p class="sub">นับจากการเปลี่ยนสถานะที่บันทึกไว้จริง — สถานะที่ยังอยู่ไม่ถูกนับจนกว่าจะย้ายออก</p>
+        <div class="chart-box" style="height:220px"><canvas id="chartStageTime"></canvas></div>
+        <div class="hint" id="stageTimeEmpty" style="display:none">ยังไม่มีข้อมูล — จะเริ่มแสดงเมื่อมีการย้ายสถานะผู้สมัคร</div>
+      </div>
+      <div class="card">
+        <h2>ผู้สมัครถูกคัดออกจากขั้นไหน</h2>
+        <p class="sub">สถานะก่อนถูกย้ายไป Rejected — ดูว่าคัดออกที่ขั้นไหนมากที่สุด</p>
+        <div class="chart-box" style="height:220px"><canvas id="chartDropOff"></canvas></div>
+        <div class="hint" id="dropOffEmpty" style="display:none">ยังไม่มีข้อมูล — จะเริ่มแสดงเมื่อมีผู้สมัครถูกย้ายไป Rejected</div>
+      </div>
     </div>
   </div>
 
@@ -1586,6 +1605,105 @@ function renderRetentionNote() {
   if (n) el.textContent = `⚠ มีผู้สมัคร ${n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด ${RETENTION_YEARS} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)`;
 }
 
+/* ── ประวัติการเปลี่ยนสถานะ — decision 0006 ──
+   c.stageHistory = [{ stage, at }] เรียงตามเวลา · entry แรก = วันที่เพิ่มเข้าระบบ
+   record ที่สร้างก่อนเริ่มเก็บประวัติ: สร้างจากเท่าที่รู้จริง (addedAt / closedAt) และติด inferred:true
+   วันที่ที่ไม่รู้เป็น null — ห้ามเดา เพราะจะทำให้สถิติระยะเวลาเพี้ยน */
+const STUCK_DAYS = 14;   // ยังไม่ปิดเคสและอยู่สถานะเดิมนานกว่านี้ → เตือนว่าค้าง
+const DAY_MS = 86400000;
+function inferStageHistory(c) {
+  const h = [{ stage: 'Applied', at: c.addedAt || null, inferred: true }];
+  if (c.stage && c.stage !== 'Applied') {
+    // closedAt ถูกตั้งตอนเข้า Hired/Rejected จึงใช้เป็นวันที่เข้าสถานะปิดได้ · สถานะอื่นไม่รู้วันที่
+    h.push({ stage: c.stage, at: CLOSED_STAGES.includes(c.stage) ? (c.closedAt || null) : null, inferred: true });
+  }
+  return h;
+}
+function historyOf(c) {
+  if (!Array.isArray(c.stageHistory) || !c.stageHistory.length) c.stageHistory = inferStageHistory(c);
+  return c.stageHistory;
+}
+function daysBetween(a, b) {
+  if (a == null || b == null) return null;
+  const ta = new Date(a).getTime(), tb = new Date(b).getTime();
+  return (isNaN(ta) || isNaN(tb)) ? null : Math.max(0, Math.floor((tb - ta) / DAY_MS));
+}
+/* จำนวนวันที่อยู่ในสถานะปัจจุบัน — null เมื่อไม่รู้วันที่เข้าสถานะนี้ */
+function daysInStage(c, now) {
+  const h = historyOf(c);
+  const last = h[h.length - 1];
+  if (!last || last.stage !== c.stage) return null;
+  return daysBetween(last.at, now == null ? Date.now() : now);
+}
+function isStuck(c, now) {
+  if (CLOSED_STAGES.includes(c.stage)) return false;
+  const d = daysInStage(c, now);
+  return d != null && d > STUCK_DAYS;
+}
+function stuckCandidates(now) {
+  return DB.candidates.filter(c => isStuck(c, now))
+    .sort((a, b) => daysInStage(b, now) - daysInStage(a, now));
+}
+/* สถิติ pipeline จากประวัติ — นับเฉพาะการย้ายสถานะที่บันทึกจริง (ปลายทางไม่ใช่ inferred)
+   เพราะ record เก่าไม่รู้ว่าผ่านขั้นไหนมาบ้าง ถ้านับจะเหมาว่าถูกคัดออกตั้งแต่ Applied */
+function pipelineStats(cands) {
+  const spent = {}, dropFrom = {}, hireDays = [];
+  (cands || []).forEach(c => {
+    const h = historyOf(c);
+    for (let i = 0; i + 1 < h.length; i++) {
+      if (h[i + 1].inferred) continue;
+      const d = daysBetween(h[i].at, h[i + 1].at);
+      if (d != null && !CLOSED_STAGES.includes(h[i].stage)) (spent[h[i].stage] = spent[h[i].stage] || []).push(d);
+      if (h[i + 1].stage === 'Rejected') dropFrom[h[i].stage] = (dropFrom[h[i].stage] || 0) + 1;
+    }
+    // วันจนรับเข้าทำงาน = จากวันที่เพิ่มเข้าระบบ ถึงครั้งแรกที่เข้า Hired (ใช้ closedAt ของ record เก่าได้)
+    const hi = h.findIndex(e => e.stage === 'Hired');
+    if (hi > 0) { const d = daysBetween(h[0].at, h[hi].at); if (d != null) hireDays.push(d); }
+  });
+  const avg = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : null;
+  const avgDays = {};
+  STAGES.filter(s => !CLOSED_STAGES.includes(s)).forEach(s => {
+    if (spent[s]) avgDays[s] = { avg: avg(spent[s]), n: spent[s].length };
+  });
+  return { avgDays, dropFrom, avgDaysToHire: avg(hireDays), hireN: hireDays.length };
+}
+function stageAgeHTML(c) {
+  if (CLOSED_STAGES.includes(c.stage)) return '';
+  const d = daysInStage(c);
+  if (d == null) return '<div class="hint" title="ไม่ทราบวันที่เข้าสถานะนี้ (ข้อมูลก่อนเริ่มบันทึกประวัติ)">— วัน</div>';
+  return isStuck(c)
+    ? `<span class="badge pend" title="อยู่สถานะ ${esc(c.stage)} เกิน ${STUCK_DAYS} วัน">⏳ ${d} วัน</span>`
+    : `<div class="hint">${d} วัน</div>`;
+}
+function renderStuckNote() {
+  const el = document.getElementById('stuckNote');
+  const list = stuckCandidates();
+  el.style.display = list.length ? '' : 'none';
+  if (!list.length) return;
+  const names = list.slice(0, 5).map(c => `${esc(c.name)} (${esc(c.stage)} ${daysInStage(c)} วัน)`).join(', ');
+  el.innerHTML = `⏳ มีผู้สมัคร ${list.length} ราย ค้างอยู่สถานะเดิมเกิน ${STUCK_DAYS} วัน: ${names}${list.length > 5 ? ' …' : ''}
+    <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="sortByStuck()">ดูทั้งหมด</button>`;
+}
+function sortByStuck() {
+  document.getElementById('candSort').value = 'stuck';
+  if (candView === 'board') setCandView('table'); else renderCandidates();
+}
+function stageHistoryHTML(c) {
+  const h = historyOf(c);
+  const rows = h.map((e, i) => {
+    const next = h[i + 1];
+    const dur = next ? daysBetween(e.at, next.at) : (CLOSED_STAGES.includes(e.stage) ? null : daysBetween(e.at, Date.now()));
+    const durText = dur == null ? '' : next ? `อยู่ ${dur} วัน` : `ปัจจุบัน · ${dur} วันแล้ว`;
+    const when = e.at ? fmtDate(e.at) : '<span class="hint">ไม่ทราบวันที่</span>';
+    return `<div class="tl-row">
+      <span>${when}</span>
+      <b>${esc(e.stage)}</b>
+      <span class="hint">${durText}${e.inferred ? ' · ประมาณจากข้อมูลก่อนเริ่มบันทึกประวัติ' : ''}</span>
+    </div>`;
+  }).join('');
+  return `<div class="section-title">🕒 ประวัติสถานะ</div><div>${rows}</div>`;
+}
+
 /* ── File text extraction ── */
 async function extractFileText(file) {
   const name = file.name.toLowerCase();
@@ -1697,7 +1815,7 @@ function clearScan() { scanResults = []; renderScanTable(); }
    หมายเหตุ: ไม่เก็บ sections ลง record — คำนวณใหม่จาก resumeText ตอนเปิดดูรายละเอียด
    (ถ้าเก็บจะเท่ากับเก็บข้อความ resume ซ้ำ 2 เท่าใน localStorage ซึ่งมี quota ~5MB) */
 function makeCandidate(parsed, scored, extras) {
-  return Object.assign({
+  const rec = Object.assign({
     id: uid('c'),
     name: parsed.name || '(ไม่พบชื่อ — แก้ไขภายหลัง)',
     email: parsed.email || '', phone: parsed.phone || '',
@@ -1711,6 +1829,8 @@ function makeCandidate(parsed, scored, extras) {
     scorecards: [],
     ai: aiSummary(parsed.resumeText),
   }, extras || {});
+  if (!Array.isArray(rec.stageHistory)) rec.stageHistory = [{ stage: rec.stage, at: rec.addedAt }];
+  return rec;
 }
 function scanToCandidate(r) {
   return makeCandidate(r, r, { jobId: r.jobId, fileName: r.fileName });
@@ -2018,6 +2138,7 @@ function detailHTML(r) {
     ${aiSectionHTML(r)}
     ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">✉ ร่างอีเมลถึงผู้สมัคร</button></div>` : ''}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
+    ${r.stage ? stageHistoryHTML(r) : ''}
     ${r.stage ? `<div id="scSection">${scorecardSectionHTML(r)}</div>` : ''}
     ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
     <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
@@ -2219,6 +2340,10 @@ function deleteJob(id) {
 /* ── Candidates UI ── */
 let candView = localStorage.getItem('hma_ats_candview') || 'table';
 
+/* เคสปิดแล้ว/ไม่รู้วันที่ ไปท้ายสุด */
+function stuckSortKey(c) {
+  return CLOSED_STAGES.includes(c.stage) ? -2 : (daysInStage(c) ?? -1);
+}
 /* กรอง+เรียงผู้สมัครตาม toolbar — applyStage=false สำหรับบอร์ด (stage คือคอลัมน์อยู่แล้ว) */
 function filteredCandidates(applyStage) {
   const q = document.getElementById('candSearch').value.toLowerCase();
@@ -2237,6 +2362,7 @@ function filteredCandidates(applyStage) {
   });
   if (sort === 'score') rows.sort((a, b) => b.score - a.score);
   else if (sort === 'date') rows.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+  else if (sort === 'stuck') rows.sort((a, b) => stuckSortKey(b) - stuckSortKey(a));
   else if (sort === 'ai') rows.sort((a, b) => (aiOf(b).score ?? -1) - (aiOf(a).score ?? -1));
   else rows.sort((a, b) => a.name.localeCompare(b.name));
   return rows;
@@ -2250,6 +2376,7 @@ function renderCandidates() {
   // stage filter ไม่มีความหมายในบอร์ด (คอลัมน์ = stage) → ปิดไว้กันสับสน
   document.getElementById('candStageFilter').style.display = board ? 'none' : '';
   renderRetentionNote();
+  renderStuckNote();
   if (board) renderCandBoard(); else renderCandTable();
 }
 
@@ -2269,7 +2396,7 @@ function renderCandTable() {
       <td>${c.expYears || 0} ปี</td>
       <td><select class="inline" onchange="setStage('${c.id}', this.value)">
         ${STAGES.map(s => `<option ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('')}
-      </select></td>
+      </select>${stageAgeHTML(c)}</td>
       <td>${fmtDate(c.addedAt)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-ghost btn-sm" onclick="showCandDetail('${c.id}')">ดู</button>
@@ -2286,7 +2413,7 @@ function candCardHTML(c) {
   const cls = scoreClass(c.score);
   const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น">!</span>` : '';
   return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
-    <div class="kc-name">${esc(c.name)}${reqMiss}</div>
+    <div class="kc-name">${esc(c.name)}${reqMiss}${isStuck(c) ? ` <span class="badge pend" title="อยู่สถานะนี้เกิน ${STUCK_DAYS} วัน">⏳ ${daysInStage(c)} วัน</span>` : ''}</div>
     <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
     <div class="kc-foot">${scoreCell(c.id, c.score)}${scorecardChip(c)}${['medium', 'high'].includes(aiOf(c).level) ? aiBadge(c, true) : ''}
       <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
@@ -2333,7 +2460,8 @@ function setCandView(v) {
 }
 function setStage(id, stage) {
   const c = DB.candidates.find(x => x.id === id);
-  if (!c) return;
+  if (!c || c.stage === stage) return;
+  historyOf(c).push({ stage, at: new Date().toISOString() });   // ต้องเรียกก่อนเปลี่ยน c.stage — record เก่าสร้างประวัติจากสถานะเดิม
   c.stage = stage;
   // จุดเริ่มนับ retention 2 ปี (decision 0004) คือวันที่เคสปิด
   if (CLOSED_STAGES.includes(stage)) { if (!c.closedAt) c.closedAt = new Date().toISOString(); }
@@ -2418,7 +2546,7 @@ async function exportCSV() {
   if (FB.db && FB.user && !FB.records) { try { await fetchExamRecords(); } catch (e) { /* ปล่อยผ่าน */ } }
   const codes = examCodesInRecords();
 
-  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Interview Score', 'Interview Rounds', 'AI Signal', 'AI Level', 'AI Sections', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Source', 'File', 'Added'];
+  const head = ['Name', 'Email', 'Phone', 'Position', 'Match Score', 'Interview Score', 'Interview Rounds', 'AI Signal', 'AI Level', 'AI Sections', 'Skills Matched', 'Skills Missing', 'Experience (yrs)', 'Education', 'Stage', 'Days in Stage', 'Source', 'File', 'Added'];
   codes.forEach(c => head.push((TEST_LABELS[c] || c) + ' Score', (TEST_LABELS[c] || c) + ' Result'));
   const rows = [head];
   rows0.forEach(c => {
@@ -2432,7 +2560,8 @@ async function exportCSV() {
       aiOf(c).score ?? '', AI_LEVEL_TEXT[aiOf(c).level].short,
       aiOf(c).parts.map(k => AI_SECTION_LABELS[k] || k).join('; '),
       (c.matched || []).join('; '), (c.missing || []).join('; '),
-      c.expYears || 0, c.education || '', c.stage, c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)];
+      c.expYears || 0, c.education || '', c.stage,
+      CLOSED_STAGES.includes(c.stage) ? '' : (daysInStage(c) ?? ''), c.source, c.fileName || '', (c.addedAt || '').slice(0, 10)];
     if (codes.length) {
       const ex = matchTestResults(c.email, FB.records)[0];   // ครั้งล่าสุด
       codes.forEach(code => row.push(ex ? (ex[code + '_score'] ?? '') : '', ex ? (ex[code + '_outcome'] ?? '') : ''));
@@ -2481,6 +2610,13 @@ function exportDashboardCSV() {
   });
   rows.push([], ['สถานะ Pipeline', 'จำนวน']);
   STAGES.forEach(s => rows.push([s, cs.filter(c => c.stage === s).length]));
+  const ps = pipelineStats(cs);
+  rows.push([], ['ระยะเวลา (จากประวัติสถานะ)', 'ค่า'],
+    ['วันเฉลี่ยจนรับเข้าทำงาน', ps.avgDaysToHire ?? ''], ['จำนวนที่ใช้คำนวณ', ps.hireN],
+    [`ค้างสถานะเดิมเกิน ${STUCK_DAYS} วัน`, stuckCandidates().length]);
+  rows.push([], ['สถานะ', 'วันเฉลี่ยที่อยู่', 'จำนวนครั้งที่นับ', 'ถูกคัดออกจากขั้นนี้']);
+  STAGES.filter(s => !CLOSED_STAGES.includes(s)).forEach(s =>
+    rows.push([s, ps.avgDays[s] ? ps.avgDays[s].avg : '', ps.avgDays[s] ? ps.avgDays[s].n : 0, ps.dropFrom[s] || 0]));
   downloadCSV(rows, `hma-ats-dashboard-${today()}.csv`);
   toast('Export Dashboard แล้ว');
 }
@@ -2625,6 +2761,8 @@ function renderDashboard() {
   const hired = cs.filter(c => c.stage === 'Hired').length;
   const aiHigh = cs.filter(c => aiOf(c).level === 'high').length;
   const aiMed = cs.filter(c => aiOf(c).level === 'medium').length;
+  const ps = pipelineStats(cs);
+  const stuck = stuckCandidates().length;
   const kpis = [
     { val: cs.length, lbl: 'ผู้สมัครทั้งหมด', sub: 'ทุกตำแหน่ง' },
     { val: DB.jobs.filter(j => j.status === 'Open').length, lbl: 'ตำแหน่งเปิดรับ', sub: `จากทั้งหมด ${DB.jobs.length}` },
@@ -2633,6 +2771,8 @@ function renderDashboard() {
     { val: cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length, lbl: 'อยู่ระหว่างคัดเลือก', sub: 'active pipeline' },
     { val: hired, lbl: 'รับเข้าทำงาน', sub: cs.length ? Math.round(hired / cs.length * 100) + '% conversion' : '—' },
     { val: aiHigh, lbl: 'สัญญาณใช้ AI สูง', sub: `ปานกลาง ${aiMed} ราย · ใช้ประกอบเท่านั้น` },
+    { val: ps.avgDaysToHire == null ? '—' : ps.avgDaysToHire + ' วัน', lbl: 'เวลาเฉลี่ยจนรับเข้าทำงาน', sub: ps.hireN ? `จาก ${ps.hireN} ราย` : 'ยังไม่มีข้อมูล' },
+    { val: stuck, lbl: `ค้างสถานะเกิน ${STUCK_DAYS} วัน`, sub: 'ยังไม่ปิดเคส', accent: stuck > 0 },
   ];
   document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
     <div class="kpi"><div class="kpi-val ${k.accent ? 'accent' : ''}">${k.val}</div>
@@ -2674,6 +2814,32 @@ function renderCharts() {
     data: { labels: STAGES, datasets: [{ data: sm, backgroundColor: STAGES.map(s => scolors[s] + 'bb'), borderRadius: 5 }] },
     options: barOpts(cc, true)
   });
+
+  // เวลาในแต่ละสถานะ + คัดออกจากขั้นไหน (จากประวัติสถานะ — decision 0006)
+  const ps = pipelineStats(DB.candidates);
+  const openStages = STAGES.filter(s => !CLOSED_STAGES.includes(s));
+  const timeStages = openStages.filter(s => ps.avgDays[s]);
+  destroyChart('chartStageTime');
+  document.getElementById('stageTimeEmpty').style.display = timeStages.length ? 'none' : '';
+  document.getElementById('chartStageTime').style.display = timeStages.length ? '' : 'none';
+  if (timeStages.length) {
+    charts.chartStageTime = new Chart(document.getElementById('chartStageTime'), {
+      type: 'bar',
+      data: { labels: timeStages, datasets: [{ data: timeStages.map(s => ps.avgDays[s].avg), backgroundColor: timeStages.map(s => scolors[s] + 'bb'), borderRadius: 5 }] },
+      options: barOpts(cc, true)
+    });
+  }
+  const dropStages = openStages.filter(s => ps.dropFrom[s]);
+  destroyChart('chartDropOff');
+  document.getElementById('dropOffEmpty').style.display = dropStages.length ? 'none' : '';
+  document.getElementById('chartDropOff').style.display = dropStages.length ? '' : 'none';
+  if (dropStages.length) {
+    charts.chartDropOff = new Chart(document.getElementById('chartDropOff'), {
+      type: 'bar',
+      data: { labels: dropStages, datasets: [{ data: dropStages.map(s => ps.dropFrom[s]), backgroundColor: scolors.Rejected + 'bb', borderRadius: 5 }] },
+      options: barOpts(cc, true)
+    });
+  }
 }
 
 /* ── Sample data ── */
@@ -2703,13 +2869,28 @@ function seed() {
     // ตัวอย่างที่ส่วน "สรุปประวัติ" เขียนด้วย AI แต่ส่วนประสบการณ์เขียนเอง — ไว้สาธิตการระบุว่า AI ถูกใช้ส่วนไหน
     { job: j2, name: 'Warunee Chaiyo', text: `Warunee Chaiyo\nwarunee.c@example.com\n086-555-1212\n\nPROFESSIONAL SUMMARY\nResults-driven HR professional with a proven track record of fostering a dynamic and inclusive workplace.\nPassionate about leveraging data-driven insights to streamline recruitment and elevate the employee experience.\nAdept at navigating the complexities of labor law while driving innovation in a fast-paced environment.\nHere is a polished version of your resume summary. Feel free to adjust it to fit [Company Name].\n\nEXPERIENCE\n2023 - Present  Recruitment Officer, DEF Logistics\n- คัดกรองใบสมัครและนัดสัมภาษณ์ประมาณ 40 คนต่อเดือน\n- ทำเอกสารเงินเดือนและประกันสังคม\n\nEDUCATION\nB.A. Psychology, Kasetsart University` },
   ];
+  // ประวัติสถานะตัวอย่าง [สถานะ, กี่วันก่อน] — ให้ Dashboard/การเตือนค้างสถานะมีข้อมูลให้ดู
+  const demoSteps = {
+    'Nattaya Srisuk':    [['Applied', 20], ['Screening', 18], ['Interview', 16]],                  // ค้างสัมภาษณ์
+    'Kittipong Wattana': [['Applied', 18], ['Screening', 15], ['Rejected', 10]],                   // คัดออกตอนคัดกรอง
+    'Ploy Boonmee':      [['Applied', 30], ['Screening', 27], ['Interview', 20], ['Offer', 12], ['Hired', 8]],
+  };
+  const daysAgo = n => new Date(Date.now() - n * DAY_MS).toISOString();
   samples.forEach(s => {
     const parsed = parseResume(s.text);
     const scored = scoreCandidate(parsed, s.job);
-    DB.candidates.push(makeCandidate(parsed, scored, {
-      name: parsed.name || s.name, jobId: s.job.id,
-      fileName: s.name.toLowerCase().replace(/\s+/g, '-') + '.txt',
-    }));
+    const steps = demoSteps[s.name];
+    const extras = { name: parsed.name || s.name, jobId: s.job.id,
+      fileName: s.name.toLowerCase().replace(/\s+/g, '-') + '.txt' };
+    if (steps) {
+      const last = steps[steps.length - 1];
+      Object.assign(extras, {
+        stageHistory: steps.map(([stage, n]) => ({ stage, at: daysAgo(n) })),
+        addedAt: daysAgo(steps[0][1]), stage: last[0],
+      });
+      if (CLOSED_STAGES.includes(last[0])) extras.closedAt = daysAgo(last[1]);
+    }
+    DB.candidates.push(makeCandidate(parsed, scored, extras));
   });
   saveDB(); renderAll();
   toast('โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 4 ผู้สมัคร');
