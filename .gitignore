@@ -2,3 +2,9 @@
 tests/__pycache__/
 .pytest_cache/
 .superpowers/
+
+# ข้อมูลผู้สมัคร/ตำแหน่งงานจาก ATS — repo นี้เป็นสาธารณะ ห้าม commit ไฟล์เหล่านี้เด็ดขาด
+# ไฟล์สำรอง (ปุ่ม Backup / ดาวน์โหลด JSON): hma-ats-backup.json, hma-ats-backup-YYYY-MM-DD.json
+hma-ats-backup*.json
+# ไฟล์ Export CSV: hma-ats-candidates-*.csv, hma-ats-jobs-*.csv, hma-ats-dashboard-*.csv
+hma-ats-*.csv
