@@ -284,6 +284,7 @@ mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; paddi
   <button class="btn btn-secondary btn-sm" id="backupBtn">📁 Backup</button>
   <button class="btn btn-ghost btn-sm" id="restoreBtn" title="กู้คืนข้อมูลจากไฟล์สำรอง JSON">↩ กู้คืน</button>
   <input type="file" id="restoreInput" accept=".json" style="display:none">
+  <button class="btn btn-ghost btn-sm" id="langBtn" title="Language / ภาษา" aria-label="Language / ภาษา">🌐 <span id="langLabel">EN</span></button>
   <button class="btn btn-ghost btn-sm" id="themeBtn" title="Toggle theme">🌓 Theme</button>
   <button class="btn btn-secondary btn-sm" id="seedBtn" title="โหลดข้อมูลตัวอย่าง">โหลดตัวอย่าง</button>
 </div>
@@ -1200,6 +1201,521 @@ function aiInterviewQuestions(d) {
    BLOCK 2 — APP (storage, file extraction, UI)
    ═══════════════════════════════════════════════════════════════ */
 
+/* ── ภาษา (TH / EN) ──
+   ใช้คีย์ localStorage 'hma_lang' และค่า 'th'/'en' เดียวกับ hma-testing-system — สลับที่ระบบไหนก็จำค่าเดียวกัน
+   พจนานุกรม EN ใช้ "ข้อความไทยต้นฉบับ" เป็นคีย์ (ระบบสอบใช้คีย์ตั้งชื่อ) เพราะ record ผู้สมัครเก็บข้อความไทยไว้แล้วบางส่วน
+   (คำเตือนจากการสแกน, ที่มาของคะแนน) — แปลตอนแสดงผลได้โดยไม่ต้องแก้ข้อมูลเดิม
+   ภาษาไทยเป็นค่าเริ่มต้น · ข้อความที่ไม่มีคำแปลแสดงเป็นไทยตามเดิมและถูกจดไว้ใน I18N_MISSING (เทสต์ใช้ตรวจความครบ)
+   ไม่แปล: ข้อมูลของผู้ใช้ (resume, ชื่อ, เทมเพลตอีเมล/หัวข้อประเมินที่บันทึกแล้ว) และคลังคำที่ใช้สแกน (ต้องจับภาษาไทยใน resume ได้เสมอ) */
+let LANG = (() => { try { return localStorage.getItem('hma_lang') === 'en' ? 'en' : 'th'; } catch (e) { return 'th'; } })();
+const I18N_MISSING = new Set();
+const HAS_THAI = /[\u0E00-\u0E7F]/;
+function t(th, vars) {
+  let s = th;
+  if (LANG === 'en') {
+    if (Object.prototype.hasOwnProperty.call(EN, th)) s = EN[th];
+    else if (HAS_THAI.test(th)) I18N_MISSING.add(th);
+  }
+  // พหูพจน์ภาษาอังกฤษ: {n|day|days} เลือกตามค่า n (ไม่มีค่า → รูปพหูพจน์) — คีย์ไทยไม่มีรูปแบบนี้
+  s = s.replace(/\{(\w+)\|([^|}]*)\|([^}]*)\}/g, (m, k, one, many) => (vars && Number(vars[k]) === 1 ? one : many));
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
+}
+/* ข้อความที่เก็บใน record หรือสร้างโดยบล็อก 1 (มีตัวเลข/ข้อความแทรก) — ลองพจนานุกรมก่อน แล้วค่อยลองรูปแบบ */
+function tStored(th) {
+  if (LANG !== 'en' || th == null) return th;
+  if (Object.prototype.hasOwnProperty.call(EN, th)) return EN[th];
+  for (const [re, en] of EN_PATTERNS) if (re.test(th)) return th.replace(re, en);
+  if (HAS_THAI.test(th)) I18N_MISSING.add(th);
+  return th;
+}
+function locale() { return LANG === 'en' ? 'en-GB' : 'th-TH'; }
+
+/* ข้อความคงที่ใน HTML — จดต้นฉบับไทยไว้ครั้งเดียวตอนเริ่ม แล้วสลับตามภาษา (ไม่ต้องติด data-i18n ทุก element)
+   ต้องเรียกก่อน render ครั้งแรก — ส่วนที่ JS วาดใหม่ภายหลังแปลด้วย t() เอง (node เดิมถูกแทนที่ จึงไม่ชนกัน) */
+const I18N_STATIC = [];
+function captureStaticI18n() {
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (HAS_THAI.test(n.nodeValue) && !n.parentElement.closest('script, style')) I18N_STATIC.push({ node: n, orig: n.nodeValue });
+  }
+  document.querySelectorAll('[placeholder], [title], [aria-label]').forEach(el =>
+    ['placeholder', 'title', 'aria-label'].forEach(attr => {
+      const v = el.getAttribute(attr);
+      if (v && HAS_THAI.test(v)) I18N_STATIC.push({ el, attr, orig: v });
+    }));
+}
+function applyStaticI18n() {
+  I18N_STATIC.forEach(x => {
+    const out = LANG === 'th' ? x.orig : t(x.orig.replace(/\s+/g, ' ').trim());
+    if (x.node) x.node.nodeValue = LANG === 'th' ? x.orig : x.orig.match(/^\s*/)[0] + out + x.orig.match(/\s*$/)[0];
+    else x.el.setAttribute(x.attr, out);
+  });
+}
+function applyLang() {
+  document.documentElement.lang = LANG;
+  applyStaticI18n();
+  document.getElementById('langLabel').textContent = LANG === 'th' ? 'EN' : 'ไทย';   // บอกภาษาที่จะสลับไป (เหมือนระบบสอบ)
+  renderBackupStatus(document.getElementById('backupBtn').dataset.state || (FSA_OK ? 'off' : 'manual'));
+  renderAll();
+  refreshOpenModals();
+}
+function toggleLang() {
+  LANG = LANG === 'th' ? 'en' : 'th';
+  try { localStorage.setItem('hma_lang', LANG); } catch (e) { /* private mode */ }
+  applyLang();
+}
+/* วาดเนื้อหา modal ที่เปิดอยู่ใหม่ในภาษาใหม่ — ยกเว้นตอนกรอกฟอร์มสัมภาษณ์ค้างไว้ (วาดใหม่จะล้างค่าที่ยังไม่บันทึก) */
+function refreshOpenModals() {
+  const isOpen = id => document.getElementById(id).classList.contains('open');
+  if (isOpen('detailModalBg') && currentDetail && !document.querySelector('#scForm .sc-crit')) {
+    if (DB.candidates.includes(currentDetail)) showCandDetail(currentDetail.id); else showScanDetail(currentDetail.id);
+  }
+  if (isOpen('scoreModalBg') && lastScoreInfoId) showScoreInfo(lastScoreInfoId);
+  if (isOpen('critModalBg')) renderCriteriaList();
+  if (isOpen('tplModalBg')) renderTplList();
+}
+
+/* พจนานุกรม ไทย → อังกฤษ (คีย์ = ข้อความไทยต้นฉบับ ดูหมายเหตุที่ t() ด้านบน) */
+const EN = {
+  "↩ กู้คืน": "↩ Restore",
+  "โหลดตัวอย่าง": "Load sample",
+  "👥 ผู้สมัคร": "👥 Candidates",
+  "💼 ตำแหน่งงาน": "💼 Jobs",
+  "อัปโหลด resume (PDF / DOCX / TXT) ระบบจะดึงข้อมูล จับคู่ทักษะกับตำแหน่งงาน และให้คะแนนอัตโนมัติ": "Upload resumes (PDF / DOCX / TXT) — the system extracts the details, matches skills to the job and scores them automatically",
+  "ตำแหน่งที่ต้องการคัดกรอง *": "Job to screen for *",
+  "เกณฑ์ทักษะ/น้ำหนักคะแนนกำหนดได้ที่แท็บ \"ตำแหน่งงาน\"": "Set skill criteria and weights in the \"Jobs\" tab",
+  "ลากไฟล์ resume มาวางที่นี่": "Drag resume files here",
+  "หรือคลิกเพื่อเลือกไฟล์": "or click to choose files",
+  "รองรับ .pdf .docx .txt — เลือกได้หลายไฟล์พร้อมกัน · ข้อมูลอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น server": "Supports .pdf .docx .txt — select several at once · Data stays on this computer and is never uploaded to a server",
+  "ผลการสแกน": "Scan results",
+  "ตรวจสอบข้อมูลที่ระบบดึงได้ก่อนกด \"เพิ่มเป็นผู้สมัคร\" — คลิก \"รายละเอียด\" เพื่อดูการคิดคะแนน": "Check the extracted details before adding them as candidates — click \"Details\" to see how the score was calculated",
+  "ไฟล์": "File",
+  "ชื่อ": "Name",
+  "อีเมล": "Email",
+  "คะแนน Match": "Match score",
+  "ทักษะที่พบ": "Skills found",
+  "สัญญาณ AI": "AI signal",
+  "สถานะ": "Status",
+  "＋ เพิ่มทั้งหมดเป็นผู้สมัคร": "＋ Add all as candidates",
+  "ล้างผลสแกน": "Clear results",
+  "ผู้สมัคร (Candidate Database)": "Candidates",
+  "ผู้สมัครทั้งหมดพร้อมคะแนน match จัดอันดับ และสถานะใน pipeline": "All candidates with match scores, ranking and pipeline status",
+  "☰ ตาราง": "☰ Table",
+  "▦ บอร์ด": "▦ Board",
+  "ทุกตำแหน่ง": "All jobs",
+  "ทุกสถานะ": "All stages",
+  "เรียงตามคะแนน ↓": "Sort by score ↓",
+  "เรียงตามวันที่ ↓": "Sort by date ↓",
+  "เรียงตามชื่อ A-Z": "Sort by name A-Z",
+  "เรียงตามสัญญาณ AI ↓": "Sort by AI signal ↓",
+  "เรียงตามวันที่ค้างในสถานะ ↓": "Sort by days in stage ↓",
+  "＋ เพิ่มด้วยตนเอง": "＋ Add manually",
+  "ผู้สมัคร": "Candidate",
+  "ตำแหน่ง": "Job",
+  "สัมภาษณ์": "Interview",
+  "ทักษะ": "Skills",
+  "ประสบการณ์": "Experience",
+  "วันที่": "Date",
+  "ยังไม่มีผู้สมัคร — สแกน resume ที่แท็บ": "No candidates yet — scan resumes in the",
+  "หรือกด": "tab or click",
+  "ตำแหน่งงาน (Job Requisitions)": "Job requisitions",
+  "กำหนดตำแหน่ง ทักษะที่ต้องการ และน้ำหนักคะแนน — เกณฑ์นี้ใช้คิดคะแนน match ตอนสแกน resume": "Define jobs, required skills and score weights — these criteria are used to score resumes when they are scanned",
+  "＋ เพิ่มตำแหน่ง": "＋ Add job",
+  "แผนก": "Department",
+  "ทักษะที่ต้องการ": "Required skills",
+  "ประสบการณ์ขั้นต่ำ": "Min. experience",
+  "ยังไม่มีตำแหน่งงาน — กด": "No jobs yet — click",
+  "หรือ": "or",
+  "ที่มุมขวาบน": "in the top-right corner",
+  "ภาพรวมผู้สมัคร คะแนน และ pipeline": "Overview of candidates, scores and pipeline",
+  "⬇ Export CSV (สรุป)": "⬇ Export CSV (summary)",
+  "การกระจายคะแนน Match": "Match score distribution",
+  "จำนวนผู้สมัครในแต่ละช่วงคะแนน": "Number of candidates in each score band",
+  "ผู้สมัครต่อตำแหน่ง": "Candidates per job",
+  "ปริมาณผู้สมัครแยกตามตำแหน่งงาน": "Candidate volume by job",
+  "Pipeline สถานะผู้สมัคร": "Candidate pipeline",
+  "ผู้สมัครแยกตามสถานะปัจจุบัน": "Candidates by current stage",
+  "เวลาเฉลี่ยในแต่ละสถานะ (วัน)": "Average days in each stage",
+  "นับจากการเปลี่ยนสถานะที่บันทึกไว้จริง — สถานะที่ยังอยู่ไม่ถูกนับจนกว่าจะย้ายออก": "Based on recorded stage changes — a stage is counted once the candidate moves out of it",
+  "ยังไม่มีข้อมูล — จะเริ่มแสดงเมื่อมีการย้ายสถานะผู้สมัคร": "No data yet — appears once candidates move between stages",
+  "ผู้สมัครถูกคัดออกจากขั้นไหน": "Stage candidates were rejected from",
+  "สถานะก่อนถูกย้ายไป Rejected — ดูว่าคัดออกที่ขั้นไหนมากที่สุด": "The stage before moving to Rejected — shows where most candidates drop out",
+  "ยังไม่มีข้อมูล — จะเริ่มแสดงเมื่อมีผู้สมัครถูกย้ายไป Rejected": "No data yet — appears once a candidate is moved to Rejected",
+  "เพิ่มตำแหน่งงาน": "Add job",
+  "ชื่อตำแหน่ง *": "Job title *",
+  "ประสบการณ์ขั้นต่ำ (ปี)": "Min. experience (years)",
+  "คีย์เวิร์ดวุฒิการศึกษา": "Education keywords",
+  "คั่นด้วย , — เว้นว่างถ้าไม่ใช้คิดคะแนน": "Separate with commas — leave blank to skip in scoring",
+  "ทักษะที่ต้องการ (ใช้คิดคะแนน match)": "Required skills (used for the match score)",
+  "ใส่คำพ้องคั่นด้วย": "Separate synonyms with",
+  "เช่น": "e.g.",
+  "— ระบบจะนับว่าพบทักษะถ้าเจอคำใดคำหนึ่ง": "— a skill counts as found if any of the words appears",
+  "ทักษะ / คำพ้อง": "Skill / synonyms",
+  "น้ำหนัก (1-5)": "Weight (1-5)",
+  "จำเป็น?": "Required?",
+  "＋ เพิ่มทักษะ": "＋ Add skill",
+  "✨ ดึงทักษะจาก JD/คุณสมบัติ": "✨ Pull skills from JD/qualifications",
+  "รายละเอียดงาน (JD) และคุณสมบัติผู้สมัคร": "Job description (JD) and qualifications",
+  "ใส่เป็นข้อความ หรือวางลิงก์ (URL) ก็ได้ — เก็บไว้อ้างอิงตอนคัดผู้สมัคร": "Enter text or paste a link (URL) — kept for reference while screening",
+  "คุณสมบัติผู้สมัคร (Qualifications)": "Qualifications",
+  "ยกเลิก": "Cancel",
+  "บันทึกตำแหน่ง": "Save job",
+  "เพิ่มผู้สมัครด้วยตนเอง": "Add candidate manually",
+  "ชื่อ-นามสกุล *": "Full name *",
+  "ตำแหน่งที่สมัคร *": "Job applied for *",
+  "โทรศัพท์": "Phone",
+  "เนื้อหา resume (วางข้อความเพื่อให้ระบบคิดคะแนน)": "Resume text (paste it so the system can score it)",
+  "บันทึกผู้สมัคร": "Save candidate",
+  "รายละเอียดผู้สมัคร": "Candidate details",
+  "ปิด": "Close",
+  "✉ ร่างอีเมลถึงผู้สมัคร": "✉ Draft email to candidate",
+  "ℹ️ ระบบเตรียม": "ℹ️ The system only prepares a",
+  "ร่าง": "draft",
+  "ให้เท่านั้น — ตรวจทานแล้วกด \"เปิดในโปรแกรมอีเมล\" เพื่อส่งด้วยตัวคุณเอง (ระบบไม่ส่งอีเมลแทน)": "— review it, then click \"Open in email app\" to send it yourself (the system never sends emails for you)",
+  "ถึง (อีเมล)": "To (email)",
+  "เทมเพลต": "Template",
+  "หัวข้อ": "Subject",
+  "ข้อความ": "Message",
+  "📋 คัดลอกข้อความ": "📋 Copy text",
+  "เปิดในโปรแกรมอีเมล (ยังไม่ส่ง)": "Open in email app (not sent yet)",
+  "⚙ ตั้งค่าเทมเพลตอีเมล": "⚙ Email templates",
+  "เพิ่ม แก้ไข หรือลบเทมเพลตให้ตรงกับกระบวนการของคุณ · ผูกเทมเพลตกับสถานะเพื่อให้ระบบเลือกให้อัตโนมัติ · ใช้": "Add, edit or delete templates to match your process · Link a template to a stage to have it picked automatically · Use",
+  "แทนค่าได้": "as placeholders",
+  "＋ เพิ่มเทมเพลต": "＋ Add template",
+  "↺ คืนค่าเริ่มต้น": "↺ Reset to defaults",
+  "ชื่อเทมเพลต *": "Template name *",
+  "ใช้เป็นค่าเริ่มต้นของสถานะ": "Default for stage",
+  "— ไม่ผูกสถานะ —": "— No stage —",
+  "บันทึกเทมเพลต": "Save template",
+  "⚙ ตั้งค่าหัวข้อประเมินสัมภาษณ์": "⚙ Interview scorecard criteria",
+  "หัวข้อชุดนี้ใช้กับทุกตำแหน่ง · น้ำหนัก 1–5 ยิ่งมากยิ่งมีผลต่อคะแนนรวม ·": "These criteria apply to every job · Weight 1–5: higher means more influence on the total ·",
+  "การแก้ไขมีผลกับใบที่ประเมินหลังจากนี้เท่านั้น": "Changes only apply to scorecards created from now on",
+  "คะแนนที่บันทึกไปแล้วจะไม่เปลี่ยน": "— saved scores do not change",
+  "＋ เพิ่มหัวข้อ": "＋ Add criterion",
+  "ที่มาของคะแนน": "How the score was calculated",
+  "กู้คืนข้อมูลจากไฟล์สำรอง JSON": "Restore data from a JSON backup file",
+  "Language / ภาษา": "Language / ภาษา",
+  "โหลดข้อมูลตัวอย่าง": "Load sample data",
+  "🔍 ค้นหาชื่อ อีเมล หรือทักษะ…": "🔍 Search name, email or skill…",
+  "เช่น Sales Engineer": "e.g. Sales Engineer",
+  "เช่น Sales & Marketing": "e.g. Sales & Marketing",
+  "เช่น engineering, วิศวกรรม": "e.g. engineering, mechanical",
+  "อ่านทักษะจากช่อง JD และคุณสมบัติด้านล่าง": "Read skills from the JD and qualifications fields below",
+  "วางเนื้อหา JD ของตำแหน่งนี้ (ข้อความ)": "Paste this job's description (text)",
+  "หรือวางลิงก์ JD — https://…": "or paste a JD link — https://…",
+  "คุณสมบัติ / เงื่อนไขของผู้สมัคร (ข้อความ)": "Candidate qualifications / requirements (text)",
+  "หรือวางลิงก์ — https://…": "or paste a link — https://…",
+  "เช่น Somchai Jaidee": "e.g. Somchai Jaidee",
+  "วางข้อความ resume ที่นี่ — ระบบจะสแกนทักษะและคิดคะแนน match อัตโนมัติ": "Paste the resume text here — skills are scanned and the match score is calculated automatically",
+  "เพิ่ม/แก้ไข/ลบเทมเพลต": "Add/edit/delete templates",
+  "เช่น ขอเอกสารเพิ่มเติม": "e.g. Request more documents",
+  "หัวข้ออีเมล — ใช้ {position} {company} ได้": "Email subject — {position} {company} allowed",
+  "⚠ บันทึกไม่สำเร็จ — พื้นที่จัดเก็บของ browser เต็ม ลอง Export CSV แล้วลบผู้สมัครเก่าออก": "⚠ Could not save — browser storage is full. Export CSV, then delete old candidates",
+  "ที่มาของคะแนน — คลิกดูรายละเอียด": "How the score was calculated — click for details",
+  "คะแนนสัมภาษณ์รอบล่าสุด": "Latest interview score",
+  "ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน จึงยังคิดคะแนนไม่ได้": "This job has no scoring criteria yet, so no score can be calculated",
+  "คะแนนรวม {n}/100": "Total score {n}/100",
+  "แต่ละส่วนคิดจากเกณฑ์ที่ตำแหน่งนี้กำหนดจริง แล้วปรับเป็นสัดส่วนเต็ม 100 — น้ำหนักเต็ม: <b>ทักษะ 60 · ประสบการณ์ 25 · การศึกษา 15</b> (ส่วนที่ตำแหน่งไม่ได้กำหนด จะไม่ถูกนำมาคิด)": "Each part uses only the criteria this job defines, then scales to 100 — full weights: <b>Skills 60 · Experience 25 · Education 15</b> (parts the job doesn't define are left out)",
+  "รวมได้ {earned} / {max} คะแนนเต็มที่ใช้ → คิดเป็น {score}/100": "Earned {earned} / {max} available points → {score}/100",
+  "ทักษะที่ตรวจ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)": "Skills checked (✓ found · ✗ missing required · faded = not found)",
+  "ข้อความ resume สั้นเกินไป — ประเมินไม่ได้": "Resume text too short — can't assess",
+  "ส่วนที่พบ: {parts}": "found in: {parts}",
+  "(ใช้ประกอบการพิจารณาเท่านั้น)": "(supporting info only)",
+  "🤖 ตรวจจับการใช้ AI เขียน resume": "🤖 AI-writing check",
+  "ประเมินจากสัญญาณในข้อความ (สำนวนที่ AI ใช้บ่อย ข้อความค้างจากแชตบอต placeholder และรูปแบบประโยค) ประมวลผลในเครื่องนี้เท่านั้น · <b>เป็นข้อมูลประกอบ ไม่ใช่หลักฐานชี้ขาด</b> และไม่มีผลกับคะแนน Match — การใช้ AI ช่วยเรียบเรียงไม่ได้แปลว่าข้อมูลเป็นเท็จ แนะนำให้ถามตัวอย่างงานจริงในส่วนที่ถูกระบุตอนสัมภาษณ์": "Based on signals in the text (common AI phrasing, chatbot leftovers, placeholders and sentence patterns), processed on this computer only · <b>Supporting information, not proof</b>, and it does not affect the match score — using AI to polish wording doesn't mean the content is false. Ask for real examples about the flagged parts in the interview",
+  "{n} ตัวอักษร ต้องมีอย่างน้อย {min}": "{n} {n|character|characters}, at least {min} needed",
+  "ข้อความค้างจากแชตบอต/placeholder {n}": "chatbot leftovers/placeholders: {n}",
+  "markdown ค้าง {n}": "markdown leftovers: {n}",
+  "สำนวน AI {n} คำ": "{n} AI {n|phrase|phrases}",
+  "ไม่พบสัญญาณ": "No signals found",
+  "{n} บรรทัดน่าสงสัย": "{n} flagged {n|line|lines}",
+  "…และอีก {n} บรรทัด": "…and {n} more {n|line|lines}",
+  "แยกตามส่วนของ resume (ระบบระบุส่วนอัตโนมัติจากหัวข้อ)": "By resume section (sections detected automatically from headings)",
+  "บรรทัดที่พบสัญญาณ": "Flagged lines",
+  "ไฮไลต์": "highlight",
+  "คำ/ข้อความที่เป็นสัญญาณ": "words/text that triggered a signal",
+  "ไม่มีบรรทัดที่เข้าเกณฑ์น่าสงสัย": "No lines met the flag threshold",
+  "จาก{section}": "From {section}",
+  "📝 ใส่คำถามที่เลือกลงฟอร์มสัมภาษณ์": "📝 Add selected questions to the interview form",
+  "เพิ่มเป็นผู้สมัครก่อน จึงจะใส่ลงฟอร์มสัมภาษณ์ได้": "Add as a candidate first to use the interview form",
+  "💬 คำถามสัมภาษณ์แนะนำ": "💬 Suggested interview questions",
+  "ให้ผู้สมัครเล่าตัวอย่างจริงด้วยคำพูดของตัวเองในส่วนที่พบสัญญาณ — ไม่ใช่การจับผิด ระบบสร้างจากเทมเพลตในเครื่อง": "Ask the candidate for real examples, in their own words, about the flagged parts — not a gotcha. Generated locally from templates",
+  "📋 คัดลอกคำถาม": "📋 Copy questions",
+  "เลือกคำถามอย่างน้อย 1 ข้อ": "Select at least 1 question",
+  "คำถามจากส่วนที่พบสัญญาณ AI:": "Questions from AI-flagged sections:",
+  "ใส่ {n} คำถามลงฟอร์มสัมภาษณ์แล้ว — ให้คะแนนแล้วกดบันทึก": "Added {n} {n|question|questions} to the interview form — rate, then save",
+  "คัดลอกคำถามแล้ว": "Questions copied",
+  "คัดลอกไม่สำเร็จ — ใช้ปุ่ม \"ใส่ลงฟอร์มสัมภาษณ์\" แทน": "Copy failed — use \"Add to the interview form\" instead",
+  "ไม่มีคะแนนรายชุด": "No per-test scores",
+  "☁ ผลสอบจากระบบ HMA Testing": "☁ Test results from HMA Testing",
+  "โหลด Firebase ไม่ได้ (ออฟไลน์ หรือถูก ad-blocker บล็อก) — แสดงผลสอบไม่ได้": "Could not load Firebase (offline or blocked by an ad-blocker) — test results unavailable",
+  "ล็อกอินด้วยบัญชี admin เดียวกับระบบสอบ เพื่อดึงผลสอบ (อ่านอย่างเดียว)": "Sign in with the same admin account as the testing system to load test results (read-only)",
+  "รหัสผ่าน": "Password",
+  "เข้าสู่ระบบ": "Sign in",
+  "ดึงผลสอบไม่สำเร็จ:": "Could not load test results:",
+  "ลองใหม่": "Retry",
+  "⏳ กำลังดึงผลสอบจาก cloud…": "⏳ Loading test results from the cloud…",
+  "เชื่อมต่อเป็น {email}": "Signed in as {email}",
+  "ออกจากระบบ cloud": "Sign out of cloud",
+  "ผู้สมัครไม่มีอีเมล — จับคู่ผลสอบไม่ได้ (ระบบ match ด้วยอีเมล)": "Candidate has no email — can't match test results (matching uses email)",
+  "ไม่พบผลสอบของ {email} ในระบบสอบ": "No test results found for {email}",
+  "…และอีก {n} ครั้ง": "…and {n} more {n|attempt|attempts}",
+  "บัญชีนี้ไม่มีสิทธิ์อ่าน (ตรวจ Firestore Rules)": "This account has no read access (check Firestore Rules)",
+  "กรอกอีเมลและรหัสผ่าน": "Enter email and password",
+  "⏳ กำลังเข้าสู่ระบบ…": "⏳ Signing in…",
+  "เข้าสู่ระบบไม่สำเร็จ:": "Sign-in failed:",
+  "อีเมลหรือรหัสผ่านไม่ถูกต้อง": "Incorrect email or password",
+  "⚠ ยังไม่ได้ตั้งค่า backup": "⚠ Backup not set up",
+  "📁 ตั้งค่า Backup": "📁 Set up backup",
+  "🔒 backup ยังไม่เปิดสำหรับ session นี้": "🔒 Backup not enabled for this session",
+  "🔓 เปิด Backup": "🔓 Enable backup",
+  "✓ สำรองล่าสุด {time}": "✓ Last backup {time}",
+  "⚠ เขียนไฟล์สำรองไม่สำเร็จ": "⚠ Could not write backup file",
+  "browser นี้ไม่รองรับ backup อัตโนมัติ": "This browser doesn't support automatic backup",
+  "⬇ สำรอง (JSON)": "⬇ Backup (JSON)",
+  "ดาวน์โหลดไฟล์สำรองแล้ว — เก็บไว้ใน OneDrive": "Backup downloaded — keep it in OneDrive",
+  "เปิดการสำรองอัตโนมัติแล้ว — แนะนำให้ไฟล์อยู่ในโฟลเดอร์ OneDrive": "Automatic backup enabled — keep the file in a OneDrive folder",
+  "สำรองข้อมูลแล้ว": "Backed up",
+  "รูปแบบไฟล์ไม่ถูกต้อง — ต้องเป็นไฟล์สำรองของ HMA ATS": "Invalid file — must be an HMA ATS backup",
+  "กู้คืนจากไฟล์สำรอง?": "Restore from backup?",
+  "ตำแหน่ง {jobs} · ผู้สมัคร {cands}": "Jobs {jobs} · Candidates {cands}",
+  "สำรองเมื่อ {when}": "Backed up {when}",
+  "ข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด": "All current data will be replaced",
+  "กู้คืนข้อมูลแล้ว": "Data restored",
+  "กู้คืนไม่สำเร็จ:": "Restore failed:",
+  "⚠ มีผู้สมัคร {n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด {years} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)": "⚠ {n} closed {n|candidate has|candidates have} been kept longer than the {years}-year PDPA retention period — please consider deleting them (including from backups and exported CSVs)",
+  "ไม่ทราบวันที่เข้าสถานะนี้ (ข้อมูลก่อนเริ่มบันทึกประวัติ)": "Date entered this stage unknown (recorded before stage history began)",
+  "วัน": "{n|day|days}",
+  "อยู่สถานะ {stage} เกิน {days} วัน": "In {stage} for more than {days} days",
+  "{n} วัน": "{n} {n|day|days}",
+  "⏳ มีผู้สมัคร {n} ราย ค้างอยู่สถานะเดิมเกิน {days} วัน:": "⏳ {n} {n|candidate has|candidates have} been in the same stage for more than {days} days:",
+  "ดูทั้งหมด": "Show all",
+  "อยู่ {n} วัน": "{n} {n|day|days}",
+  "ปัจจุบัน · {n} วันแล้ว": "current · {n} {n|day|days} so far",
+  "ไม่ทราบวันที่": "Date unknown",
+  "ประมาณจากข้อมูลก่อนเริ่มบันทึกประวัติ": "estimated from data before history began",
+  "🕒 ประวัติสถานะ": "🕒 Stage history",
+  "pdf.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)": "pdf.js hasn't loaded yet (internet needed for the CDN)",
+  "mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)": "mammoth.js hasn't loaded yet (internet needed for the CDN)",
+  "รองรับเฉพาะ .pdf .docx .txt": "Only .pdf .docx .txt are supported",
+  "กรุณาเลือกตำแหน่งงานก่อนสแกน — เพิ่มได้ที่แท็บ \"ตำแหน่งงาน\"": "Choose a job before scanning — add one in the \"Jobs\" tab",
+  "กำลังสแกน {n} ไฟล์…": "Scanning {n} {n|file|files}…",
+  "สแกนเสร็จแล้ว — ตรวจสอบผลก่อนเพิ่มเป็นผู้สมัคร": "Scan complete — check the results before adding candidates",
+  "⏳ กำลังประมวลผล…": "⏳ Processing…",
+  "อ่านไฟล์ไม่ได้": "Can't read file",
+  "ลบ": "Delete",
+  "ขาดทักษะจำเป็น:": "Missing required skills:",
+  "ขาดทักษะจำเป็น": "Missing required skills",
+  "✓ เพิ่มแล้ว": "✓ Added",
+  "＋ เพิ่ม": "＋ Add",
+  "ไม่พบชื่อ": "Name not found",
+  "รายละเอียด": "Details",
+  "(ไม่พบชื่อ — แก้ไขภายหลัง)": "(Name not found — edit later)",
+  "ตำแหน่งของรายการนี้ถูกลบไปแล้ว — กรุณาสแกนใหม่": "This item's job has been deleted — please scan again",
+  "เพิ่มผู้สมัครแล้ว": "Candidate added",
+  "ไม่มีรายการใหม่ให้เพิ่ม": "Nothing new to add",
+  "เพิ่มผู้สมัคร {n} คนแล้ว": "Added {n} {n|candidate|candidates}",
+  "🔗 เปิดลิงก์": "🔗 Open link",
+  "คุณสมบัติผู้สมัคร:": "Qualifications:",
+  "รายละเอียดตำแหน่ง ({title})": "Job details ({title})",
+  "น้ำหนัก ×{w}": "weight ×{w}",
+  "ใบนี้ไม่มีข้อมูลหัวข้อ": "This scorecard has no criteria data",
+  "{n} รอบ": "{n} {n|round|rounds}",
+  "ยังไม่ได้ประเมิน": "Not evaluated yet",
+  "ผลสัมภาษณ์": "Interview results",
+  "แก้ไข": "Edit",
+  "ยังไม่มีใบประเมิน": "No scorecards yet",
+  "＋ เพิ่มรอบสัมภาษณ์": "＋ Add interview round",
+  "⚙ ตั้งค่าหัวข้อประเมิน": "⚙ Scorecard criteria",
+  "ไม่ประเมินหัวข้อนี้": "Skip this criterion",
+  "ชื่อรอบ": "Round",
+  "เช่น สัมภาษณ์ HR": "e.g. HR interview",
+  "สัมภาษณ์ HR": "HR interview",
+  "สัมภาษณ์หัวหน้างาน": "Hiring manager interview",
+  "สัมภาษณ์ผู้บริหาร": "Executive interview",
+  "บันทึกย่อ": "Notes",
+  "คะแนนรวม:": "Total:",
+  "บันทึก": "Save",
+  "ให้คะแนนอย่างน้อย 1 หัวข้อก่อนบันทึก": "Rate at least 1 criterion before saving",
+  "บันทึกผลสัมภาษณ์แล้ว": "Interview result saved",
+  "ลบใบประเมินนี้?": "Delete this scorecard?",
+  "ลบใบประเมินแล้ว": "Scorecard deleted",
+  "น้ำหนัก": "Weight",
+  "ยังไม่มีหัวข้อ — กด \"เพิ่มหัวข้อ\"": "No criteria yet — click \"Add criterion\"",
+  "หัวข้อใหม่": "New criterion",
+  "ลบหัวข้อนี้? ใบที่ประเมินไปแล้วจะยังแสดงหัวข้อนี้ได้ตามเดิม": "Delete this criterion? Existing scorecards will still show it",
+  "คืนค่าหัวข้อทั้งหมดเป็นค่าเริ่มต้น?": "Reset all criteria to the defaults?",
+  "คืนค่าหัวข้อเริ่มต้นแล้ว": "Criteria reset to defaults",
+  "ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน": "This job has no scoring criteria yet",
+  "ข้อมูลที่ดึงได้": "Extracted details",
+  "{n} ปี (ประมาณจาก resume)": "{n} {n|yr|yrs} (estimated from resume)",
+  "ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)": "Skills (✓ found · ✗ missing required · faded = not found)",
+  "ตำแหน่งนี้ไม่ได้กำหนดทักษะ": "This job defines no skills",
+  "ข้อความ resume ที่ดึงได้ (ทั้งหมด)": "Extracted resume text (full)",
+  "ตรงกับทักษะที่ตั้งไว้": "matches a defined skill",
+  "(ว่าง)": "(empty)",
+  "(ระบบระบุอัตโนมัติ)": "(detected automatically)",
+  "ผลสแกน": "Scan result",
+  "— ยังไม่มีตำแหน่งเปิดรับ —": "— No open jobs yet —",
+  "ทักษะ {n} รายการ": "{n} {n|skill|skills}",
+  "ประสบการณ์ ≥ {n} ปี": "experience ≥ {n} {n|yr|yrs}",
+  "มีเกณฑ์การศึกษา": "has education criteria",
+  "เกณฑ์:": "Criteria:",
+  "น้ำหนัก {w}": "weight {w}",
+  "จำเป็น": "Required",
+  "มี JD แบบข้อความ": "JD provided as text",
+  "คุณสมบัติ": "Qualifications",
+  "มีคุณสมบัติแบบข้อความ": "Qualifications provided as text",
+  "{n} ปี": "{n} {n|yr|yrs}",
+  "เช่น Excel/Microsoft Excel": "e.g. Excel/Microsoft Excel",
+  "ไม่": "No",
+  "ลบทักษะ": "Remove skill",
+  "ไม่พบทักษะที่รู้จักใน JD/คุณสมบัติ — เพิ่มเองได้": "No known skills found in the JD/qualifications — add them yourself",
+  "ทักษะจาก JD มีอยู่ในรายการแล้ว": "Skills from the JD are already listed",
+  "เพิ่ม {n} ทักษะจาก JD แล้ว — ปรับน้ำหนัก/จำเป็นได้": "Added {n} {n|skill|skills} from the JD — adjust weight/required as needed",
+  "แก้ไขตำแหน่งงาน": "Edit job",
+  "กรุณาใส่ชื่อตำแหน่ง": "Please enter a job title",
+  "อัปเดตตำแหน่ง + คิดคะแนนผู้สมัครใหม่แล้ว": "Job updated and candidates rescored",
+  "เพิ่มตำแหน่งแล้ว": "Job added",
+  "ลบตำแหน่ง \"{title}\"?": "Delete job \"{title}\"?",
+  "ผู้สมัคร {n} คนของตำแหน่งนี้จะถูกลบด้วย": "{n} {n|candidate|candidates} for this job will also be deleted",
+  "ลบตำแหน่งแล้ว": "Job deleted",
+  "ขาด:": "Missing:",
+  "ดู": "View",
+  "ร่างอีเมล": "Draft email",
+  "อยู่สถานะนี้เกิน {days} วัน": "In this stage for more than {days} days",
+  "— ว่าง —": "— empty —",
+  "ลบผู้สมัคร \"{name}\"?": "Delete candidate \"{name}\"?",
+  "ลบผู้สมัครแล้ว": "Candidate deleted",
+  "กรุณาใส่ชื่อผู้สมัคร": "Please enter the candidate's name",
+  "กรุณาเลือกตำแหน่ง — เพิ่มตำแหน่งก่อนที่แท็บ \"ตำแหน่งงาน\"": "Please choose a job — add one first in the \"Jobs\" tab",
+  "ไม่มีผู้สมัครตรงกับตัวกรองที่เลือก": "No candidates match the current filters",
+  "ไม่มีข้อมูลให้ export": "Nothing to export",
+  "({n}/{total} ตามตัวกรอง)": "({n}/{total} matching filters)",
+  "Export ผู้สมัครแล้ว": "Candidates exported",
+  "รวมคะแนนสอบ": "includes test scores",
+  "ผลสอบไม่รวม (ยังไม่ login cloud)": "test scores not included (not signed in to cloud)",
+  "ยังไม่มีตำแหน่งงานให้ export": "No jobs to export yet",
+  "Export ตำแหน่งงานแล้ว": "Jobs exported",
+  "ผู้สมัครทั้งหมด": "Total candidates",
+  "ตำแหน่งเปิดรับ": "Open jobs",
+  "ตำแหน่งทั้งหมด": "Total jobs",
+  "คะแนน Match เฉลี่ย": "Average match score",
+  "ผู้สมัครคะแนน >= 70": "Candidates scoring >= 70",
+  "อยู่ระหว่างคัดเลือก": "In selection",
+  "รับเข้าทำงาน (Hired)": "Hired",
+  "ตำแหน่งงาน": "Job",
+  "จำนวนผู้สมัคร": "Candidates",
+  "คะแนนเฉลี่ย": "Average score",
+  "รับเข้าทำงาน": "Hired",
+  "สถานะ Pipeline": "Pipeline stage",
+  "จำนวน": "Count",
+  "ระยะเวลา (จากประวัติสถานะ)": "Timing (from stage history)",
+  "ค่า": "Value",
+  "วันเฉลี่ยจนรับเข้าทำงาน": "Average days to hire",
+  "จำนวนที่ใช้คำนวณ": "Sample size",
+  "ค้างสถานะเดิมเกิน {days} วัน": "In the same stage for more than {days} days",
+  "วันเฉลี่ยที่อยู่": "Average days",
+  "จำนวนครั้งที่นับ": "Times counted",
+  "ถูกคัดออกจากขั้นนี้": "Rejected from this stage",
+  "Export Dashboard แล้ว": "Dashboard exported",
+  "ที่ท่านสมัคร": "you applied for",
+  "— ไม่มีเทมเพลต —": "— No templates —",
+  "ผู้สมัครไม่มีอีเมล — กรอกช่อง \"ถึง\" ก่อนส่ง": "Candidate has no email — fill in \"To\" before sending",
+  "ยังไม่มีเทมเพลต": "No templates yet",
+  "เรียน คุณ{name}\n\n\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}": "Dear {name},\n\n\n\nBest regards,\nHuman Resources\n{company}",
+  "ต้องมีอย่างน้อย 1 เทมเพลต": "At least 1 template is required",
+  "ลบเทมเพลต \"{name}\"?": "Delete template \"{name}\"?",
+  "ลบเทมเพลตแล้ว": "Template deleted",
+  "กรุณาตั้งชื่อเทมเพลต": "Please name the template",
+  "บันทึกเทมเพลตแล้ว": "Template saved",
+  "เพิ่มเทมเพลตแล้ว": "Template added",
+  "คืนค่าเทมเพลตทั้งหมดเป็นค่าเริ่มต้น? เทมเพลตที่คุณแก้ไว้จะหายทั้งหมด": "Reset all templates to the defaults? Your edited templates will be lost",
+  "คืนค่าเทมเพลตเริ่มต้นแล้ว": "Templates reset to defaults",
+  "ดูรายชื่อ →": "View list →",
+  "+{recent} ใน 30 วันล่าสุด · {jobs} ตำแหน่งเปิดรับ": "+{recent} in the last 30 days · {jobs} open jobs",
+  "ยังไม่มีผู้สมัครในขั้น Screening–Offer": "No candidates in Screening–Offer yet",
+  "{p}% ของผู้สมัครทั้งหมด": "{p}% of all candidates",
+  "ยังไม่มีผู้สมัคร": "No candidates yet",
+  "คิดจาก {n} รายที่รับเข้าทำงาน": "Based on {n} {n|hire|hires}",
+  "จะแสดงเมื่อมีผู้สมัครรับเข้าทำงาน": "Shown once someone is hired",
+  "จากผู้สมัคร {n} ราย": "Across {n} {n|candidate|candidates}",
+  "ปานกลาง {n} ราย · ข้อมูลประกอบเท่านั้น": "{n} medium · supporting info only",
+  "⚠ ต้องติดตาม": "⚠ Needs follow-up",
+  "✓ ไม่มีค้าง": "✓ None stuck",
+  "ยังไม่ปิดเคส และอยู่สถานะเดิมนานเกินกำหนด": "Open cases in the same stage longer than the limit",
+  "จะเพิ่มข้อมูลตัวอย่างลงในข้อมูลปัจจุบัน ดำเนินการต่อ?": "Sample data will be added to your current data. Continue?",
+  "โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 4 ผู้สมัคร": "Sample data loaded — 2 jobs, 4 candidates",
+  "คัดลอกข้อความแล้ว": "Text copied",
+  "คัดลอกไม่สำเร็จ — เลือกข้อความในช่องแล้วกด Ctrl+C": "Copy failed — select the text and press Ctrl+C",
+  "Pipeline และผลลัพธ์": "Pipeline and outcomes",
+  "คุณภาพและสิ่งที่ต้องติดตาม": "Quality and follow-ups",
+  "เวลาเฉลี่ยจนรับเข้าทำงาน": "Average time to hire",
+  "คะแนน Match ≥ 70": "Match score ≥ 70",
+  "สัญญาณใช้ AI สูง": "High AI signal",
+  "ค้างสถานะเกิน {days} วัน": "Stuck over {days} days",
+  "ราย": "{n|person|people}",
+  "/ 100": "/ 100",
+  "โทร": "Phone",
+  "การศึกษา": "Education",
+  "🧑‍💼 ส่วนประสบการณ์ทำงาน": "🧑‍💼 Work experience section",
+  "🎓 ส่วนการศึกษา": "🎓 Education section",
+  "🛠 ส่วนทักษะ": "🛠 Skills section",
+  "ส่วนหัว / ข้อมูลติดต่อ": "Header / contact",
+  "สรุปประวัติ / Profile": "Summary / Profile",
+  "ประสบการณ์ทำงาน": "Work experience",
+  "สูง": "High",
+  "ปานกลาง": "Medium",
+  "มีสัญญาณใช้ AI บางส่วน": "Some AI signal",
+  "ต่ำ": "Low",
+  "สัญญาณใช้ AI ต่ำ": "Low AI signal",
+  "ประเมินไม่ได้": "N/A",
+  "ข้อความสั้นเกินไป — ประเมินไม่ได้": "Text too short — can't assess",
+  "ปริญญาเอก / PhD": "PhD",
+  "ปริญญาโท / Master": "Master's degree",
+  "ปริญญาตรี / Bachelor": "Bachelor's degree",
+  "ปวส. / Diploma": "Diploma (high vocational)",
+  "ปวช. / Vocational": "Vocational certificate",
+  "ข้อความที่ดึงได้สั้นมาก — ไฟล์อาจเป็นภาพสแกน (ไม่มี text layer)": "Very little text extracted — the file may be a scanned image (no text layer)",
+  "ไม่พบอีเมลใน resume": "No email found in the resume",
+  "อีเมลนี้มีอยู่ในระบบแล้ว (อาจซ้ำ)": "This email is already in the system (possible duplicate)",
+  "ไม่มีข้อความ resume — คะแนนเป็น 0": "No resume text — score is 0",
+  "ทักษะ (ถ่วงน้ำหนัก)": "Skills (weighted)",
+  "การศึกษา (คีย์เวิร์ด)": "Education (keywords)",
+  "พบคีย์เวิร์ดที่กำหนด": "Keyword found",
+  "ข้อความค้างจากแชตบอต": "Chatbot leftover text",
+  "ร่องรอย citation ของ ChatGPT": "ChatGPT citation marker",
+  "placeholder ที่ยังไม่ได้แทนค่า": "Unfilled placeholder",
+  "markdown ค้าง (** หรือ #)": "Markdown leftovers (** or #)",
+  "emoji นำหน้าบรรทัด": "Emoji at line start",
+  "ผลงานชิ้นไหนที่คุณภูมิใจที่สุด — ตั้งเป้าไว้อย่างไร คุณทำส่วนไหนเอง และผลลัพธ์เป็นตัวเลขเท่าไร": "Which achievement are you most proud of — what was the goal, which part did you do yourself, and what was the measurable result?",
+  "กระบวนการไหนที่คุณปรับให้ดีขึ้น — ก่อนและหลังปรับต่างกันอย่างไร และวัดผลอย่างไร": "Which process did you improve — what changed before vs. after, and how did you measure it?",
+  "เรื่องที่คุณริเริ่มหรือเป็นคนนำเอง — บทบาทของคุณคืออะไร ทีมกี่คน และคุณตัดสินใจเรื่องไหนด้วยตัวเอง": "Tell me about something you initiated or led — what was your role, how big was the team, and which decisions did you make yourself?",
+  "เครื่องมือหรือข้อมูลที่คุณใช้ในงานจริงคืออะไร — ยกตัวอย่างการตัดสินใจ 1 ครั้งที่มาจากข้อมูลนั้น": "What tools or data do you actually use in your work — give one example of a decision you made from that data",
+  "เล่าสถานการณ์ที่ทีมมีปัญหาหรือเห็นไม่ตรงกัน — คุณทำอะไร และผลเป็นอย่างไร": "Describe a time your team had a problem or disagreed — what did you do, and what was the outcome?",
+  "ปัญหาที่ยากที่สุดในงานล่าสุดคืออะไร — มีทางเลือกอะไรบ้าง และคุณเลือกทางไหนเพราะอะไร": "What was the hardest problem in your most recent job — what options did you have, and why did you choose the one you did?",
+  "อะไรทำให้สนใจงานนี้ที่ HMA โดยเฉพาะ — มีอะไรที่คุณทำเพิ่มเองนอกเหนือหน้าที่เพื่อพัฒนาเรื่องนี้": "What specifically interests you in this role at HMA — what have you done beyond your duties to develop in this area?",
+  "จากทักษะที่เขียนไว้ เลือก 2 อย่างที่ใช้บ่อยที่สุด — ใช้ล่าสุดเมื่อไหร่ ในงานอะไร": "Of the skills you listed, pick the 2 you use most — when did you last use them, and on what work?",
+  "resume ฉบับนี้เตรียมอย่างไร — ใช้เครื่องมือช่วยเขียนหรือไม่ และส่วนไหนที่คุณเขียนเอง": "How did you prepare this resume — did you use any writing tools, and which parts did you write yourself?",
+  "สรุปตัวเองด้วยคำพูดของคุณเองใน 1 นาที — จุดแข็ง 2 ข้อ พร้อมตัวอย่างงานจริงข้อละ 1 เรื่อง": "Summarise yourself in your own words in 1 minute — 2 strengths, each with one real work example",
+  "ความรู้ทางเทคนิค / ตรงสายงาน": "Technical knowledge / relevance",
+  "การสื่อสาร": "Communication",
+  "ทัศนคติ & ความรับผิดชอบ": "Attitude & responsibility",
+  "ความเหมาะสมกับทีม": "Team fit",
+  "การแก้ปัญหา": "Problem solving",
+};
+/* ข้อความที่มีตัวเลข/ข้อความแทรกซึ่งเก็บใน record หรือสร้างโดยบล็อก 1 — ใช้กับ tStored() เท่านั้น */
+const EN_PATTERNS = [
+  [/^พบ (\d+)\/(\d+) ทักษะ \(น้ำหนัก (\d+)\/(\d+)\)$/, 'Matched $1/$2 skills (weight $3/$4)'],
+  [/^(\d+) ปี \/ ต้องการ (\d+) ปี$/, '$1 yrs / $2 required'],
+  [/^ไม่พบคีย์เวิร์ด: (.*)$/, 'Keyword not found: $1'],
+  [/^สำนวนที่ AI ใช้บ่อย ×(\d+)$/, 'Common AI phrasing ×$1'],
+  [/^ใช้ em dash \(—\) ถี่ (\d+) ครั้ง$/, 'Frequent em dashes (—): $1'],
+  [/^ช่วยเล่างานที่เขียนว่า “([\s\S]*)” — ช่วงเวลา บทบาทของคุณเอง และผลลัพธ์ที่วัดได้$/, 'Tell me about the work you described as “$1” — when it was, your own role, and the measurable result'],
+  [/^ทักษะที่เขียนว่า “([\s\S]*)” — ใช้ล่าสุดเมื่อไหร่ ในงานอะไร ลองอธิบายหรือสาธิตสั้น ๆ$/, 'You listed “$1” — when did you last use it, and on what work? Please explain or briefly demonstrate'],
+  [/^ช่วยอธิบายส่วนที่เขียนว่า “([\s\S]*)” เพิ่มเติม — ยกตัวอย่างจริงประกอบ$/, 'Please expand on “$1” — with a real example'],
+];
+
 /* ── Storage ── */
 const ATS_KEY = 'hma_ats_v1';
 const EMAIL_COMPANY = 'Hino Motors Asia (HMA)';
@@ -1225,7 +1741,30 @@ const DEFAULT_EMAIL_TEMPLATES = [
     subject: 'ผลการพิจารณาใบสมัครตำแหน่ง {position} — {company}',
     body: `เรียน คุณ{name}\n\nขอบคุณที่ให้ความสนใจและสละเวลาสมัครตำแหน่ง {position} กับ {company}\nหลังจากพิจารณาอย่างรอบคอบแล้ว ในครั้งนี้เรายังไม่สามารถเสนอตำแหน่งดังกล่าวให้กับคุณได้\nเราประทับใจในคุณสมบัติของคุณ และจะเก็บข้อมูลไว้พิจารณาสำหรับตำแหน่งที่เหมาะสมในอนาคต (ตามระยะเวลาที่นโยบายกำหนด)\nขอให้คุณประสบความสำเร็จในการสมัครงานครั้งต่อไป\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}` },
 ];
-function seedEmailTemplates() { return DEFAULT_EMAIL_TEMPLATES.map(t => Object.assign({ id: uid('t') }, t)); }
+/* ค่าเริ่มต้นภาษาอังกฤษ — ใช้เมื่อสร้าง DB ใหม่หรือกด "คืนค่าเริ่มต้น" ตอนอยู่ในโหมด EN (เทมเพลตที่บันทึกแล้วไม่ถูกแปล) */
+const DEFAULT_EMAIL_TEMPLATES_EN = [
+  { stage: 'Applied', name: 'Application received',
+    subject: 'Application received: {position} — {company}',
+    body: `Dear {name},\n\nThank you for your interest in the {position} position at {company}.\nWe have received your application and are currently reviewing your qualifications.\nIf your application is shortlisted, our HR team will contact you as soon as possible.\n\nBest regards,\nHuman Resources\n{company}` },
+  { stage: 'Screening', name: 'Under review',
+    subject: 'Application update: {position} — {company}',
+    body: `Dear {name},\n\nThank you for your interest in the {position} position.\nYour application is currently being reviewed by our team. We will contact you if we need any further information or documents.\nThank you for your patience.\n\nBest regards,\nHuman Resources\n{company}` },
+  { stage: 'Interview', name: 'Interview invitation',
+    subject: 'Interview invitation: {position} — {company}',
+    body: `Dear {name},\n\nWe are pleased to let you know that your application has been shortlisted. {company} would like to invite you to an interview for the {position} position:\n\nDate: [date]\nTime: [time]\nFormat/Location: [e.g. at our head office or via video call]\n\nPlease reply to this email to confirm, or let us know if you need to reschedule.\n\nBest regards,\nHuman Resources\n{company}` },
+  { stage: 'Offer', name: 'Job offer',
+    subject: 'Job offer: {position} — {company}',
+    body: `Dear {name},\n\nWe are delighted to inform you that {company} would like to offer you the {position} position.\nDetails of the offer (salary, benefits and start date) will follow separately or are attached.\nPlease reply to confirm or ask any questions by [date].\n\nCongratulations again — we look forward to working with you.\n\nBest regards,\nHuman Resources\n{company}` },
+  { stage: 'Hired', name: 'Welcome aboard',
+    subject: 'Welcome to {company} — {position}',
+    body: `Dear {name},\n\nWelcome to the {company} family! We are delighted that you have accepted the {position} position.\nOur HR team will contact you with details about your start date, the documents to prepare and the orientation schedule.\nIf you have any questions, just reply to this email.\n\nBest regards,\nHuman Resources\n{company}` },
+  { stage: 'Rejected', name: 'Application outcome',
+    subject: 'Your application: {position} — {company}',
+    body: `Dear {name},\n\nThank you for your interest in the {position} position at {company} and for the time you took to apply.\nAfter careful consideration, we are unable to offer you the position on this occasion.\nWe were impressed by your qualifications and will keep your details on file for suitable future openings (for the period set by our policy).\nWe wish you every success in your job search.\n\nBest regards,\nHuman Resources\n{company}` },
+];
+function seedEmailTemplates() {
+  return (LANG === 'en' ? DEFAULT_EMAIL_TEMPLATES_EN : DEFAULT_EMAIL_TEMPLATES).map(tpl => Object.assign({ id: uid('t') }, tpl));
+}
 /* เกณฑ์ประเมินสัมภาษณ์ — ชุดกลางชุดเดียวใช้ทุกตำแหน่ง แก้ได้ในโมดัลตั้งค่า */
 const SC_DEFAULT_CRITERIA = [
   { id: 'c1', label: 'ความรู้ทางเทคนิค / ตรงสายงาน', weight: 3 },
@@ -1234,7 +1773,7 @@ const SC_DEFAULT_CRITERIA = [
   { id: 'c4', label: 'ความเหมาะสมกับทีม',              weight: 2 },
   { id: 'c5', label: 'การแก้ปัญหา',                   weight: 1 },
 ];
-function seedScorecardCriteria() { return SC_DEFAULT_CRITERIA.map(c => Object.assign({}, c)); }
+function seedScorecardCriteria() { return SC_DEFAULT_CRITERIA.map(c => Object.assign({}, c, { label: t(c.label) })); }   // ป้ายตามภาษาตอนสร้าง
 /* คิดคะแนนจากหัวข้อที่ให้คะแนนจริงเท่านั้น — หัวข้อที่เว้นไว้ถูกตัดออกทั้งเศษและส่วน
    คืน null เมื่อไม่มีหัวข้อไหนถูกให้คะแนนเลย (ต่างจาก 0 ซึ่งแปลว่า "ประเมินแล้วได้ศูนย์") */
 function calcScorecardTotal(ratings, criteria) {
@@ -1265,7 +1804,7 @@ function loadDB() {
 let DB = loadDB();
 function saveDB() {
   try { localStorage.setItem(ATS_KEY, JSON.stringify(DB)); }
-  catch (e) { toast('⚠ บันทึกไม่สำเร็จ — พื้นที่จัดเก็บของ browser เต็ม ลอง Export CSV แล้วลบผู้สมัครเก่าออก'); }
+  catch (e) { toast(t('⚠ บันทึกไม่สำเร็จ — พื้นที่จัดเก็บของ browser เต็ม ลอง Export CSV แล้วลบผู้สมัครเก่าออก')); }
   scheduleBackup();   // สำรองลงไฟล์เสมอ — ยิ่งจำเป็นเมื่อ localStorage เต็ม
 }
 function uid(p) { return (p || 'x') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -1296,7 +1835,7 @@ function scoreBar(n) {
 }
 /* คะแนน + ปุ่ม ! อธิบายที่มาของคะแนน (ใช้ทั้งตาราง/บอร์ด/ผลสแกน) */
 function scoreCell(id, score) {
-  return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(score)}<button class="info-btn" onclick="event.stopPropagation();showScoreInfo('${id}')" title="ที่มาของคะแนน — คลิกดูรายละเอียด">!</button></div>`;
+  return `<div style="display:flex; align-items:center; gap:6px">${scoreBar(score)}<button class="info-btn" onclick="event.stopPropagation();showScoreInfo('${id}')" title="${t('ที่มาของคะแนน — คลิกดูรายละเอียด')}">!</button></div>`;
 }
 /* คะแนนสัมภาษณ์รอบล่าสุด — ยังไม่ประเมินต้องเป็น "—" ไม่ใช่ 0
    (0 อ่านว่า "สัมภาษณ์แล้วได้ศูนย์" ซึ่งคนละความหมาย) */
@@ -1312,7 +1851,7 @@ function scorecardChip(c) {
   if (!sc || sc.total == null) return '';
   const cls = scoreClass(sc.total);
   const badge = cls === 'hi' ? 'pass' : cls === 'mid' ? 'pend' : 'fail';
-  return `<span class="badge ${badge}" title="คะแนนสัมภาษณ์รอบล่าสุด">🗣 ${sc.total}</span>`;
+  return `<span class="badge ${badge}" title="${t('คะแนนสัมภาษณ์รอบล่าสุด')}">🗣 ${sc.total}</span>`;
 }
 function findRecord(id) {
   return DB.candidates.find(x => x.id === id) || (typeof scanResults !== 'undefined' ? scanResults.find(x => x.id === id) : null) || null;
@@ -1325,30 +1864,32 @@ function scoreBreakdownHTML(r) {
     const pctv = b.max ? Math.round(b.pts / b.max * 100) : 0;
     const cls = scoreClass(pctv);
     return `<div class="break-row">
-      <b>${esc(b.label)}</b>
+      <b>${esc(tStored(b.label))}</b>
       <div>
-        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(b.detail)}</div>
+        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(tStored(b.detail))}</div>
         <div class="score-track"><div class="score-fill sc-${cls}" style="width:${pctv}%"></div></div>
       </div>
       <span class="break-pts">${b.pts.toFixed(1)} / ${b.max}</span>
     </div>`;
-  }).join('') || '<div class="hint">ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน จึงยังคิดคะแนนไม่ได้</div>';
+  }).join('') || '<div class="hint">' + t('ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน จึงยังคิดคะแนนไม่ได้') + '</div>';
   const matched = r.matched || [], missing = r.missing || [], missReq = r.missingRequired || [];
   const chips = [
     ...matched.map(s => `<span class="chip hit">✓ ${esc(s)}</span>`),
     ...missing.map(s => `<span class="chip miss ${missReq.includes(s) ? 'req' : ''}">${missReq.includes(s) ? '✗ ' : ''}${esc(s)}</span>`),
   ].join('');
   return `
-    <div style="font-size:16px; font-weight:800; margin-bottom:4px">คะแนนรวม ${r.score}/100</div>
-    <p class="hint" style="margin-bottom:12px">แต่ละส่วนคิดจากเกณฑ์ที่ตำแหน่งนี้กำหนดจริง แล้วปรับเป็นสัดส่วนเต็ม 100 — น้ำหนักเต็ม: <b>ทักษะ 60 · ประสบการณ์ 25 · การศึกษา 15</b> (ส่วนที่ตำแหน่งไม่ได้กำหนด จะไม่ถูกนำมาคิด)</p>
+    <div style="font-size:16px; font-weight:800; margin-bottom:4px">${t('คะแนนรวม {n}/100', { n: r.score })}</div>
+    <p class="hint" style="margin-bottom:12px">${t('แต่ละส่วนคิดจากเกณฑ์ที่ตำแหน่งนี้กำหนดจริง แล้วปรับเป็นสัดส่วนเต็ม 100 — น้ำหนักเต็ม: <b>ทักษะ 60 · ประสบการณ์ 25 · การศึกษา 15</b> (ส่วนที่ตำแหน่งไม่ได้กำหนด จะไม่ถูกนำมาคิด)')}</p>
     ${rows}
-    ${bd.length ? `<div style="margin-top:10px; text-align:right; font-weight:700">รวมได้ ${earned.toFixed(1)} / ${max} คะแนนเต็มที่ใช้ → คิดเป็น ${r.score}/100</div>` : ''}
-    ${(matched.length + missing.length) ? `<div class="section-title">ทักษะที่ตรวจ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div><div>${chips}</div>` : ''}`;
+    ${bd.length ? `<div style="margin-top:10px; text-align:right; font-weight:700">${t('รวมได้ {earned} / {max} คะแนนเต็มที่ใช้ → คิดเป็น {score}/100', { earned: earned.toFixed(1), max, score: r.score })}</div>` : ''}
+    ${(matched.length + missing.length) ? `<div class="section-title">${t('ทักษะที่ตรวจ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)')}</div><div>${chips}</div>` : ''}`;
 }
+let lastScoreInfoId = null;
 function showScoreInfo(id) {
   const r = findRecord(id);
   if (!r) return;
-  document.getElementById('scoreInfoTitle').textContent = 'ที่มาของคะแนน — ' + (r.name || r.fileName || '');
+  lastScoreInfoId = id;
+  document.getElementById('scoreInfoTitle').textContent = t('ที่มาของคะแนน') + ' — ' + (r.name || r.fileName || '');
   document.getElementById('scoreInfoBody').innerHTML = scoreBreakdownHTML(r);
   document.getElementById('scoreModalBg').classList.add('open');
 }
@@ -1369,10 +1910,10 @@ function aiOf(r) {
 }
 function aiBadge(r, compact) {
   const a = aiOf(r);
-  if (a.level === 'na') return '<span class="badge na" title="ข้อความ resume สั้นเกินไป — ประเมินไม่ได้">—</span>';
-  const parts = a.parts.map(k => AI_SECTION_LABELS[k] || k).join(', ');
-  const title = AI_LEVEL_TEXT[a.level].long + (parts ? ' — ส่วนที่พบ: ' + parts : '') + ' (ใช้ประกอบการพิจารณาเท่านั้น)';
-  return `<span class="badge ai-${a.level}" title="${esc(title)}">🤖 ${compact ? a.score : a.score + ' · ' + AI_LEVEL_TEXT[a.level].short}</span>`;
+  if (a.level === 'na') return '<span class="badge na" title="' + t('ข้อความ resume สั้นเกินไป — ประเมินไม่ได้') + '">—</span>';
+  const parts = a.parts.map(k => t(AI_SECTION_LABELS[k] || k)).join(', ');
+  const title = t(AI_LEVEL_TEXT[a.level].long) + (parts ? ' — ' + t('ส่วนที่พบ: {parts}', { parts }) : '') + ' ' + t('(ใช้ประกอบการพิจารณาเท่านั้น)');
+  return `<span class="badge ai-${a.level}" title="${esc(title)}">🤖 ${compact ? a.score : a.score + ' · ' + t(AI_LEVEL_TEXT[a.level].short)}</span>`;
 }
 /* ครอบคำที่เป็นสัญญาณด้วย <mark class="ai"> — escape ก่อนแล้วค่อยครอบ เหมือน highlightResume */
 function aiHighlightLine(text, terms) {
@@ -1383,45 +1924,43 @@ function aiHighlightLine(text, terms) {
 }
 function aiSectionHTML(r) {
   const d = detectAIWriting(r.resumeText || '');
-  const head = '<div class="section-title">🤖 ตรวจจับการใช้ AI เขียน resume</div>';
-  const note = `<p class="hint" style="margin-bottom:10px">ประเมินจากสัญญาณในข้อความ (สำนวนที่ AI ใช้บ่อย ข้อความค้างจากแชตบอต placeholder และรูปแบบประโยค)
-    ประมวลผลในเครื่องนี้เท่านั้น · <b>เป็นข้อมูลประกอบ ไม่ใช่หลักฐานชี้ขาด</b> และไม่มีผลกับคะแนน Match —
-    การใช้ AI ช่วยเรียบเรียงไม่ได้แปลว่าข้อมูลเป็นเท็จ แนะนำให้ถามตัวอย่างงานจริงในส่วนที่ถูกระบุตอนสัมภาษณ์</p>`;
-  if (d.level === 'na') return head + note + `<div class="hint">${AI_LEVEL_TEXT.na.long} (${d.chars} ตัวอักษร ต้องมีอย่างน้อย ${AI_MIN_CHARS})</div>`;
+  const head = `<div class="section-title">${t('🤖 ตรวจจับการใช้ AI เขียน resume')}</div>`;
+  const note = `<p class="hint" style="margin-bottom:10px">${t('ประเมินจากสัญญาณในข้อความ (สำนวนที่ AI ใช้บ่อย ข้อความค้างจากแชตบอต placeholder และรูปแบบประโยค) ประมวลผลในเครื่องนี้เท่านั้น · <b>เป็นข้อมูลประกอบ ไม่ใช่หลักฐานชี้ขาด</b> และไม่มีผลกับคะแนน Match — การใช้ AI ช่วยเรียบเรียงไม่ได้แปลว่าข้อมูลเป็นเท็จ แนะนำให้ถามตัวอย่างงานจริงในส่วนที่ถูกระบุตอนสัมภาษณ์')}</p>`;
+  if (d.level === 'na') return head + note + `<div class="hint">${t(AI_LEVEL_TEXT.na.long)} (${t('{n} ตัวอักษร ต้องมีอย่างน้อย {min}', { n: d.chars, min: AI_MIN_CHARS })})</div>`;
 
   const rows = d.sections.map(s => {
     const bits = [];
-    if (s.artifacts) bits.push(`ข้อความค้างจากแชตบอต/placeholder ${s.artifacts}`);
-    if (s.markdown) bits.push(`markdown ค้าง ${s.markdown}`);
-    if (s.phrases) bits.push(`สำนวน AI ${s.phrases} คำ`);
+    if (s.artifacts) bits.push(t('ข้อความค้างจากแชตบอต/placeholder {n}', { n: s.artifacts }));
+    if (s.markdown) bits.push(t('markdown ค้าง {n}', { n: s.markdown }));
+    if (s.phrases) bits.push(t('สำนวน AI {n} คำ', { n: s.phrases }));
     if (s.emoji) bits.push(`emoji bullet ${s.emoji}`);
     return `<div class="break-row">
-      <b>${esc(s.label)}</b>
+      <b>${esc(t(s.label))}</b>
       <div>
-        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(bits.join(' · ') || 'ไม่พบสัญญาณ')}${s.flagged ? ` · ${s.flagged} บรรทัดน่าสงสัย` : ''}</div>
+        <div style="color:var(--gray-500); font-size:12.5px; margin-bottom:3px">${esc(bits.join(' · ') || t('ไม่พบสัญญาณ'))}${s.flagged ? ' · ' + t('{n} บรรทัดน่าสงสัย', { n: s.flagged }) : ''}</div>
         <div class="score-track"><div class="score-fill ai-fill-${s.level}" style="width:${s.score}%"></div></div>
       </div>
-      <span class="break-pts"><span class="badge ai-${s.level}">${s.score} · ${AI_LEVEL_TEXT[s.level].short}</span></span>
+      <span class="break-pts"><span class="badge ai-${s.level}">${s.score} · ${t(AI_LEVEL_TEXT[s.level].short)}</span></span>
     </div>`;
   }).join('');
 
   const doc = d.docSignals.length
-    ? `<div style="margin-top:8px">${d.docSignals.map(x => `<span class="chip miss">${esc(x.label)} +${x.pts}</span>`).join('')}</div>` : '';
+    ? `<div style="margin-top:8px">${d.docSignals.map(x => `<span class="chip miss">${esc(tStored(x.label))} +${x.pts}</span>`).join('')}</div>` : '';
   // แสดงบรรทัดที่แรงสุด 15 บรรทัด แต่เรียงตามลำดับใน resume ให้อ่านต่อเนื่อง
   const shown = d.lines.slice().sort((a, b) => b.score - a.score).slice(0, 15).sort((a, b) => a.idx - b.idx);
   const lines = shown.map(l => `<div class="ai-line">
-      <div style="margin-bottom:3px"><span class="badge ai-${aiLevel(l.score)}">${esc(AI_SECTION_LABELS[l.section] || l.section)}</span>
-        ${l.reasons.map(x => `<span class="chip miss">${esc(x.label)}</span>`).join('')}</div>
+      <div style="margin-bottom:3px"><span class="badge ai-${aiLevel(l.score)}">${esc(t(AI_SECTION_LABELS[l.section] || l.section))}</span>
+        ${l.reasons.map(x => `<span class="chip miss">${esc(tStored(x.label))}</span>`).join('')}</div>
       <div>${aiHighlightLine(l.text, l.terms)}</div>
     </div>`).join('');
-  const more = d.lines.length > shown.length ? `<div class="hint">…และอีก ${d.lines.length - shown.length} บรรทัด</div>` : '';
+  const more = d.lines.length > shown.length ? `<div class="hint">${t('…และอีก {n} บรรทัด', { n: d.lines.length - shown.length })}</div>` : '';
 
   return `${head}${note}
-    <div style="margin-bottom:6px"><span class="badge ai-${d.level}" style="font-size:13px">🤖 ${d.score}/100 · ${AI_LEVEL_TEXT[d.level].long}</span></div>
-    <div class="hint" style="margin-bottom:4px">แยกตามส่วนของ resume (ระบบระบุส่วนอัตโนมัติจากหัวข้อ)</div>
+    <div style="margin-bottom:6px"><span class="badge ai-${d.level}" style="font-size:13px">🤖 ${d.score}/100 · ${t(AI_LEVEL_TEXT[d.level].long)}</span></div>
+    <div class="hint" style="margin-bottom:4px">${t('แยกตามส่วนของ resume (ระบบระบุส่วนอัตโนมัติจากหัวข้อ)')}</div>
     ${rows}${doc}
-    <div class="section-title">บรรทัดที่พบสัญญาณ <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="ai">ไฮไลต์</mark> = คำ/ข้อความที่เป็นสัญญาณ</span></div>
-    ${lines || '<div class="hint">ไม่มีบรรทัดที่เข้าเกณฑ์น่าสงสัย</div>'}${more}
+    <div class="section-title">${t('บรรทัดที่พบสัญญาณ')} <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="ai">${t('ไฮไลต์')}</mark> = ${t('คำ/ข้อความที่เป็นสัญญาณ')}</span></div>
+    ${lines || '<div class="hint">' + t('ไม่มีบรรทัดที่เข้าเกณฑ์น่าสงสัย') + '</div>'}${more}
     ${aiQuestionsHTML(r, d)}`;
 }
 /* คำถามสัมภาษณ์แนะนำ — ติ๊กเลือกแล้วใส่ลงบันทึกของฟอร์มประเมินสัมภาษณ์ (ผู้สมัครที่บันทึกแล้วเท่านั้น) */
@@ -1430,17 +1969,17 @@ function aiQuestionsHTML(r, d) {
   if (!qs.length) return '';
   const rows = qs.map((x, i) => `<label class="aiq-row">
       <input type="checkbox" class="aiq-pick" data-i="${i}" checked>
-      <span>${esc(x.q)}<div class="hint" style="margin-top:2px">จาก${esc(AI_SECTION_LABELS[x.section] || x.section)}: “${esc(aiQuote(x.basis))}”</div></span>
+      <span>${esc(tStored(x.q))}<div class="hint" style="margin-top:2px">${t('จาก{section}', { section: esc(t(AI_SECTION_LABELS[x.section] || x.section)) })}: “${esc(aiQuote(x.basis))}”</div></span>
     </label>`).join('');
   const insert = r.stage
-    ? '<button class="btn btn-secondary btn-sm" onclick="insertAiQuestions()">📝 ใส่คำถามที่เลือกลงฟอร์มสัมภาษณ์</button>'
-    : '<span class="hint">เพิ่มเป็นผู้สมัครก่อน จึงจะใส่ลงฟอร์มสัมภาษณ์ได้</span>';
-  return `<div class="section-title">💬 คำถามสัมภาษณ์แนะนำ</div>
-    <p class="hint" style="margin-bottom:6px">ให้ผู้สมัครเล่าตัวอย่างจริงด้วยคำพูดของตัวเองในส่วนที่พบสัญญาณ — ไม่ใช่การจับผิด ระบบสร้างจากเทมเพลตในเครื่อง</p>
+    ? `<button class="btn btn-secondary btn-sm" onclick="insertAiQuestions()">${t('📝 ใส่คำถามที่เลือกลงฟอร์มสัมภาษณ์')}</button>`
+    : `<span class="hint">${t('เพิ่มเป็นผู้สมัครก่อน จึงจะใส่ลงฟอร์มสัมภาษณ์ได้')}</span>`;
+  return `<div class="section-title">${t('💬 คำถามสัมภาษณ์แนะนำ')}</div>
+    <p class="hint" style="margin-bottom:6px">${t('ให้ผู้สมัครเล่าตัวอย่างจริงด้วยคำพูดของตัวเองในส่วนที่พบสัญญาณ — ไม่ใช่การจับผิด ระบบสร้างจากเทมเพลตในเครื่อง')}</p>
     <div id="aiQuestions">${rows}</div>
     <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
       ${insert}
-      <button class="btn btn-ghost btn-sm" onclick="copyAiQuestions()">📋 คัดลอกคำถาม</button>
+      <button class="btn btn-ghost btn-sm" onclick="copyAiQuestions()">${t('📋 คัดลอกคำถาม')}</button>
     </div>`;
 }
 function pickedAiQuestions() {
@@ -1449,10 +1988,10 @@ function pickedAiQuestions() {
   return [...document.querySelectorAll('#aiQuestions .aiq-pick')]
     .filter(b => b.checked).map(b => qs[Number(b.dataset.i)]).filter(Boolean);
 }
-function aiQuestionsText(list) { return list.map(x => '□ ' + x.q).join('\n'); }
+function aiQuestionsText(list) { return list.map(x => '□ ' + tStored(x.q)).join('\n'); }
 function insertAiQuestions() {
   const list = pickedAiQuestions();
-  if (!list.length) { toast('เลือกคำถามอย่างน้อย 1 ข้อ'); return; }
+  if (!list.length) { toast(t('เลือกคำถามอย่างน้อย 1 ข้อ')); return; }
   if (!currentDetail || !currentDetail.stage) return;
   // ถ้าฟอร์มเปิดอยู่แล้ว (อาจให้คะแนนไปบางส่วน) ห้าม refresh — จะล้างค่าที่ยังไม่บันทึก
   if (!document.getElementById('scNote')) {
@@ -1461,17 +2000,17 @@ function insertAiQuestions() {
     openScorecardForm();
   }
   const note = document.getElementById('scNote');
-  const block = 'คำถามจากส่วนที่พบสัญญาณ AI:\n' + aiQuestionsText(list);
+  const block = t('คำถามจากส่วนที่พบสัญญาณ AI:') + '\n' + aiQuestionsText(list);
   note.value = note.value.trim() ? note.value.trimEnd() + '\n\n' + block : block;
   note.rows = Math.min(14, note.value.split('\n').length + 1);
   note.scrollIntoView({ block: 'center' });
-  toast(`ใส่ ${list.length} คำถามลงฟอร์มสัมภาษณ์แล้ว — ให้คะแนนแล้วกดบันทึก`);
+  toast(t('ใส่ {n} คำถามลงฟอร์มสัมภาษณ์แล้ว — ให้คะแนนแล้วกดบันทึก', { n: list.length }));
 }
 async function copyAiQuestions() {
   const list = pickedAiQuestions();
-  if (!list.length) { toast('เลือกคำถามอย่างน้อย 1 ข้อ'); return; }
-  try { await navigator.clipboard.writeText(aiQuestionsText(list)); toast('คัดลอกคำถามแล้ว'); }
-  catch (e) { toast('คัดลอกไม่สำเร็จ — ใช้ปุ่ม "ใส่ลงฟอร์มสัมภาษณ์" แทน'); }
+  if (!list.length) { toast(t('เลือกคำถามอย่างน้อย 1 ข้อ')); return; }
+  try { await navigator.clipboard.writeText(aiQuestionsText(list)); toast(t('คัดลอกคำถามแล้ว')); }
+  catch (e) { toast(t('คัดลอกไม่สำเร็จ — ใช้ปุ่ม "ใส่ลงฟอร์มสัมภาษณ์" แทน')); }
 }
 
 /* ── ผลสอบจาก hma-testing-system (Firestore, read-only) — decision 0003 ──
@@ -1511,29 +2050,29 @@ function examResultHTML(rec) {
     }).join('');
   return `<div style="padding:8px 0; border-top:1px dashed var(--gray-200)">
     <div class="hint" style="margin-bottom:4px">${esc(rec.datetime || '')}${rec.position ? ' · ' + esc(rec.position) : ''}${rec.name ? ' · ' + esc(rec.name) : ''}</div>
-    ${chips || '<span class="hint">ไม่มีคะแนนรายชุด</span>'}</div>`;
+    ${chips || '<span class="hint">' + t('ไม่มีคะแนนรายชุด') + '</span>'}</div>`;
 }
 
 function cloudSectionHTML(r) {
-  const head = '<div class="section-title">☁ ผลสอบจากระบบ HMA Testing</div>';
-  if (!FB.db) return head + '<div class="hint">โหลด Firebase ไม่ได้ (ออฟไลน์ หรือถูก ad-blocker บล็อก) — แสดงผลสอบไม่ได้</div>';
+  const head = `<div class="section-title">${t('☁ ผลสอบจากระบบ HMA Testing')}</div>`;
+  if (!FB.db) return head + `<div class="hint">${t('โหลด Firebase ไม่ได้ (ออฟไลน์ หรือถูก ad-blocker บล็อก) — แสดงผลสอบไม่ได้')}</div>`;
   if (!FB.user) {
-    return head + `<div class="hint" style="margin-bottom:8px">ล็อกอินด้วยบัญชี admin เดียวกับระบบสอบ เพื่อดึงผลสอบ (อ่านอย่างเดียว)</div>
+    return head + `<div class="hint" style="margin-bottom:8px">${t('ล็อกอินด้วยบัญชี admin เดียวกับระบบสอบ เพื่อดึงผลสอบ (อ่านอย่างเดียว)')}</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <input id="fb_email" type="email" placeholder="admin email" style="padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900)">
-        <input id="fb_pass" type="password" placeholder="รหัสผ่าน" style="padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900)">
-        <button class="btn btn-secondary btn-sm" onclick="cloudLogin()">เข้าสู่ระบบ</button>
+        <input id="fb_pass" type="password" placeholder="${t('รหัสผ่าน')}" style="padding:7px 10px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900)">
+        <button class="btn btn-secondary btn-sm" onclick="cloudLogin()">${t('เข้าสู่ระบบ')}</button>
       </div><div class="hint" id="fb_login_err" style="color:var(--fail); margin-top:6px"></div>`;
   }
-  if (FB.error) return head + `<div class="hint" style="color:var(--fail)">ดึงผลสอบไม่สำเร็จ: ${esc(FB.error)}</div>
-    <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="fetchExamRecords(true)">ลองใหม่</button>`;
-  if (!FB.records) { fetchExamRecords(); return head + '<div class="hint">⏳ กำลังดึงผลสอบจาก cloud…</div>'; }
-  const foot = `<div class="hint" style="margin-top:8px">เชื่อมต่อเป็น ${esc(FB.user.email || '')} · ${FB.records.length} record · <a href="#" onclick="cloudLogout(); return false" style="color:var(--gray-400)">ออกจากระบบ cloud</a></div>`;
-  if (!r.email) return head + '<div class="hint">ผู้สมัครไม่มีอีเมล — จับคู่ผลสอบไม่ได้ (ระบบ match ด้วยอีเมล)</div>' + foot;
+  if (FB.error) return head + `<div class="hint" style="color:var(--fail)">${t('ดึงผลสอบไม่สำเร็จ:')} ${esc(FB.error)}</div>
+    <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="fetchExamRecords(true)">${t('ลองใหม่')}</button>`;
+  if (!FB.records) { fetchExamRecords(); return head + `<div class="hint">${t('⏳ กำลังดึงผลสอบจาก cloud…')}</div>`; }
+  const foot = `<div class="hint" style="margin-top:8px">${t('เชื่อมต่อเป็น {email}', { email: esc(FB.user.email || '') })} · ${FB.records.length} record · <a href="#" onclick="cloudLogout(); return false" style="color:var(--gray-400)">${t('ออกจากระบบ cloud')}</a></div>`;
+  if (!r.email) return head + `<div class="hint">${t('ผู้สมัครไม่มีอีเมล — จับคู่ผลสอบไม่ได้ (ระบบ match ด้วยอีเมล)')}</div>` + foot;
   const matches = matchTestResults(r.email, FB.records);
-  if (!matches.length) return head + `<div class="hint">ไม่พบผลสอบของ ${esc(r.email)} ในระบบสอบ</div>` + foot;
+  if (!matches.length) return head + `<div class="hint">${t('ไม่พบผลสอบของ {email} ในระบบสอบ', { email: esc(r.email) })}</div>` + foot;
   return head + matches.slice(0, 5).map(examResultHTML).join('') +
-    (matches.length > 5 ? `<div class="hint">…และอีก ${matches.length - 5} ครั้ง</div>` : '') + foot;
+    (matches.length > 5 ? `<div class="hint">${t('…และอีก {n} ครั้ง', { n: matches.length - 5 })}</div>` : '') + foot;
 }
 
 function refreshCloudSection() {
@@ -1551,7 +2090,7 @@ async function fetchExamRecords(force) {
     FB.records = qs.docs.map(d => { const { createdAt, ...rest } = d.data(); return rest; });
   } catch (e) {
     FB.error = e.code === 'permission-denied'
-      ? 'บัญชีนี้ไม่มีสิทธิ์อ่าน (ตรวจ Firestore Rules)' : (e.code || e.message);
+      ? t('บัญชีนี้ไม่มีสิทธิ์อ่าน (ตรวจ Firestore Rules)') : (e.code || e.message);
     FB.records = null;
   } finally {
     FB.fetching = false;
@@ -1562,13 +2101,13 @@ async function cloudLogin() {
   const email = document.getElementById('fb_email').value.trim();
   const pass = document.getElementById('fb_pass').value;
   const err = document.getElementById('fb_login_err');
-  if (!email || !pass) { err.textContent = 'กรอกอีเมลและรหัสผ่าน'; return; }
-  err.textContent = '⏳ กำลังเข้าสู่ระบบ…';
+  if (!email || !pass) { err.textContent = t('กรอกอีเมลและรหัสผ่าน'); return; }
+  err.textContent = t('⏳ กำลังเข้าสู่ระบบ…');
   try {
     await FB.auth.signInWithEmailAndPassword(email, pass);
     // onAuthStateChanged จะ refresh ส่วนผลสอบเอง
   } catch (e) {
-    err.textContent = 'เข้าสู่ระบบไม่สำเร็จ: ' + (e.code === 'auth/invalid-credential' ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : (e.code || e.message));
+    err.textContent = t('เข้าสู่ระบบไม่สำเร็จ:') + ' ' + (e.code === 'auth/invalid-credential' ? t('อีเมลหรือรหัสผ่านไม่ถูกต้อง') : (e.code || e.message));
   }
 }
 function cloudLogout() {
@@ -1628,11 +2167,11 @@ function renderBackupStatus(state) {
   const st = document.getElementById('backupStatus');
   const btn = document.getElementById('backupBtn');
   const map = {
-    off:        ['⚠ ยังไม่ได้ตั้งค่า backup', '📁 ตั้งค่า Backup'],
-    'need-perm':['🔒 backup ยังไม่เปิดสำหรับ session นี้', '🔓 เปิด Backup'],
-    ok:         [`✓ สำรองล่าสุด ${lastBackupAt ? lastBackupAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}`, '📁 Backup'],
-    error:      ['⚠ เขียนไฟล์สำรองไม่สำเร็จ', '📁 Backup'],
-    manual:     ['browser นี้ไม่รองรับ backup อัตโนมัติ', '⬇ สำรอง (JSON)'],
+    off:        [t('⚠ ยังไม่ได้ตั้งค่า backup'), t('📁 ตั้งค่า Backup')],
+    'need-perm':[t('🔒 backup ยังไม่เปิดสำหรับ session นี้'), t('🔓 เปิด Backup')],
+    ok:         [t('✓ สำรองล่าสุด {time}', { time: lastBackupAt ? lastBackupAt.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) : '' }), '📁 Backup'],
+    error:      [t('⚠ เขียนไฟล์สำรองไม่สำเร็จ'), '📁 Backup'],
+    manual:     [t('browser นี้ไม่รองรับ backup อัตโนมัติ'), t('⬇ สำรอง (JSON)')],
   };
   const [s, b] = map[state] || map.off;
   st.textContent = s; btn.textContent = b;
@@ -1658,7 +2197,7 @@ function downloadBackup() {
   a.href = URL.createObjectURL(new Blob([backupPayload()], { type: 'application/json' }));
   a.download = `hma-ats-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
-  toast('ดาวน์โหลดไฟล์สำรองแล้ว — เก็บไว้ใน OneDrive');
+  toast(t('ดาวน์โหลดไฟล์สำรองแล้ว — เก็บไว้ใน OneDrive'));
 }
 async function setupBackup() {
   try {
@@ -1668,7 +2207,7 @@ async function setupBackup() {
     });
     await idbSet('backupHandle', backupHandle);
     await writeBackup();
-    toast('เปิดการสำรองอัตโนมัติแล้ว — แนะนำให้ไฟล์อยู่ในโฟลเดอร์ OneDrive');
+    toast(t('เปิดการสำรองอัตโนมัติแล้ว — แนะนำให้ไฟล์อยู่ในโฟลเดอร์ OneDrive'));
   } catch (e) { /* ผู้ใช้กดยกเลิก picker */ }
 }
 async function onBackupClick() {
@@ -1680,7 +2219,7 @@ async function onBackupClick() {
     if (p !== 'granted') { renderBackupStatus('need-perm'); return; }
   }
   await writeBackup();
-  toast('สำรองข้อมูลแล้ว');
+  toast(t('สำรองข้อมูลแล้ว'));
 }
 async function initBackup() {
   if (!FSA_OK) { renderBackupStatus('manual'); return; }
@@ -1696,11 +2235,11 @@ async function initBackup() {
 /* ── Restore จากไฟล์สำรอง ── */
 function applyRestore(data) {
   if (!data || !Array.isArray(data.jobs) || !Array.isArray(data.candidates)) {
-    throw new Error('รูปแบบไฟล์ไม่ถูกต้อง — ต้องเป็นไฟล์สำรองของ HMA ATS');
+    throw new Error(t('รูปแบบไฟล์ไม่ถูกต้อง — ต้องเป็นไฟล์สำรองของ HMA ATS'));
   }
-  if (!confirm(`กู้คืนจากไฟล์สำรอง?\nตำแหน่ง ${data.jobs.length} · ผู้สมัคร ${data.candidates.length}` +
-    (data.savedAt ? `\nสำรองเมื่อ ${new Date(data.savedAt).toLocaleString('th-TH')}` : '') +
-    `\n\nข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด`)) return false;
+  if (!confirm(t('กู้คืนจากไฟล์สำรอง?') + '\n' + t('ตำแหน่ง {jobs} · ผู้สมัคร {cands}', { jobs: data.jobs.length, cands: data.candidates.length }) +
+    (data.savedAt ? '\n' + t('สำรองเมื่อ {when}', { when: new Date(data.savedAt).toLocaleString(locale()) }) : '') +
+    '\n\n' + t('ข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด'))) return false;
   // ไฟล์สำรองเก่า (ก่อนมี scorecardCriteria ใน backup) → ใช้หัวข้อเริ่มต้น
   // ใบประเมินที่บันทึกแล้วไม่กระทบ เพราะแต่ละใบถือ weightsUsed ของตัวเอง
   const nonEmpty = a => Array.isArray(a) && a.length;
@@ -1712,8 +2251,8 @@ function applyRestore(data) {
 }
 async function restoreFromFile(file) {
   try {
-    if (applyRestore(JSON.parse(await file.text()))) toast('กู้คืนข้อมูลแล้ว');
-  } catch (e) { toast('กู้คืนไม่สำเร็จ: ' + e.message); }
+    if (applyRestore(JSON.parse(await file.text()))) toast(t('กู้คืนข้อมูลแล้ว'));
+  } catch (e) { toast(t('กู้คืนไม่สำเร็จ:') + ' ' + e.message); }
 }
 
 /* ── Retention (PDPA) — decision 0004: แจ้งเตือนอย่างเดียว ไม่ลบอัตโนมัติ ── */
@@ -1729,7 +2268,7 @@ function renderRetentionNote() {
   const el = document.getElementById('retentionNote');
   const n = overdueCandidates().length;
   el.style.display = n ? '' : 'none';
-  if (n) el.textContent = `⚠ มีผู้สมัคร ${n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด ${RETENTION_YEARS} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)`;
+  if (n) el.textContent = t('⚠ มีผู้สมัคร {n} ราย ที่เคสปิดแล้วและเก็บเกินกำหนด {years} ปีตามนโยบาย PDPA — โปรดพิจารณาลบข้อมูล (รวมถึงในไฟล์สำรองและ CSV ที่เคย export)', { n, years: RETENTION_YEARS });
 }
 
 /* ── ประวัติการเปลี่ยนสถานะ — decision 0006 ──
@@ -1797,19 +2336,19 @@ function pipelineStats(cands) {
 function stageAgeHTML(c) {
   if (CLOSED_STAGES.includes(c.stage)) return '';
   const d = daysInStage(c);
-  if (d == null) return '<div class="hint" title="ไม่ทราบวันที่เข้าสถานะนี้ (ข้อมูลก่อนเริ่มบันทึกประวัติ)">— วัน</div>';
+  if (d == null) return `<div class="hint" title="${t('ไม่ทราบวันที่เข้าสถานะนี้ (ข้อมูลก่อนเริ่มบันทึกประวัติ)')}">— ${t('วัน')}</div>`;
   return isStuck(c)
-    ? `<span class="badge pend" title="อยู่สถานะ ${esc(c.stage)} เกิน ${STUCK_DAYS} วัน">⏳ ${d} วัน</span>`
-    : `<div class="hint">${d} วัน</div>`;
+    ? `<span class="badge pend" title="${t('อยู่สถานะ {stage} เกิน {days} วัน', { stage: esc(c.stage), days: STUCK_DAYS })}">⏳ ${t('{n} วัน', { n: d })}</span>`
+    : `<div class="hint">${t('{n} วัน', { n: d })}</div>`;
 }
 function renderStuckNote() {
   const el = document.getElementById('stuckNote');
   const list = stuckCandidates();
   el.style.display = list.length ? '' : 'none';
   if (!list.length) return;
-  const names = list.slice(0, 5).map(c => `${esc(c.name)} (${esc(c.stage)} ${daysInStage(c)} วัน)`).join(', ');
-  el.innerHTML = `⏳ มีผู้สมัคร ${list.length} ราย ค้างอยู่สถานะเดิมเกิน ${STUCK_DAYS} วัน: ${names}${list.length > 5 ? ' …' : ''}
-    <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="sortByStuck()">ดูทั้งหมด</button>`;
+  const names = list.slice(0, 5).map(c => `${esc(c.name)} (${esc(c.stage)} ${t('{n} วัน', { n: daysInStage(c) })})`).join(', ');
+  el.innerHTML = `${t('⏳ มีผู้สมัคร {n} ราย ค้างอยู่สถานะเดิมเกิน {days} วัน:', { n: list.length, days: STUCK_DAYS })} ${names}${list.length > 5 ? ' …' : ''}
+    <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="sortByStuck()">${t('ดูทั้งหมด')}</button>`;
 }
 function sortByStuck() { openCandidatesSortedBy('stuck'); }
 function stageHistoryHTML(c) {
@@ -1817,22 +2356,22 @@ function stageHistoryHTML(c) {
   const rows = h.map((e, i) => {
     const next = h[i + 1];
     const dur = next ? daysBetween(e.at, next.at) : (CLOSED_STAGES.includes(e.stage) ? null : daysBetween(e.at, Date.now()));
-    const durText = dur == null ? '' : next ? `อยู่ ${dur} วัน` : `ปัจจุบัน · ${dur} วันแล้ว`;
-    const when = e.at ? fmtDate(e.at) : '<span class="hint">ไม่ทราบวันที่</span>';
+    const durText = dur == null ? '' : next ? t('อยู่ {n} วัน', { n: dur }) : t('ปัจจุบัน · {n} วันแล้ว', { n: dur });
+    const when = e.at ? fmtDate(e.at) : `<span class="hint">${t('ไม่ทราบวันที่')}</span>`;
     return `<div class="tl-row">
       <span>${when}</span>
       <b>${esc(e.stage)}</b>
-      <span class="hint">${durText}${e.inferred ? ' · ประมาณจากข้อมูลก่อนเริ่มบันทึกประวัติ' : ''}</span>
+      <span class="hint">${durText}${e.inferred ? ' · ' + t('ประมาณจากข้อมูลก่อนเริ่มบันทึกประวัติ') : ''}</span>
     </div>`;
   }).join('');
-  return `<div class="section-title">🕒 ประวัติสถานะ</div><div>${rows}</div>`;
+  return `<div class="section-title">${t('🕒 ประวัติสถานะ')}</div><div>${rows}</div>`;
 }
 
 /* ── File text extraction ── */
 async function extractFileText(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith('.pdf')) {
-    if (!window.pdfjsLib) throw new Error('pdf.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
+    if (!window.pdfjsLib) throw new Error(t('pdf.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)'));
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const buf = await file.arrayBuffer();
     // isEvalSupported:false — กัน PDF ที่ฝัง code (CVE-2024-4367) เพราะไฟล์มาจากผู้สมัครภายนอก
@@ -1855,7 +2394,7 @@ async function extractFileText(file) {
     return out;
   }
   if (name.endsWith('.docx')) {
-    if (!window.mammoth) throw new Error('mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)');
+    if (!window.mammoth) throw new Error(t('mammoth.js ยังโหลดไม่เสร็จ (ต้องมีอินเทอร์เน็ตสำหรับ CDN)'));
     const buf = await file.arrayBuffer();
     const res = await mammoth.extractRawText({ arrayBuffer: buf });
     return res.value;
@@ -1863,18 +2402,18 @@ async function extractFileText(file) {
   if (name.endsWith('.txt')) {
     return await file.text();
   }
-  throw new Error('รองรับเฉพาะ .pdf .docx .txt');
+  throw new Error(t('รองรับเฉพาะ .pdf .docx .txt'));
 }
 
 /* ── Scan flow ── */
 async function handleFiles(fileList) {
   const jobId = document.getElementById('scanJob').value;
   const job = jobById(jobId);
-  if (!job) { toast('กรุณาเลือกตำแหน่งงานก่อนสแกน — เพิ่มได้ที่แท็บ "ตำแหน่งงาน"'); return; }
+  if (!job) { toast(t('กรุณาเลือกตำแหน่งงานก่อนสแกน — เพิ่มได้ที่แท็บ "ตำแหน่งงาน"')); return; }
 
   const files = Array.from(fileList);
   if (!files.length) return;
-  toast(`กำลังสแกน ${files.length} ไฟล์…`);
+  toast(t('กำลังสแกน {n} ไฟล์…', { n: files.length }));
 
   for (const f of files) {
     const row = { id: uid('s'), fileName: f.name, jobId, status: 'processing' };
@@ -1897,7 +2436,7 @@ async function handleFiles(fileList) {
     }
     renderScanTable();
   }
-  toast('สแกนเสร็จแล้ว — ตรวจสอบผลก่อนเพิ่มเป็นผู้สมัคร');
+  toast(t('สแกนเสร็จแล้ว — ตรวจสอบผลก่อนเพิ่มเป็นผู้สมัคร'));
 }
 
 function renderScanTable() {
@@ -1906,27 +2445,27 @@ function renderScanTable() {
   const body = document.getElementById('scanBody');
   body.innerHTML = scanResults.map(r => {
     if (r.status === 'processing') {
-      return `<tr><td>${esc(r.fileName)}</td><td colspan="6" style="color:var(--gray-400)">⏳ กำลังประมวลผล…</td><td></td></tr>`;
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="6" style="color:var(--gray-400)">${t('⏳ กำลังประมวลผล…')}</td><td></td></tr>`;
     }
     if (r.status === 'error') {
-      return `<tr><td>${esc(r.fileName)}</td><td colspan="6"><span class="badge fail">อ่านไฟล์ไม่ได้</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
-        <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button></td></tr>`;
+      return `<tr><td>${esc(r.fileName)}</td><td colspan="6"><span class="badge fail">${t('อ่านไฟล์ไม่ได้')}</span> <span style="color:var(--gray-400)">${esc(r.error)}</span></td>
+        <td><button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">${t('ลบ')}</button></td></tr>`;
     }
-    const warn = (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
-    const reqMiss = r.missingRequired.length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น: ${esc(r.missingRequired.join(', '))}">ขาดทักษะจำเป็น</span>` : '';
-    const added = r.added ? `<span class="badge pass">✓ เพิ่มแล้ว</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">＋ เพิ่ม</button>`;
+    const warn = (r.warnings && r.warnings.length) ? ` <span class="badge pend" title="${esc(r.warnings.map(tStored).join(' · '))}">⚠ ${r.warnings.length}</span>` : '';
+    const reqMiss = r.missingRequired.length ? ` <span class="badge fail" title="${t('ขาดทักษะจำเป็น:')} ${esc(r.missingRequired.join(', '))}">${t('ขาดทักษะจำเป็น')}</span>` : '';
+    const added = r.added ? `<span class="badge pass">${t('✓ เพิ่มแล้ว')}</span>` : `<button class="btn btn-primary btn-sm" onclick="addScanToCandidates('${r.id}')">${t('＋ เพิ่ม')}</button>`;
     return `<tr>
       <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis" title="${esc(r.fileName)}">${esc(r.fileName)}</td>
-      <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">ไม่พบชื่อ</span>'}</td>
+      <td class="name-cell">${esc(r.name) || '<span style="color:var(--gray-400)">' + t('ไม่พบชื่อ') + '</span>'}</td>
       <td>${esc(r.email) || '—'}</td>
       <td>${scoreCell(r.id, r.score)}</td>
       <td>${r.matched.length}/${r.matched.length + r.missing.length}${reqMiss}</td>
       <td>${aiBadge(r)}</td>
       <td>${warn || '<span class="badge pass">OK</span>'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" onclick="showScanDetail('${r.id}')">รายละเอียด</button>
+        <button class="btn btn-ghost btn-sm" onclick="showScanDetail('${r.id}')">${t('รายละเอียด')}</button>
         ${added}
-        <button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">ลบ</button>
+        <button class="btn btn-danger btn-sm" onclick="removeScan('${r.id}')">${t('ลบ')}</button>
       </td>
     </tr>`;
   }).join('');
@@ -1941,7 +2480,7 @@ function clearScan() { scanResults = []; renderScanTable(); }
 function makeCandidate(parsed, scored, extras) {
   const rec = Object.assign({
     id: uid('c'),
-    name: parsed.name || '(ไม่พบชื่อ — แก้ไขภายหลัง)',
+    name: parsed.name || t('(ไม่พบชื่อ — แก้ไขภายหลัง)'),
     email: parsed.email || '', phone: parsed.phone || '',
     jobId: '', source: 'scan', fileName: '',
     resumeText: parsed.resumeText || '',
@@ -1962,11 +2501,11 @@ function scanToCandidate(r) {
 function addScanToCandidates(id) {
   const r = scanResults.find(x => x.id === id);
   if (!r || r.status !== 'ok' || r.added) return;
-  if (!jobById(r.jobId)) { toast('ตำแหน่งของรายการนี้ถูกลบไปแล้ว — กรุณาสแกนใหม่'); return; }
+  if (!jobById(r.jobId)) { toast(t('ตำแหน่งของรายการนี้ถูกลบไปแล้ว — กรุณาสแกนใหม่')); return; }
   DB.candidates.push(scanToCandidate(r));
   r.added = true;
   saveDB(); renderAll();
-  toast('เพิ่มผู้สมัครแล้ว');
+  toast(t('เพิ่มผู้สมัครแล้ว'));
 }
 function addAllScans() {
   let n = 0;
@@ -1975,9 +2514,9 @@ function addAllScans() {
       DB.candidates.push(scanToCandidate(r)); r.added = true; n++;
     }
   });
-  if (!n) { toast('ไม่มีรายการใหม่ให้เพิ่ม'); return; }
+  if (!n) { toast(t('ไม่มีรายการใหม่ให้เพิ่ม')); return; }
   saveDB(); renderAll();
-  toast(`เพิ่มผู้สมัคร ${n} คนแล้ว`);
+  toast(t('เพิ่มผู้สมัคร {n} คนแล้ว', { n }));
 }
 
 /* ── Detail modal (scan result or saved candidate) ── */
@@ -2009,12 +2548,12 @@ function jobRefHTML(job) {
   if (!job) return '';
   const block = (label, text, url) => {
     if (!text && !safeUrl(url)) return '';
-    const link = safeUrl(url) ? ` <a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" style="color:var(--teal)">🔗 เปิดลิงก์</a>` : '';
+    const link = safeUrl(url) ? ` <a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" style="color:var(--teal)">${t('🔗 เปิดลิงก์')}</a>` : '';
     const body = text ? `<div class="resume-pre" style="max-height:120px; margin-top:4px">${esc(text)}</div>` : '';
     return `<div style="margin-bottom:6px"><b>${label}</b>${link}${body}</div>`;
   };
-  const html = block('JD:', job.jd, job.jdUrl) + block('คุณสมบัติผู้สมัคร:', job.quals, job.qualsUrl);
-  return html ? `<div class="section-title">รายละเอียดตำแหน่ง (${esc(job.title)})</div>${html}` : '';
+  const html = block('JD:', job.jd, job.jdUrl) + block(t('คุณสมบัติผู้สมัคร:'), job.quals, job.qualsUrl);
+  return html ? `<div class="section-title">${t('รายละเอียดตำแหน่ง ({title})', { title: esc(job.title) })}</div>${html}` : '';
 }
 
 /* ── Scorecard section (ในโมดัลรายละเอียดผู้สมัคร) ── */
@@ -2039,18 +2578,18 @@ function scorecardBreakdownHTML(s) {
     const r = s.ratings ? s.ratings[w.id] : undefined;
     return `<div class="break-row">
       <b>${esc(w.label)}</b>
-      <span class="hint">น้ำหนัก ×${w.weight}</span>
+      <span class="hint">${t('น้ำหนัก ×{w}', { w: w.weight })}</span>
       <span class="break-pts">${r == null ? '—' : r + ' / 5'}</span>
     </div>`;
-  }).join('') || '<div class="hint">ใบนี้ไม่มีข้อมูลหัวข้อ</div>';
+  }).join('') || '<div class="hint">' + t('ใบนี้ไม่มีข้อมูลหัวข้อ') + '</div>';
 }
 function scorecardSectionHTML(c) {
   const list = (c.scorecards || []);
   const sc = latestScorecard(c);
   const open = scOpen();
-  const summary = (sc && sc.total != null) ? `${sc.total} · ${list.length} รอบ` : 'ยังไม่ได้ประเมิน';
+  const summary = (sc && sc.total != null) ? `${sc.total} · ${t('{n} รอบ', { n: list.length })}` : t('ยังไม่ได้ประเมิน');
   const head = `<div class="section-title" style="cursor:pointer" onclick="toggleScSection()">
-      🗣 ผลสัมภาษณ์ — ${esc(summary)} ${open ? '▾' : '▸'}
+      🗣 ${t('ผลสัมภาษณ์')} — ${esc(summary)} ${open ? '▾' : '▸'}
     </div>`;
   if (!open) return head;
   const rows = list.slice().reverse().map(s => `
@@ -2061,18 +2600,18 @@ function scorecardSectionHTML(c) {
       </div>
       <div style="display:flex; align-items:center; gap:8px">
         ${s.total == null ? '—' : scoreBar(s.total)}
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editScorecard('${s.id}')">แก้ไข</button>
-        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteScorecard('${s.id}')">ลบ</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editScorecard('${s.id}')">${t('แก้ไข')}</button>
+        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteScorecard('${s.id}')">${t('ลบ')}</button>
       </div>
     </div>
     <div id="scd-${s.id}" class="sc-detail" style="display:none">${scorecardBreakdownHTML(s)}</div>`).join('')
-    || '<div class="hint">ยังไม่มีใบประเมิน</div>';
+    || '<div class="hint">' + t('ยังไม่มีใบประเมิน') + '</div>';
   return `${head}
     <div class="sc-list">${rows}</div>
     <div id="scForm"></div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
-      <button class="btn btn-secondary btn-sm" onclick="openScorecardForm()">＋ เพิ่มรอบสัมภาษณ์</button>
-      <button class="btn btn-ghost btn-sm" onclick="openCriteriaManager()">⚙ ตั้งค่าหัวข้อประเมิน</button>
+      <button class="btn btn-secondary btn-sm" onclick="openScorecardForm()">${t('＋ เพิ่มรอบสัมภาษณ์')}</button>
+      <button class="btn btn-ghost btn-sm" onclick="openCriteriaManager()">${t('⚙ ตั้งค่าหัวข้อประเมิน')}</button>
     </div>`;
 }
 let scEditId = null;
@@ -2098,25 +2637,25 @@ function scorecardFormHTML(id) {
       `<button type="button" class="sc-pill ${cur === n ? 'on' : ''}" data-crit="${w.id}" data-val="${n}" onclick="pickRating(this)">${n}</button>`).join('');
     return `<div class="sc-crit">
       <div><b>${esc(w.label)}</b> <span class="hint">×${w.weight}</span></div>
-      <div class="sc-pills">${pills}<button type="button" class="sc-pill skip ${cur == null ? 'on' : ''}" data-crit="${w.id}" data-val="" onclick="pickRating(this)" title="ไม่ประเมินหัวข้อนี้">—</button></div>
+      <div class="sc-pills">${pills}<button type="button" class="sc-pill skip ${cur == null ? 'on' : ''}" data-crit="${w.id}" data-val="" onclick="pickRating(this)" title="${t('ไม่ประเมินหัวข้อนี้')}">—</button></div>
     </div>`;
   }).join('');
   return `<div style="margin-top:12px; border-top:1px solid var(--gray-200); padding-top:12px">
-    <div class="field"><label>ชื่อรอบ</label>
-      <input id="scRound" list="scRoundList" value="${esc(ex ? ex.round : '')}" placeholder="เช่น สัมภาษณ์ HR">
+    <div class="field"><label>${t('ชื่อรอบ')}</label>
+      <input id="scRound" list="scRoundList" value="${esc(ex ? ex.round : '')}" placeholder="${t('เช่น สัมภาษณ์ HR')}">
       <datalist id="scRoundList">
-        <option value="สัมภาษณ์ HR"></option>
-        <option value="สัมภาษณ์หัวหน้างาน"></option>
-        <option value="สัมภาษณ์ผู้บริหาร"></option>
+        <option value="${t('สัมภาษณ์ HR')}"></option>
+        <option value="${t('สัมภาษณ์หัวหน้างาน')}"></option>
+        <option value="${t('สัมภาษณ์ผู้บริหาร')}"></option>
       </datalist>
     </div>
     ${rows}
-    <div class="field"><label>บันทึกย่อ</label><textarea id="scNote" rows="2">${esc(ex ? ex.note : '')}</textarea></div>
+    <div class="field"><label>${t('บันทึกย่อ')}</label><textarea id="scNote" rows="2">${esc(ex ? ex.note : '')}</textarea></div>
     <div style="display:flex; align-items:center; gap:10px; margin-top:8px">
-      <b>คะแนนรวม: <span id="scTotal">—</span></b>
+      <b>${t('คะแนนรวม:')} <span id="scTotal">—</span></b>
       <span style="flex:1"></span>
-      <button class="btn btn-primary btn-sm" onclick="saveScorecard()">บันทึก</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeScorecardForm()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="saveScorecard()">${t('บันทึก')}</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeScorecardForm()">${t('ยกเลิก')}</button>
     </div>
   </div>`;
 }
@@ -2147,8 +2686,8 @@ function saveScorecard() {
   const crit = scFormCriteria();
   const ratings = readScForm();
   const total = calcScorecardTotal(ratings, crit);
-  if (total == null) { toast('ให้คะแนนอย่างน้อย 1 หัวข้อก่อนบันทึก'); return; }
-  const round = (document.getElementById('scRound').value || '').trim() || 'สัมภาษณ์';
+  if (total == null) { toast(t('ให้คะแนนอย่างน้อย 1 หัวข้อก่อนบันทึก')); return; }
+  const round = (document.getElementById('scRound').value || '').trim() || t('สัมภาษณ์');
   const note  = (document.getElementById('scNote').value || '').trim();
   const c = currentDetail;
   if (!Array.isArray(c.scorecards)) c.scorecards = [];
@@ -2165,15 +2704,15 @@ function saveScorecard() {
   saveDB();
   refreshScorecardSection();
   renderCandidates();
-  toast('บันทึกผลสัมภาษณ์แล้ว');
+  toast(t('บันทึกผลสัมภาษณ์แล้ว'));
 }
 function deleteScorecard(id) {
-  if (!confirm('ลบใบประเมินนี้?')) return;
+  if (!confirm(t('ลบใบประเมินนี้?'))) return;
   currentDetail.scorecards = (currentDetail.scorecards || []).filter(s => s.id !== id);
   saveDB();
   refreshScorecardSection();
   renderCandidates();
-  toast('ลบใบประเมินแล้ว');
+  toast(t('ลบใบประเมินแล้ว'));
 }
 
 /* ── Scorecard criteria manager ──
@@ -2189,14 +2728,14 @@ function renderCriteriaList() {
       <input value="${esc(c.label)}" style="flex:1; min-width:180px"
              onchange="updateCriterion('${c.id}', 'label', this.value)">
       <div style="display:flex; align-items:center; gap:6px">
-        <span class="hint">น้ำหนัก</span>
+        <span class="hint">${t('น้ำหนัก')}</span>
         <select onchange="updateCriterion('${c.id}', 'weight', Number(this.value))"
                 style="padding:5px 8px; border:1px solid var(--gray-300); border-radius:var(--radius); background:var(--white); color:var(--gray-900); font-size:12px">
           ${[1, 2, 3, 4, 5].map(n => `<option ${c.weight === n ? 'selected' : ''}>${n}</option>`).join('')}
         </select>
-        <button class="btn btn-danger btn-sm" onclick="deleteCriterion('${c.id}')">ลบ</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCriterion('${c.id}')">${t('ลบ')}</button>
       </div>
-    </div>`).join('') || '<div class="hint">ยังไม่มีหัวข้อ — กด "เพิ่มหัวข้อ"</div>';
+    </div>`).join('') || '<div class="hint">' + t('ยังไม่มีหัวข้อ — กด "เพิ่มหัวข้อ"') + '</div>';
 }
 function updateCriterion(id, field, value) {
   const c = DB.scorecardCriteria.find(x => x.id === id);
@@ -2207,73 +2746,73 @@ function updateCriterion(id, field, value) {
   refreshScorecardSection();
 }
 function addCriterion() {
-  DB.scorecardCriteria.push({ id: uid('cr'), label: 'หัวข้อใหม่', weight: 1 });
+  DB.scorecardCriteria.push({ id: uid('cr'), label: t('หัวข้อใหม่'), weight: 1 });
   saveDB();
   renderCriteriaList();
   refreshScorecardSection();
 }
 function deleteCriterion(id) {
-  if (!confirm('ลบหัวข้อนี้? ใบที่ประเมินไปแล้วจะยังแสดงหัวข้อนี้ได้ตามเดิม')) return;
+  if (!confirm(t('ลบหัวข้อนี้? ใบที่ประเมินไปแล้วจะยังแสดงหัวข้อนี้ได้ตามเดิม'))) return;
   DB.scorecardCriteria = DB.scorecardCriteria.filter(x => x.id !== id);
   saveDB();
   renderCriteriaList();
   refreshScorecardSection();
 }
 function resetCriteria() {
-  if (!confirm('คืนค่าหัวข้อทั้งหมดเป็นค่าเริ่มต้น?')) return;
+  if (!confirm(t('คืนค่าหัวข้อทั้งหมดเป็นค่าเริ่มต้น?'))) return;
   DB.scorecardCriteria = seedScorecardCriteria();
   saveDB();
   renderCriteriaList();
   refreshScorecardSection();
-  toast('คืนค่าหัวข้อเริ่มต้นแล้ว');
+  toast(t('คืนค่าหัวข้อเริ่มต้นแล้ว'));
 }
 function detailHTML(r) {
   const job = jobById(r.jobId);
   const warn = (r.warnings && r.warnings.length)
-    ? `<div class="warn-box">⚠ ${r.warnings.map(esc).join('<br>⚠ ')}</div>` : '';
+    ? `<div class="warn-box">⚠ ${r.warnings.map(w => esc(tStored(w))).join('<br>⚠ ')}</div>` : '';
   const chips = [
     ...r.matched.map(s => `<span class="chip hit">✓ ${esc(s)}</span>`),
     ...r.missing.map(s => `<span class="chip miss ${r.missingRequired.includes(s) ? 'req' : ''}">${r.missingRequired.includes(s) ? '✗ ' : ''}${esc(s)}</span>`),
   ].join('');
   const rows = (r.breakdown || []).map(b => `
     <div class="break-row">
-      <b>${esc(b.label)}</b>
-      <span style="color:var(--gray-500)">${esc(b.detail)}</span>
+      <b>${esc(tStored(b.label))}</b>
+      <span style="color:var(--gray-500)">${esc(tStored(b.detail))}</span>
       <span class="break-pts">${b.pts.toFixed(1)} / ${b.max}</span>
-    </div>`).join('') || '<div style="color:var(--gray-400)">ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน</div>';
+    </div>`).join('') || '<div style="color:var(--gray-400)">' + t('ตำแหน่งนี้ยังไม่ได้กำหนดเกณฑ์คะแนน') + '</div>';
   return `
     ${warn}
     <div class="grid2">
-      <div><div class="section-title" style="margin-top:0">ข้อมูลที่ดึงได้</div>
+      <div><div class="section-title" style="margin-top:0">${t('ข้อมูลที่ดึงได้')}</div>
         <table class="kv">${[
           ['ชื่อ', `<span class="name-cell">${esc(r.name) || '—'}</span>`],
           ['อีเมล', esc(r.email) || '—'],
           ['โทร', esc(r.phone) || '—'],
-          ['ประสบการณ์', `${r.expYears || 0} ปี (ประมาณจาก resume)`],
-          ['การศึกษา', esc(r.education) || '—'],
+          ['ประสบการณ์', t('{n} ปี (ประมาณจาก resume)', { n: r.expYears || 0 })],
+          ['การศึกษา', esc(tStored(r.education)) || '—'],
           ['ตำแหน่ง', esc(job ? job.title : '—')],
-        ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>
+        ].map(([k, v]) => `<tr><td>${t(k)}</td><td>${v}</td></tr>`).join('')}</table>
       </div>
-      <div><div class="section-title" style="margin-top:0">คะแนน Match — ${r.score}/100</div>${rows}</div>
+      <div><div class="section-title" style="margin-top:0">${t('คะแนน Match')} — ${r.score}/100</div>${rows}</div>
     </div>
-    <div class="section-title">ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)</div>
-    <div>${chips || '<span style="color:var(--gray-400)">ตำแหน่งนี้ไม่ได้กำหนดทักษะ</span>'}</div>
+    <div class="section-title">${t('ทักษะ (✓ พบ · ✗ ขาดทักษะจำเป็น · จาง = ไม่พบ)')}</div>
+    <div>${chips || '<span style="color:var(--gray-400)">' + t('ตำแหน่งนี้ไม่ได้กำหนดทักษะ') + '</span>'}</div>
     ${jobRefHTML(job)}
     ${aiSectionHTML(r)}
-    ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">✉ ร่างอีเมลถึงผู้สมัคร</button></div>` : ''}
+    ${r.stage ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEmailDraft('${r.id}')">${t('✉ ร่างอีเมลถึงผู้สมัคร')}</button></div>` : ''}
     <div id="cloudSection">${cloudSectionHTML(r)}</div>
     ${r.stage ? stageHistoryHTML(r) : ''}
     ${r.stage ? `<div id="scSection">${scorecardSectionHTML(r)}</div>` : ''}
     ${sectionsHTML(r.sections || extractSections(r.resumeText || ''), r.matched)}
-    <div class="section-title">ข้อความ resume ที่ดึงได้ (ทั้งหมด) <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">ไฮไลต์</mark> = ตรงกับทักษะที่ตั้งไว้</span></div>
-    <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || '(ว่าง)'}</div>`;
+    <div class="section-title">${t('ข้อความ resume ที่ดึงได้ (ทั้งหมด)')} <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="hl">${t('ไฮไลต์')}</mark> = ${t('ตรงกับทักษะที่ตั้งไว้')}</span></div>
+    <div class="resume-pre">${highlightResume(r.resumeText, r.matched) || t('(ว่าง)')}</div>`;
 }
 function sectionsHTML(sections, matched) {
   if (!sections) return '';
   const labels = { experience: '🧑‍💼 ส่วนประสบการณ์ทำงาน', education: '🎓 ส่วนการศึกษา', skills: '🛠 ส่วนทักษะ' };
   const out = ['experience', 'education', 'skills']
     .filter(k => sections[k])
-    .map(k => `<div class="section-title">${labels[k]} <span style="font-weight:500; text-transform:none; letter-spacing:0">(ระบบระบุอัตโนมัติ)</span></div>
+    .map(k => `<div class="section-title">${t(labels[k])} <span style="font-weight:500; text-transform:none; letter-spacing:0">${t('(ระบบระบุอัตโนมัติ)')}</span></div>
       <div class="resume-pre" style="max-height:140px">${highlightResume(sections[k], matched)}</div>`)
     .join('');
   return out;
@@ -2282,7 +2821,7 @@ function showScanDetail(id) {
   const r = scanResults.find(x => x.id === id);
   if (!r) return;
   currentDetail = r;
-  document.getElementById('detailTitle').textContent = 'ผลสแกน — ' + (r.name || r.fileName);
+  document.getElementById('detailTitle').textContent = t('ผลสแกน') + ' — ' + (r.name || r.fileName);
   document.getElementById('detailBody').innerHTML = detailHTML(r);
   document.getElementById('detailModalBg').classList.add('open');
 }
@@ -2301,16 +2840,17 @@ function renderJobSelects() {
   const opts = open.map(j => `<option value="${j.id}">${esc(j.title)}${j.dept ? ' — ' + esc(j.dept) : ''}</option>`).join('');
   const scanSel = document.getElementById('scanJob');
   const cur = scanSel.value;
-  scanSel.innerHTML = open.length ? opts : '<option value="">— ยังไม่มีตำแหน่งเปิดรับ —</option>';
+  const none = `<option value="">${t('— ยังไม่มีตำแหน่งเปิดรับ —')}</option>`;
+  scanSel.innerHTML = open.length ? opts : none;
   if (open.some(j => j.id === cur)) scanSel.value = cur;
   updateScanJobInfo();
 
   const candSel = document.getElementById('c_job');
-  candSel.innerHTML = open.length ? opts : '<option value="">— ยังไม่มีตำแหน่งเปิดรับ —</option>';
+  candSel.innerHTML = open.length ? opts : none;
 
   const filt = document.getElementById('candJobFilter');
   const fcur = filt.value;
-  filt.innerHTML = '<option value="">ทุกตำแหน่ง</option>' + DB.jobs.map(j => `<option value="${j.id}">${esc(j.title)}</option>`).join('');
+  filt.innerHTML = `<option value="">${t('ทุกตำแหน่ง')}</option>` + DB.jobs.map(j => `<option value="${j.id}">${esc(j.title)}</option>`).join('');
   filt.value = fcur;
   if (filt.value !== fcur) filt.value = '';   // ตำแหน่งที่ filter อยู่ถูกลบไปแล้ว → กลับเป็น "ทุกตำแหน่ง"
 }
@@ -2318,10 +2858,10 @@ function updateScanJobInfo() {
   const j = jobById(document.getElementById('scanJob').value);
   const el = document.getElementById('scanJobInfo');
   if (!j) { el.textContent = ''; return; }
-  const parts = [`ทักษะ ${j.skills.length} รายการ`];
-  if (Number(j.minExp) > 0) parts.push(`ประสบการณ์ ≥ ${j.minExp} ปี`);
-  if ((j.eduKeywords || '').trim()) parts.push('มีเกณฑ์การศึกษา');
-  el.textContent = 'เกณฑ์: ' + parts.join(' · ');
+  const parts = [t('ทักษะ {n} รายการ', { n: j.skills.length })];
+  if (Number(j.minExp) > 0) parts.push(t('ประสบการณ์ ≥ {n} ปี', { n: j.minExp }));
+  if ((j.eduKeywords || '').trim()) parts.push(t('มีเกณฑ์การศึกษา'));
+  el.textContent = t('เกณฑ์:') + ' ' + parts.join(' · ');
 }
 
 function renderJobs() {
@@ -2332,22 +2872,22 @@ function renderJobs() {
     const nCand = DB.candidates.filter(c => c.jobId === j.id).length;
     const skills = j.skills.map(s => {
       const nm = skillSynonyms(s.name)[0] || s.name;
-      return `<span class="chip ${s.required ? 'hit' : 'miss'}" title="น้ำหนัก ${s.weight}${s.required ? ' · จำเป็น' : ''}">${esc(nm)}${s.required ? ' *' : ''}</span>`;
+      return `<span class="chip ${s.required ? 'hit' : 'miss'}" title="${t('น้ำหนัก {w}', { w: s.weight })}${s.required ? ' · ' + t('จำเป็น') : ''}">${esc(nm)}${s.required ? ' *' : ''}</span>`;
     }).join('');
     const links = [
-      safeUrl(j.jdUrl) ? `<a href="${esc(safeUrl(j.jdUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 JD</a>` : (j.jd ? '<span class="hint" title="มี JD แบบข้อความ">📄 JD</span>' : ''),
-      safeUrl(j.qualsUrl) ? `<a href="${esc(safeUrl(j.qualsUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 คุณสมบัติ</a>` : (j.quals ? '<span class="hint" title="มีคุณสมบัติแบบข้อความ">📄 คุณสมบัติ</span>' : ''),
+      safeUrl(j.jdUrl) ? `<a href="${esc(safeUrl(j.jdUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 JD</a>` : (j.jd ? `<span class="hint" title="${t('มี JD แบบข้อความ')}">📄 JD</span>` : ''),
+      safeUrl(j.qualsUrl) ? `<a href="${esc(safeUrl(j.qualsUrl))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--teal)">🔗 ${t('คุณสมบัติ')}</a>` : (j.quals ? `<span class="hint" title="${t('มีคุณสมบัติแบบข้อความ')}">📄 ${t('คุณสมบัติ')}</span>` : ''),
     ].filter(Boolean).join(' · ');
     return `<tr>
       <td class="name-cell">${esc(j.title)}${links ? `<div class="hint" style="margin-top:3px">${links}</div>` : ''}</td>
       <td>${esc(j.dept) || '—'}</td>
       <td style="max-width:320px">${skills || '<span style="color:var(--gray-400)">—</span>'}</td>
-      <td>${Number(j.minExp) > 0 ? j.minExp + ' ปี' : '—'}</td>
+      <td>${Number(j.minExp) > 0 ? t('{n} ปี', { n: j.minExp }) : '—'}</td>
       <td>${nCand}</td>
       <td><span class="badge ${j.status === 'Open' ? 'pass' : 'na'}">${j.status}</span></td>
       <td style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" onclick="editJob('${j.id}')">แก้ไข</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteJob('${j.id}')">ลบ</button>
+        <button class="btn btn-ghost btn-sm" onclick="editJob('${j.id}')">${t('แก้ไข')}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteJob('${j.id}')">${t('ลบ')}</button>
       </td>
     </tr>`;
   }).join('');
@@ -2357,29 +2897,29 @@ function renderJobs() {
 function skillRowHTML(sk) {
   sk = sk || { name: '', weight: 3, required: false };
   return `<div class="skill-row">
-    <input class="sk-name" placeholder="เช่น Excel/Microsoft Excel" value="${esc(sk.name)}">
+    <input class="sk-name" placeholder="${t('เช่น Excel/Microsoft Excel')}" value="${esc(sk.name)}">
     <select class="sk-weight">${[1,2,3,4,5].map(w => `<option value="${w}" ${Number(sk.weight) === w ? 'selected' : ''}>${w}</option>`).join('')}</select>
-    <select class="sk-req"><option value="0" ${!sk.required ? 'selected' : ''}>ไม่</option><option value="1" ${sk.required ? 'selected' : ''}>จำเป็น</option></select>
-    <button class="x-btn" onclick="this.parentElement.remove()" title="ลบทักษะ">&times;</button>
+    <select class="sk-req"><option value="0" ${!sk.required ? 'selected' : ''}>${t('ไม่')}</option><option value="1" ${sk.required ? 'selected' : ''}>${t('จำเป็น')}</option></select>
+    <button class="x-btn" onclick="this.parentElement.remove()" title="${t('ลบทักษะ')}">&times;</button>
   </div>`;
 }
 /* ดึงทักษะจากช่อง JD + คุณสมบัติ มาเติมในรายการทักษะ (ไม่เพิ่มซ้ำของเดิม) */
 function suggestSkillsIntoForm() {
   const text = document.getElementById('j_jd').value + '\n' + document.getElementById('j_quals').value;
   const suggested = suggestSkillsFromText(text);
-  if (!suggested.length) { toast('ไม่พบทักษะที่รู้จักใน JD/คุณสมบัติ — เพิ่มเองได้'); return; }
+  if (!suggested.length) { toast(t('ไม่พบทักษะที่รู้จักใน JD/คุณสมบัติ — เพิ่มเองได้')); return; }
   const existing = new Set();
   document.querySelectorAll('#skillRows .sk-name').forEach(inp =>
     skillSynonyms(inp.value).forEach(s => existing.add(s.toLowerCase())));
   const toAdd = suggested.filter(name => !skillSynonyms(name).some(s => existing.has(s.toLowerCase())));
-  if (!toAdd.length) { toast('ทักษะจาก JD มีอยู่ในรายการแล้ว'); return; }
+  if (!toAdd.length) { toast(t('ทักษะจาก JD มีอยู่ในรายการแล้ว')); return; }
   const rows = document.getElementById('skillRows');
   rows.querySelectorAll('.skill-row').forEach(row => { if (!row.querySelector('.sk-name').value.trim()) row.remove(); });
   toAdd.forEach(name => rows.insertAdjacentHTML('beforeend', skillRowHTML({ name, weight: 3, required: false })));
-  toast(`เพิ่ม ${toAdd.length} ทักษะจาก JD แล้ว — ปรับน้ำหนัก/จำเป็นได้`);
+  toast(t('เพิ่ม {n} ทักษะจาก JD แล้ว — ปรับน้ำหนัก/จำเป็นได้', { n: toAdd.length }));
 }
 function openJobModal(j) {
-  document.getElementById('jobModalTitle').textContent = j ? 'แก้ไขตำแหน่งงาน' : 'เพิ่มตำแหน่งงาน';
+  document.getElementById('jobModalTitle').textContent = j ? t('แก้ไขตำแหน่งงาน') : t('เพิ่มตำแหน่งงาน');
   document.getElementById('j_id').value = j ? j.id : '';
   document.getElementById('j_title').value = j ? j.title : '';
   document.getElementById('j_dept').value = j ? j.dept : '';
@@ -2398,7 +2938,7 @@ function openJobModal(j) {
 function saveJob() {
   const title = document.getElementById('j_title').value.trim();
   const titleEl = document.getElementById('j_title');
-  if (!title) { titleEl.classList.add('err'); toast('กรุณาใส่ชื่อตำแหน่ง'); return; }
+  if (!title) { titleEl.classList.add('err'); toast(t('กรุณาใส่ชื่อตำแหน่ง')); return; }
   titleEl.classList.remove('err');
 
   const skills = [];
@@ -2436,7 +2976,7 @@ function saveJob() {
   saveDB();
   document.getElementById('jobModalBg').classList.remove('open');
   renderAll();
-  toast(i >= 0 ? 'อัปเดตตำแหน่ง + คิดคะแนนผู้สมัครใหม่แล้ว' : 'เพิ่มตำแหน่งแล้ว');
+  toast(i >= 0 ? t('อัปเดตตำแหน่ง + คิดคะแนนผู้สมัครใหม่แล้ว') : t('เพิ่มตำแหน่งแล้ว'));
 }
 function rescoreJob(job) {
   DB.candidates.forEach(c => {
@@ -2453,12 +2993,12 @@ function deleteJob(id) {
   const j = jobById(id);
   if (!j) return;
   const n = DB.candidates.filter(c => c.jobId === id).length;
-  if (!confirm(`ลบตำแหน่ง "${j.title}"?` + (n ? `\nผู้สมัคร ${n} คนของตำแหน่งนี้จะถูกลบด้วย` : ''))) return;
+  if (!confirm(t('ลบตำแหน่ง "{title}"?', { title: j.title }) + (n ? '\n' + t('ผู้สมัคร {n} คนของตำแหน่งนี้จะถูกลบด้วย', { n }) : ''))) return;
   DB.jobs = DB.jobs.filter(x => x.id !== id);
   DB.candidates = DB.candidates.filter(c => c.jobId !== id);
   scanResults = scanResults.filter(r => r.jobId !== id);   // กันกด "เพิ่ม" จากผลสแกนของตำแหน่งที่ลบไปแล้ว
   saveDB(); renderAll();
-  toast('ลบตำแหน่งแล้ว');
+  toast(t('ลบตำแหน่งแล้ว'));
 }
 
 /* ── Candidates UI ── */
@@ -2508,7 +3048,7 @@ function renderCandTable() {
   const rows = filteredCandidates(true);
   document.getElementById('candBody').innerHTML = rows.map((c, i) => {
     const job = jobById(c.jobId);
-    const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="ขาด: ${esc(c.missingRequired.join(', '))}">!</span>` : '';
+    const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="${t('ขาด:')} ${esc(c.missingRequired.join(', '))}">!</span>` : '';
     return `<tr>
       <td style="color:var(--gray-400)">${i + 1}</td>
       <td class="name-cell">${esc(c.name)}<div class="hint">${esc(c.email) || ''}</div></td>
@@ -2517,15 +3057,15 @@ function renderCandTable() {
       <td>${scorecardCell(c)}</td>
       <td>${aiBadge(c)}</td>
       <td>${(c.matched || []).length}/${(c.matched || []).length + (c.missing || []).length}${reqMiss}</td>
-      <td>${c.expYears || 0} ปี</td>
+      <td>${t('{n} ปี', { n: c.expYears || 0 })}</td>
       <td><select class="inline" onchange="setStage('${c.id}', this.value)">
         ${STAGES.map(s => `<option ${c.stage === s ? 'selected' : ''}>${s}</option>`).join('')}
       </select>${stageAgeHTML(c)}</td>
       <td>${fmtDate(c.addedAt)}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" onclick="showCandDetail('${c.id}')">ดู</button>
-        <button class="btn btn-ghost btn-sm" onclick="openEmailDraft('${c.id}')" title="ร่างอีเมล">✉</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCand('${c.id}')">ลบ</button>
+        <button class="btn btn-ghost btn-sm" onclick="showCandDetail('${c.id}')">${t('ดู')}</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEmailDraft('${c.id}')" title="${t('ร่างอีเมล')}">✉</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCand('${c.id}')">${t('ลบ')}</button>
       </td>
     </tr>`;
   }).join('');
@@ -2535,12 +3075,12 @@ function renderCandTable() {
 function candCardHTML(c) {
   const job = jobById(c.jobId);
   const cls = scoreClass(c.score);
-  const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="ขาดทักษะจำเป็น">!</span>` : '';
+  const reqMiss = (c.missingRequired || []).length ? ` <span class="badge fail" title="${t('ขาดทักษะจำเป็น')}">!</span>` : '';
   return `<div class="kanban-card" draggable="true" ondragstart="dragCand(event,'${c.id}')" ondragend="dragCandEnd(event)" onclick="showCandDetail('${c.id}')">
-    <div class="kc-name">${esc(c.name)}${reqMiss}${isStuck(c) ? ` <span class="badge pend" title="อยู่สถานะนี้เกิน ${STUCK_DAYS} วัน">⏳ ${daysInStage(c)} วัน</span>` : ''}</div>
-    <div class="kc-meta">${esc(job ? job.title : '—')} · ${c.expYears || 0} ปี</div>
+    <div class="kc-name">${esc(c.name)}${reqMiss}${isStuck(c) ? ` <span class="badge pend" title="${t('อยู่สถานะนี้เกิน {days} วัน', { days: STUCK_DAYS })}">⏳ ${t('{n} วัน', { n: daysInStage(c) })}</span>` : ''}</div>
+    <div class="kc-meta">${esc(job ? job.title : '—')} · ${t('{n} ปี', { n: c.expYears || 0 })}</div>
     <div class="kc-foot">${scoreCell(c.id, c.score)}${scorecardChip(c)}${['medium', 'high'].includes(aiOf(c).level) ? aiBadge(c, true) : ''}
-      <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">ลบ</button>
+      <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteCand('${c.id}')">${t('ลบ')}</button>
     </div>
   </div>`;
 }
@@ -2554,7 +3094,7 @@ function renderCandBoard() {
          ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="dropCand(event,'${s}')">
       <div class="kanban-col-head"><span>${s}</span><span class="cnt">${byStage[s].length}</span></div>
       <div class="kanban-col-body">
-        ${byStage[s].map(candCardHTML).join('') || '<div class="kanban-empty">— ว่าง —</div>'}
+        ${byStage[s].map(candCardHTML).join('') || `<div class="kanban-empty">${t('— ว่าง —')}</div>`}
       </div>
     </div>`).join('');
 }
@@ -2596,19 +3136,19 @@ function setStage(id, stage) {
 function deleteCand(id) {
   const c = DB.candidates.find(x => x.id === id);
   if (!c) return;
-  if (!confirm(`ลบผู้สมัคร "${c.name}"?`)) return;
+  if (!confirm(t('ลบผู้สมัคร "{name}"?', { name: c.name }))) return;
   DB.candidates = DB.candidates.filter(x => x.id !== id);
   saveDB(); renderAll();
-  toast('ลบผู้สมัครแล้ว');
+  toast(t('ลบผู้สมัครแล้ว'));
 }
 function saveManualCand() {
   const name = document.getElementById('c_name').value.trim();
   const jobId = document.getElementById('c_job').value;
   const nameEl = document.getElementById('c_name');
-  if (!name) { nameEl.classList.add('err'); toast('กรุณาใส่ชื่อผู้สมัคร'); return; }
+  if (!name) { nameEl.classList.add('err'); toast(t('กรุณาใส่ชื่อผู้สมัคร')); return; }
   nameEl.classList.remove('err');
   const job = jobById(jobId);
-  if (!job) { toast('กรุณาเลือกตำแหน่ง — เพิ่มตำแหน่งก่อนที่แท็บ "ตำแหน่งงาน"'); return; }
+  if (!job) { toast(t('กรุณาเลือกตำแหน่ง — เพิ่มตำแหน่งก่อนที่แท็บ "ตำแหน่งงาน"')); return; }
 
   const parsed = parseResume(document.getElementById('c_resume').value);
   const scored = scoreCandidate(parsed, job);
@@ -2627,7 +3167,7 @@ function saveManualCand() {
   document.getElementById('candModalBg').classList.remove('open');
   ['c_name', 'c_email', 'c_phone', 'c_resume'].forEach(id => document.getElementById(id).value = '');
   renderAll();
-  toast('เพิ่มผู้สมัครแล้ว');
+  toast(t('เพิ่มผู้สมัครแล้ว'));
 }
 
 /* ── Export CSV ── */
@@ -2663,7 +3203,7 @@ async function exportCSV() {
   // export เฉพาะผู้สมัครที่ตรงกับ filter/ค้นหาที่เปิดอยู่ (board ไม่ใช้ stage filter)
   const rows0 = filteredCandidates(candView !== 'board');
   if (!rows0.length) {
-    toast(DB.candidates.length ? 'ไม่มีผู้สมัครตรงกับตัวกรองที่เลือก' : 'ไม่มีข้อมูลให้ export');
+    toast(DB.candidates.length ? t('ไม่มีผู้สมัครตรงกับตัวกรองที่เลือก') : t('ไม่มีข้อมูลให้ export'));
     return;
   }
   // ดึงผลสอบมารวมถ้า login cloud ไว้แล้ว (fetch ครั้งเดียวถ้ายังไม่มี)
@@ -2681,7 +3221,7 @@ async function exportCSV() {
     const row = [c.name, c.email, c.phone, job ? job.title : '', c.score,
       (sc && sc.total != null) ? sc.total : '',
       (c.scorecards || []).length || '',
-      aiOf(c).score ?? '', AI_LEVEL_TEXT[aiOf(c).level].short,
+      aiOf(c).score ?? '', t(AI_LEVEL_TEXT[aiOf(c).level].short),
       aiOf(c).parts.map(k => AI_SECTION_LABELS[k] || k).join('; '),
       (c.matched || []).join('; '), (c.missing || []).join('; '),
       c.expYears || 0, c.education || '', c.stage,
@@ -2693,12 +3233,12 @@ async function exportCSV() {
     rows.push(row);
   });
   downloadCSV(rows, `hma-ats-candidates-${today()}.csv`);
-  const note = rows0.length < DB.candidates.length ? ` (${rows0.length}/${DB.candidates.length} ตามตัวกรอง)` : '';
-  toast(`Export ผู้สมัครแล้ว${note}` + (codes.length ? ' · รวมคะแนนสอบ' : (FB.user ? '' : ' · ผลสอบไม่รวม (ยังไม่ login cloud)')));
+  const note = rows0.length < DB.candidates.length ? ' ' + t('({n}/{total} ตามตัวกรอง)', { n: rows0.length, total: DB.candidates.length }) : '';
+  toast(t('Export ผู้สมัครแล้ว') + note + (codes.length ? ' · ' + t('รวมคะแนนสอบ') : (FB.user ? '' : ' · ' + t('ผลสอบไม่รวม (ยังไม่ login cloud)'))));
 }
 
 function exportJobsCSV() {
-  if (!DB.jobs.length) { toast('ยังไม่มีตำแหน่งงานให้ export'); return; }
+  if (!DB.jobs.length) { toast(t('ยังไม่มีตำแหน่งงานให้ export')); return; }
   const head = ['Title', 'Department', 'Status', 'Min Experience (yrs)', 'Education Keywords', 'Skills (name:weight:required)', 'Candidate Count'];
   const rows = [head];
   DB.jobs.forEach(j => {
@@ -2707,42 +3247,42 @@ function exportJobsCSV() {
     rows.push([j.title, j.dept || '', j.status, j.minExp || 0, j.eduKeywords || '', skills, n]);
   });
   downloadCSV(rows, `hma-ats-jobs-${today()}.csv`);
-  toast('Export ตำแหน่งงานแล้ว');
+  toast(t('Export ตำแหน่งงานแล้ว'));
 }
 
 function exportDashboardCSV() {
   const cs = DB.candidates;
-  if (!cs.length && !DB.jobs.length) { toast('ไม่มีข้อมูลให้ export'); return; }
+  if (!cs.length && !DB.jobs.length) { toast(t('ไม่มีข้อมูลให้ export')); return; }
   const avg = cs.length ? Math.round(cs.reduce((s, c) => s + c.score, 0) / cs.length) : 0;
   const rows = [
     ['HMA ATS — Dashboard Summary', today()], [],
     ['KPI', 'Value'],
-    ['ผู้สมัครทั้งหมด', cs.length],
-    ['ตำแหน่งเปิดรับ', DB.jobs.filter(j => j.status === 'Open').length],
-    ['ตำแหน่งทั้งหมด', DB.jobs.length],
-    ['คะแนน Match เฉลี่ย', avg],
-    ['ผู้สมัครคะแนน >= 70', cs.filter(c => c.score >= 70).length],
-    ['อยู่ระหว่างคัดเลือก', cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length],
-    ['รับเข้าทำงาน (Hired)', cs.filter(c => c.stage === 'Hired').length],
+    [t('ผู้สมัครทั้งหมด'), cs.length],
+    [t('ตำแหน่งเปิดรับ'), DB.jobs.filter(j => j.status === 'Open').length],
+    [t('ตำแหน่งทั้งหมด'), DB.jobs.length],
+    [t('คะแนน Match เฉลี่ย'), avg],
+    [t('ผู้สมัครคะแนน >= 70'), cs.filter(c => c.score >= 70).length],
+    [t('อยู่ระหว่างคัดเลือก'), cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length],
+    [t('รับเข้าทำงาน (Hired)'), cs.filter(c => c.stage === 'Hired').length],
     [],
-    ['ตำแหน่งงาน', 'จำนวนผู้สมัคร', 'คะแนนเฉลี่ย', 'รับเข้าทำงาน'],
+    [t('ตำแหน่งงาน'), t('จำนวนผู้สมัคร'), t('คะแนนเฉลี่ย'), t('รับเข้าทำงาน')],
   ];
   DB.jobs.forEach(j => {
     const list = cs.filter(c => c.jobId === j.id);
     const a = list.length ? Math.round(list.reduce((s, c) => s + c.score, 0) / list.length) : 0;
     rows.push([j.title, list.length, a, list.filter(c => c.stage === 'Hired').length]);
   });
-  rows.push([], ['สถานะ Pipeline', 'จำนวน']);
+  rows.push([], [t('สถานะ Pipeline'), t('จำนวน')]);
   STAGES.forEach(s => rows.push([s, cs.filter(c => c.stage === s).length]));
   const ps = pipelineStats(cs);
-  rows.push([], ['ระยะเวลา (จากประวัติสถานะ)', 'ค่า'],
-    ['วันเฉลี่ยจนรับเข้าทำงาน', ps.avgDaysToHire ?? ''], ['จำนวนที่ใช้คำนวณ', ps.hireN],
-    [`ค้างสถานะเดิมเกิน ${STUCK_DAYS} วัน`, stuckCandidates().length]);
-  rows.push([], ['สถานะ', 'วันเฉลี่ยที่อยู่', 'จำนวนครั้งที่นับ', 'ถูกคัดออกจากขั้นนี้']);
+  rows.push([], [t('ระยะเวลา (จากประวัติสถานะ)'), t('ค่า')],
+    [t('วันเฉลี่ยจนรับเข้าทำงาน'), ps.avgDaysToHire ?? ''], [t('จำนวนที่ใช้คำนวณ'), ps.hireN],
+    [t('ค้างสถานะเดิมเกิน {days} วัน', { days: STUCK_DAYS }), stuckCandidates().length]);
+  rows.push([], [t('สถานะ'), t('วันเฉลี่ยที่อยู่'), t('จำนวนครั้งที่นับ'), t('ถูกคัดออกจากขั้นนี้')]);
   STAGES.filter(s => !CLOSED_STAGES.includes(s)).forEach(s =>
     rows.push([s, ps.avgDays[s] ? ps.avgDays[s].avg : '', ps.avgDays[s] ? ps.avgDays[s].n : 0, ps.dropFrom[s] || 0]));
   downloadCSV(rows, `hma-ats-dashboard-${today()}.csv`);
-  toast('Export Dashboard แล้ว');
+  toast(t('Export Dashboard แล้ว'));
 }
 
 /* ── ร่างอีเมลถึงผู้สมัคร (เตรียมร่างเท่านั้น ไม่ส่งแทนผู้ใช้) — เทมเพลตตั้งค่าได้ที่ DB.emailTemplates ── */
@@ -2754,7 +3294,7 @@ function getTemplates() {
 function fillTemplate(tpl, c) {
   const job = jobById(c.jobId);
   const fill = s => String(s || '').replace(/\{name\}/g, c.name || '')
-    .replace(/\{position\}/g, job ? job.title : 'ที่ท่านสมัคร')
+    .replace(/\{position\}/g, job ? job.title : t('ที่ท่านสมัคร'))
     .replace(/\{company\}/g, EMAIL_COMPANY);
   return { subject: fill(tpl.subject), body: fill(tpl.body) };
 }
@@ -2785,27 +3325,28 @@ function openEmailDraft(id) {
   const chosen = pickTemplate(c, null);
   const sel = document.getElementById('em_template');
   sel.innerHTML = tpls.map(t => `<option value="${t.id}">${esc(t.name)}${t.stage ? ' · ' + t.stage : ''}</option>`).join('')
-    || '<option value="">— ไม่มีเทมเพลต —</option>';
+    || `<option value="">${t('— ไม่มีเทมเพลต —')}</option>`;
   if (chosen) sel.value = chosen.id;
   document.getElementById('em_to').value = c.email || '';
   fillEmailDraft(c, chosen ? chosen.id : null);
   document.getElementById('detailModalBg').classList.remove('open');   // ปิด detail ถ้าเปิดอยู่
   document.getElementById('emailModalBg').classList.add('open');
-  if (!c.email) toast('ผู้สมัครไม่มีอีเมล — กรอกช่อง "ถึง" ก่อนส่ง');
+  if (!c.email) toast(t('ผู้สมัครไม่มีอีเมล — กรอกช่อง "ถึง" ก่อนส่ง'));
 }
 
 /* ── ตั้งค่าเทมเพลตอีเมล (เพิ่ม/แก้/ลบ) ── */
 function renderTplList() {
   const tpls = getTemplates();
-  document.getElementById('tplList').innerHTML = tpls.map(t => `
+  // ตัวแปรเทมเพลตชื่อ tpl ไม่ใช่ t — t() คือฟังก์ชันแปลภาษา
+  document.getElementById('tplList').innerHTML = tpls.map(tpl => `
     <div class="tpl-row">
-      <div><b>${esc(t.name)}</b>${t.stage ? ` <span class="badge na">${t.stage}</span>` : ''}
-        <div class="hint" style="max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(t.subject)}</div></div>
+      <div><b>${esc(tpl.name)}</b>${tpl.stage ? ` <span class="badge na">${tpl.stage}</span>` : ''}
+        <div class="hint" style="max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(tpl.subject)}</div></div>
       <div style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" onclick="tplEdit('${t.id}')">แก้ไข</button>
-        <button class="btn btn-danger btn-sm" onclick="tplDelete('${t.id}')">ลบ</button>
+        <button class="btn btn-ghost btn-sm" onclick="tplEdit('${tpl.id}')">${t('แก้ไข')}</button>
+        <button class="btn btn-danger btn-sm" onclick="tplDelete('${tpl.id}')">${t('ลบ')}</button>
       </div>
-    </div>`).join('') || '<div class="hint">ยังไม่มีเทมเพลต</div>';
+    </div>`).join('') || '<div class="hint">' + t('ยังไม่มีเทมเพลต') + '</div>';
 }
 function openTplManager() {
   document.getElementById('emailModalBg').classList.remove('open');
@@ -2813,29 +3354,29 @@ function openTplManager() {
   renderTplList();
   document.getElementById('tplModalBg').classList.add('open');
 }
-function tplShowEditor(t) {
-  document.getElementById('t_id').value = t ? t.id : '';
-  document.getElementById('t_name').value = t ? t.name : '';
-  document.getElementById('t_stage').value = t ? (t.stage || '') : '';
-  document.getElementById('t_subject').value = t ? t.subject : '';
-  document.getElementById('t_body').value = t ? t.body : `เรียน คุณ{name}\n\n\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}`;
+function tplShowEditor(tpl) {
+  document.getElementById('t_id').value = tpl ? tpl.id : '';
+  document.getElementById('t_name').value = tpl ? tpl.name : '';
+  document.getElementById('t_stage').value = tpl ? (tpl.stage || '') : '';
+  document.getElementById('t_subject').value = tpl ? tpl.subject : '';
+  document.getElementById('t_body').value = tpl ? tpl.body : t('เรียน คุณ{name}\n\n\n\nขอแสดงความนับถือ\nฝ่ายทรัพยากรบุคคล\n{company}');
   document.getElementById('tplEditor').style.display = '';
   document.getElementById('t_name').focus();
 }
 function tplEdit(id) { tplShowEditor(getTemplates().find(t => t.id === id)); }
 function tplDelete(id) {
   const tpls = getTemplates();
-  if (tpls.length <= 1) { toast('ต้องมีอย่างน้อย 1 เทมเพลต'); return; }
-  const t = tpls.find(x => x.id === id);
-  if (!t || !confirm(`ลบเทมเพลต "${t.name}"?`)) return;
+  if (tpls.length <= 1) { toast(t('ต้องมีอย่างน้อย 1 เทมเพลต')); return; }
+  const tpl = tpls.find(x => x.id === id);
+  if (!tpl || !confirm(t('ลบเทมเพลต "{name}"?', { name: tpl.name }))) return;
   DB.emailTemplates = tpls.filter(x => x.id !== id);
   saveDB(); renderTplList();
-  toast('ลบเทมเพลตแล้ว');
+  toast(t('ลบเทมเพลตแล้ว'));
 }
 function tplSave() {
   const name = document.getElementById('t_name').value.trim();
   const nameEl = document.getElementById('t_name');
-  if (!name) { nameEl.classList.add('err'); toast('กรุณาตั้งชื่อเทมเพลต'); return; }
+  if (!name) { nameEl.classList.add('err'); toast(t('กรุณาตั้งชื่อเทมเพลต')); return; }
   nameEl.classList.remove('err');
   const rec = {
     name, stage: document.getElementById('t_stage').value,
@@ -2849,13 +3390,13 @@ function tplSave() {
   saveDB();
   document.getElementById('tplEditor').style.display = 'none';
   renderTplList();
-  toast(id ? 'บันทึกเทมเพลตแล้ว' : 'เพิ่มเทมเพลตแล้ว');
+  toast(id ? t('บันทึกเทมเพลตแล้ว') : t('เพิ่มเทมเพลตแล้ว'));
 }
 function resetTemplates() {
-  if (!confirm('คืนค่าเทมเพลตทั้งหมดเป็นค่าเริ่มต้น? เทมเพลตที่คุณแก้ไว้จะหายทั้งหมด')) return;
+  if (!confirm(t('คืนค่าเทมเพลตทั้งหมดเป็นค่าเริ่มต้น? เทมเพลตที่คุณแก้ไว้จะหายทั้งหมด'))) return;
   DB.emailTemplates = seedEmailTemplates();
   saveDB(); document.getElementById('tplEditor').style.display = 'none'; renderTplList();
-  toast('คืนค่าเทมเพลตเริ่มต้นแล้ว');
+  toast(t('คืนค่าเทมเพลตเริ่มต้นแล้ว'));
 }
 
 /* ── Dashboard ── */
@@ -2892,16 +3433,16 @@ const KPI_ICONS = {
 /* k = { icon, label, value (null = ไม่มีข้อมูล), unit, sub, meter: {pct, tone}, badge, go: ค่าเรียงในแท็บผู้สมัคร } */
 function kpiTileHTML(k) {
   const empty = k.value == null;
-  const val = empty ? '—' : esc(String(k.value)) + (k.unit ? ` <span class="kpi-unit">${esc(k.unit)}</span>` : '');
+  const val = empty ? '—' : esc(String(k.value)) + (k.unit ? ` <span class="kpi-unit">${esc(t(k.unit, { n: k.value }))}</span>` : '');
   const meter = k.meter ? `<div class="kpi-meter t-${k.meter.tone}" title="${k.meter.pct}%"><span class="sc-${k.meter.tone}" style="width:${k.meter.pct}%"></span></div>` : '';
   // ช่องที่มี go กดไปดูรายชื่อในแท็บผู้สมัครได้ (ทั้งเมาส์และคีย์บอร์ด — ดู listener ของ #kpiGrid)
   const attrs = k.go ? ` class="kpi kpi-link" role="button" tabindex="0" data-go="${esc(k.go)}"` : ' class="kpi"';
   return `<div${attrs}>
-    <div class="kpi-head"><span class="kpi-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${KPI_ICONS[k.icon]}</svg></span>${esc(k.label)}</div>
+    <div class="kpi-head"><span class="kpi-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${KPI_ICONS[k.icon]}</svg></span>${esc(t(k.label, { days: STUCK_DAYS }))}</div>
     <div class="kpi-val-row"><div class="kpi-val${empty ? ' no-data' : ''}">${val}</div>${k.badge || ''}</div>
     ${meter}
     <div class="kpi-sub">${k.sub}</div>
-    ${k.go ? '<div class="kpi-more">ดูรายชื่อ →</div>' : ''}
+    ${k.go ? `<div class="kpi-more">${t('ดูรายชื่อ →')}</div>` : ''}
   </div>`;
 }
 function openCandidatesSortedBy(sort) {
@@ -2930,31 +3471,31 @@ function renderDashboard() {
   const groups = [
     { title: 'Pipeline และผลลัพธ์', tiles: [
       { icon: 'users', label: 'ผู้สมัครทั้งหมด', value: n,
-        sub: `+${recent} ใน 30 วันล่าสุด · ${openJobs} ตำแหน่งเปิดรับ` },
+        sub: t('+{recent} ใน 30 วันล่าสุด · {jobs} ตำแหน่งเปิดรับ', { recent, jobs: openJobs }) },
       { icon: 'funnel', label: 'อยู่ระหว่างคัดเลือก', value: activeN,
-        sub: activeSplit || 'ยังไม่มีผู้สมัครในขั้น Screening–Offer' },
+        sub: activeSplit || t('ยังไม่มีผู้สมัครในขั้น Screening–Offer') },
       { icon: 'check', label: 'รับเข้าทำงาน', value: hired,
-        sub: n ? `${pct(hired)}% ของผู้สมัครทั้งหมด` : 'ยังไม่มีผู้สมัคร' },
+        sub: n ? t('{p}% ของผู้สมัครทั้งหมด', { p: pct(hired) }) : t('ยังไม่มีผู้สมัคร') },
       { icon: 'clock', label: 'เวลาเฉลี่ยจนรับเข้าทำงาน', value: ps.avgDaysToHire, unit: 'วัน',
-        sub: ps.hireN ? `คิดจาก ${ps.hireN} รายที่รับเข้าทำงาน` : 'จะแสดงเมื่อมีผู้สมัครรับเข้าทำงาน' },
+        sub: ps.hireN ? t('คิดจาก {n} รายที่รับเข้าทำงาน', { n: ps.hireN }) : t('จะแสดงเมื่อมีผู้สมัครรับเข้าทำงาน') },
     ] },
     { title: 'คุณภาพและสิ่งที่ต้องติดตาม', tiles: [
       { icon: 'target', label: 'คะแนน Match เฉลี่ย', value: avgScore, unit: '/ 100',
         meter: avgScore == null ? null : { pct: avgScore, tone: scoreClass(avgScore) },
-        sub: n ? `จากผู้สมัคร ${n} ราย` : 'ยังไม่มีผู้สมัคร' },
+        sub: n ? t('จากผู้สมัคร {n} ราย', { n }) : t('ยังไม่มีผู้สมัคร') },
       { icon: 'star', label: 'คะแนน Match ≥ 70', value: hi, unit: 'ราย',
         meter: n ? { pct: pct(hi), tone: 'hi' } : null,
-        sub: n ? `${pct(hi)}% ของผู้สมัครทั้งหมด` : 'ยังไม่มีผู้สมัคร' },
+        sub: n ? t('{p}% ของผู้สมัครทั้งหมด', { p: pct(hi) }) : t('ยังไม่มีผู้สมัคร') },
       { icon: 'cpu', label: 'สัญญาณใช้ AI สูง', value: aiHigh, unit: 'ราย',
-        sub: `ปานกลาง ${aiMed} ราย · ข้อมูลประกอบเท่านั้น`, go: aiHigh + aiMed ? 'ai' : '' },
-      { icon: 'alert', label: `ค้างสถานะเกิน ${STUCK_DAYS} วัน`, value: stuck, unit: 'ราย',
-        badge: stuck ? '<span class="badge pend">⚠ ต้องติดตาม</span>' : (n ? '<span class="badge pass">✓ ไม่มีค้าง</span>' : ''),
-        sub: 'ยังไม่ปิดเคส และอยู่สถานะเดิมนานเกินกำหนด', go: stuck ? 'stuck' : '' },
+        sub: t('ปานกลาง {n} ราย · ข้อมูลประกอบเท่านั้น', { n: aiMed }), go: aiHigh + aiMed ? 'ai' : '' },
+      { icon: 'alert', label: 'ค้างสถานะเกิน {days} วัน', value: stuck, unit: 'ราย',
+        badge: stuck ? `<span class="badge pend">${t('⚠ ต้องติดตาม')}</span>` : (n ? `<span class="badge pass">${t('✓ ไม่มีค้าง')}</span>` : ''),
+        sub: t('ยังไม่ปิดเคส และอยู่สถานะเดิมนานเกินกำหนด'), go: stuck ? 'stuck' : '' },
     ] },
   ];
   document.getElementById('kpiGrid').innerHTML = groups.map(g => `
     <section class="kpi-group">
-      <div class="kpi-group-title">${g.title}</div>
+      <div class="kpi-group-title">${t(g.title)}</div>
       <div class="kpi-grid">${g.tiles.map(kpiTileHTML).join('')}</div>
     </section>`).join('');
   renderCharts();
@@ -3024,7 +3565,7 @@ function renderCharts() {
 
 /* ── Sample data ── */
 function seed() {
-  if ((DB.jobs.length || DB.candidates.length) && !confirm('จะเพิ่มข้อมูลตัวอย่างลงในข้อมูลปัจจุบัน ดำเนินการต่อ?')) return;
+  if ((DB.jobs.length || DB.candidates.length) && !confirm(t('จะเพิ่มข้อมูลตัวอย่างลงในข้อมูลปัจจุบัน ดำเนินการต่อ?'))) return;
   const j1 = { id: uid('j'), title: 'Sales Engineer', dept: 'Sales & Marketing', minExp: 2, eduKeywords: 'engineering, วิศวกรรม', status: 'Open',
     skills: [
       { name: 'Sales/ขาย', weight: 5, required: true },
@@ -3073,7 +3614,7 @@ function seed() {
     DB.candidates.push(makeCandidate(parsed, scored, extras));
   });
   saveDB(); renderAll();
-  toast('โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 4 ผู้สมัคร');
+  toast(t('โหลดข้อมูลตัวอย่างแล้ว — 2 ตำแหน่ง, 4 ผู้สมัคร'));
 }
 
 /* ── Orchestration & events ── */
@@ -3141,9 +3682,9 @@ document.getElementById('tplResetBtn').addEventListener('click', resetTemplates)
 document.getElementById('critAddBtn').addEventListener('click', addCriterion);
 document.getElementById('critResetBtn').addEventListener('click', resetCriteria);
 document.getElementById('em_copy').addEventListener('click', async () => {
-  const text = 'หัวข้อ: ' + document.getElementById('em_subject').value + '\n\n' + document.getElementById('em_body').value;
-  try { await navigator.clipboard.writeText(text); toast('คัดลอกข้อความแล้ว'); }
-  catch (e) { toast('คัดลอกไม่สำเร็จ — เลือกข้อความในช่องแล้วกด Ctrl+C'); }
+  const text = t('หัวข้อ') + ': ' + document.getElementById('em_subject').value + '\n\n' + document.getElementById('em_body').value;
+  try { await navigator.clipboard.writeText(text); toast(t('คัดลอกข้อความแล้ว')); }
+  catch (e) { toast(t('คัดลอกไม่สำเร็จ — เลือกข้อความในช่องแล้วกด Ctrl+C')); }
 });
 document.getElementById('em_open').addEventListener('click', () => {
   const to = document.getElementById('em_to').value.trim();
@@ -3177,6 +3718,11 @@ themeBtn.addEventListener('click', () => {
 });
 applyTheme(localStorage.getItem('hma_theme') || 'light');
 
+captureStaticI18n();      // ต้องก่อน render ครั้งแรก — ดู applyStaticI18n
+document.documentElement.lang = LANG;
+applyStaticI18n();
+document.getElementById('langLabel').textContent = LANG === 'th' ? 'EN' : 'ไทย';
+document.getElementById('langBtn').addEventListener('click', toggleLang);
 setCandView(candView);   // ตั้ง active ปุ่ม toggle ตามค่าที่บันทึกไว้
 renderAll();
 initBackup();
