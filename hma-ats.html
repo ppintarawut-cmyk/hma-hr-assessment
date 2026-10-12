@@ -204,6 +204,9 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .sc-pill { min-width: 32px; padding: 5px 8px; border: 1px solid var(--gray-300); background: transparent; color: var(--gray-500); border-radius: var(--radius); cursor: pointer; font-weight: 700; font-size: 12px; }
 .sc-pill.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 .sc-pill.skip.on { background: var(--gray-300); color: var(--gray-700); border-color: var(--gray-300); }
+.aiq-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-top: 1px dashed var(--gray-200); font-size: 13px; cursor: pointer; }
+.aiq-row:first-child { border-top: none; }
+.aiq-row input { margin-top: 3px; }
 .resume-pre { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; max-height: 320px; overflow-y: auto; }
 .kv { font-size: 13px; }
 .kv td { border: none; padding: 4px 8px 4px 0; }
@@ -1097,6 +1100,63 @@ function aiSummary(rawText) {
     parts: d.sections.filter(s => s.level !== 'low').map(s => s.key),
   };
 }
+
+/* ── คำถามสัมภาษณ์จากบรรทัดที่พบสัญญาณ AI ──
+   เทมเพลตตาม "ธีม" ของสำนวนที่พบ — ไม่ใช้ AI สร้างคำถาม (ทำงานในเครื่อง ตาม decision 0001/0005)
+   เป้าหมายคือให้ผู้สมัครเล่าตัวอย่างจริงด้วยคำพูดตัวเอง ไม่ใช่จับผิดว่าใช้ AI */
+const AI_QUESTION_MAX = 6;
+const AI_QUESTION_THEMES = [
+  { id: 'achievement', q: 'ผลงานชิ้นไหนที่คุณภูมิใจที่สุด — ตั้งเป้าไว้อย่างไร คุณทำส่วนไหนเอง และผลลัพธ์เป็นตัวเลขเท่าไร',
+    terms: ['results-driven', 'results-oriented', 'proven track record', 'track record of success', 'commitment to excellence', 'ความเป็นเลิศ', 'สร้างผลลัพธ์', 'valuable asset'] },
+  { id: 'improve', q: 'กระบวนการไหนที่คุณปรับให้ดีขึ้น — ก่อนและหลังปรับต่างกันอย่างไร และวัดผลอย่างไร',
+    terms: ['streamline', 'streamlined', 'streamlining', 'elevate', 'elevating', 'ยกระดับ', 'seamless', 'seamlessly'] },
+  { id: 'initiative', q: 'เรื่องที่คุณริเริ่มหรือเป็นคนนำเอง — บทบาทของคุณคืออะไร ทีมกี่คน และคุณตัดสินใจเรื่องไหนด้วยตัวเอง',
+    terms: ['spearheaded', 'orchestrated', 'championed', 'drive innovation', 'driving innovation', 'innovative solutions', 'instrumental in', 'pivotal', 'ขับเคลื่อนองค์กร', 'ขับเคลื่อนธุรกิจ', 'สร้างสรรค์นวัตกรรม', 'ผลักดันให้', 'มีส่วนสำคัญในการ'] },
+  { id: 'data', q: 'เครื่องมือหรือข้อมูลที่คุณใช้ในงานจริงคืออะไร — ยกตัวอย่างการตัดสินใจ 1 ครั้งที่มาจากข้อมูลนั้น',
+    terms: ['leverage', 'leveraging', 'leveraged', 'harnessing the power', 'robust', 'cutting-edge'] },
+  { id: 'team', q: 'เล่าสถานการณ์ที่ทีมมีปัญหาหรือเห็นไม่ตรงกัน — คุณทำอะไร และผลเป็นอย่างไร',
+    terms: ['foster', 'fostering', 'fostered', 'synergy', 'synergies', 'dynamic team', 'empower', 'empowering', 'เป็นกำลังสำคัญ', 'บูรณาการ'] },
+  { id: 'complexity', q: 'ปัญหาที่ยากที่สุดในงานล่าสุดคืออะไร — มีทางเลือกอะไรบ้าง และคุณเลือกทางไหนเพราะอะไร',
+    terms: ['navigate the complexities', 'multifaceted', 'holistic', 'fast-paced environment', "in today's fast-paced", 'ever-evolving', 'ever-changing', 'dynamic environment', 'thrive in', 'พร้อมรับความท้าทาย', 'ความท้าทายใหม่', 'ในยุคที่', 'ในโลกที่เปลี่ยนแปลง'] },
+  { id: 'motivation', q: 'อะไรทำให้สนใจงานนี้ที่ HMA โดยเฉพาะ — มีอะไรที่คุณทำเพิ่มเองนอกเหนือหน้าที่เพื่อพัฒนาเรื่องนี้',
+    terms: ['passionate about', 'highly motivated', 'eager to contribute', 'i am excited to', 'i am confident that', 'หลงใหล', 'ด้วยความมุ่งมั่น', 'มุ่งมั่นที่จะ', 'เติบโตไปพร้อมกับองค์กร', 'พร้อมเรียนรู้สิ่งใหม่'] },
+  { id: 'skills', q: 'จากทักษะที่เขียนไว้ เลือก 2 อย่างที่ใช้บ่อยที่สุด — ใช้ล่าสุดเมื่อไหร่ ในงานอะไร',
+    terms: ['adept at', 'deep understanding of', 'a wealth of', 'keen eye for', 'meticulous', 'meticulously', 'showcasing', 'ทักษะที่หลากหลาย', 'ประสบการณ์ที่หลากหลาย', 'ขีดความสามารถ', 'ด้วยประสบการณ์กว่า'] },
+];
+const AI_QUESTION_PREP = 'resume ฉบับนี้เตรียมอย่างไร — ใช้เครื่องมือช่วยเขียนหรือไม่ และส่วนไหนที่คุณเขียนเอง';
+const AI_QUESTION_FALLBACK = {
+  summary: 'สรุปตัวเองด้วยคำพูดของคุณเองใน 1 นาที — จุดแข็ง 2 ข้อ พร้อมตัวอย่างงานจริงข้อละ 1 เรื่อง',
+  skills: 'ทักษะที่เขียนว่า “{line}” — ใช้ล่าสุดเมื่อไหร่ ในงานอะไร ลองอธิบายหรือสาธิตสั้น ๆ',
+  other: 'ช่วยอธิบายส่วนที่เขียนว่า “{line}” เพิ่มเติม — ยกตัวอย่างจริงประกอบ',
+};
+const AI_QUESTION_EXPERIENCE = 'ช่วยเล่างานที่เขียนว่า “{line}” — ช่วงเวลา บทบาทของคุณเอง และผลลัพธ์ที่วัดได้';
+function aiQuote(line) {
+  const t = String(line || '').replace(/^[-•*\s]+/, '').trim();
+  return t.length > 80 ? t.slice(0, 78).trimEnd() + '…' : t;
+}
+/* d = ผลจาก detectAIWriting() · คืน [{ q, section, basis }] เรียงตามความแรงของบรรทัด ไม่เกิน AI_QUESTION_MAX */
+function aiInterviewQuestions(d) {
+  const out = [], seen = new Set();
+  const add = (key, q, l) => {
+    if (seen.has(key) || out.length >= AI_QUESTION_MAX) return;
+    seen.add(key);
+    out.push({ q, section: l.section, basis: l.text });
+  };
+  const lines = ((d && d.lines) || []).slice().sort((a, b) => b.score - a.score || a.idx - b.idx);
+  lines.forEach(l => {
+    if (l.reasons.some(r => r.type === 'artifact')) add('prep', AI_QUESTION_PREP, l);
+    // ประสบการณ์ทำงานคือ "ข้อเท็จจริง" ที่ตรวจสอบได้ — ถามเจาะบรรทัดนั้นเลย
+    if (l.section === 'experience') { add('exp:' + l.idx, AI_QUESTION_EXPERIENCE.replace('{line}', aiQuote(l.text)), l); return; }
+    const low = l.terms.map(t => String(t).toLowerCase());
+    const themes = AI_QUESTION_THEMES.filter(th => th.terms.some(t => low.includes(t)));
+    themes.forEach(th => add(th.id, th.q, l));
+    if (!themes.length && l.reasons.some(r => r.type === 'phrase')) {
+      const key = l.section === 'summary' ? 'fb:summary' : 'fb:' + l.idx;
+      add(key, (AI_QUESTION_FALLBACK[l.section] || AI_QUESTION_FALLBACK.other).replace('{line}', aiQuote(l.text)), l);
+    }
+  });
+  return out;
+}
 </script>
 
 <script>
@@ -1325,7 +1385,57 @@ function aiSectionHTML(r) {
     <div class="hint" style="margin-bottom:4px">แยกตามส่วนของ resume (ระบบระบุส่วนอัตโนมัติจากหัวข้อ)</div>
     ${rows}${doc}
     <div class="section-title">บรรทัดที่พบสัญญาณ <span style="font-weight:500; text-transform:none; letter-spacing:0">— <mark class="ai">ไฮไลต์</mark> = คำ/ข้อความที่เป็นสัญญาณ</span></div>
-    ${lines || '<div class="hint">ไม่มีบรรทัดที่เข้าเกณฑ์น่าสงสัย</div>'}${more}`;
+    ${lines || '<div class="hint">ไม่มีบรรทัดที่เข้าเกณฑ์น่าสงสัย</div>'}${more}
+    ${aiQuestionsHTML(r, d)}`;
+}
+/* คำถามสัมภาษณ์แนะนำ — ติ๊กเลือกแล้วใส่ลงบันทึกของฟอร์มประเมินสัมภาษณ์ (ผู้สมัครที่บันทึกแล้วเท่านั้น) */
+function aiQuestionsHTML(r, d) {
+  const qs = aiInterviewQuestions(d);
+  if (!qs.length) return '';
+  const rows = qs.map((x, i) => `<label class="aiq-row">
+      <input type="checkbox" class="aiq-pick" data-i="${i}" checked>
+      <span>${esc(x.q)}<div class="hint" style="margin-top:2px">จาก${esc(AI_SECTION_LABELS[x.section] || x.section)}: “${esc(aiQuote(x.basis))}”</div></span>
+    </label>`).join('');
+  const insert = r.stage
+    ? '<button class="btn btn-secondary btn-sm" onclick="insertAiQuestions()">📝 ใส่คำถามที่เลือกลงฟอร์มสัมภาษณ์</button>'
+    : '<span class="hint">เพิ่มเป็นผู้สมัครก่อน จึงจะใส่ลงฟอร์มสัมภาษณ์ได้</span>';
+  return `<div class="section-title">💬 คำถามสัมภาษณ์แนะนำ</div>
+    <p class="hint" style="margin-bottom:6px">ให้ผู้สมัครเล่าตัวอย่างจริงด้วยคำพูดของตัวเองในส่วนที่พบสัญญาณ — ไม่ใช่การจับผิด ระบบสร้างจากเทมเพลตในเครื่อง</p>
+    <div id="aiQuestions">${rows}</div>
+    <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+      ${insert}
+      <button class="btn btn-ghost btn-sm" onclick="copyAiQuestions()">📋 คัดลอกคำถาม</button>
+    </div>`;
+}
+function pickedAiQuestions() {
+  if (!currentDetail) return [];
+  const qs = aiInterviewQuestions(detectAIWriting(currentDetail.resumeText || ''));
+  return [...document.querySelectorAll('#aiQuestions .aiq-pick')]
+    .filter(b => b.checked).map(b => qs[Number(b.dataset.i)]).filter(Boolean);
+}
+function aiQuestionsText(list) { return list.map(x => '□ ' + x.q).join('\n'); }
+function insertAiQuestions() {
+  const list = pickedAiQuestions();
+  if (!list.length) { toast('เลือกคำถามอย่างน้อย 1 ข้อ'); return; }
+  if (!currentDetail || !currentDetail.stage) return;
+  // ถ้าฟอร์มเปิดอยู่แล้ว (อาจให้คะแนนไปบางส่วน) ห้าม refresh — จะล้างค่าที่ยังไม่บันทึก
+  if (!document.getElementById('scNote')) {
+    localStorage.setItem(SC_OPEN_KEY, '1');
+    refreshScorecardSection();
+    openScorecardForm();
+  }
+  const note = document.getElementById('scNote');
+  const block = 'คำถามจากส่วนที่พบสัญญาณ AI:\n' + aiQuestionsText(list);
+  note.value = note.value.trim() ? note.value.trimEnd() + '\n\n' + block : block;
+  note.rows = Math.min(14, note.value.split('\n').length + 1);
+  note.scrollIntoView({ block: 'center' });
+  toast(`ใส่ ${list.length} คำถามลงฟอร์มสัมภาษณ์แล้ว — ให้คะแนนแล้วกดบันทึก`);
+}
+async function copyAiQuestions() {
+  const list = pickedAiQuestions();
+  if (!list.length) { toast('เลือกคำถามอย่างน้อย 1 ข้อ'); return; }
+  try { await navigator.clipboard.writeText(aiQuestionsText(list)); toast('คัดลอกคำถามแล้ว'); }
+  catch (e) { toast('คัดลอกไม่สำเร็จ — ใช้ปุ่ม "ใส่ลงฟอร์มสัมภาษณ์" แทน'); }
 }
 
 /* ── ผลสอบจาก hma-testing-system (Firestore, read-only) — decision 0003 ──
@@ -1813,7 +1923,7 @@ function scorecardSectionHTML(c) {
     <div class="sc-row" onclick="toggleScDetail('${s.id}')">
       <div>
         <b>${esc(s.round)}</b> <span class="hint">· ${fmtDate(s.at)}</span>
-        ${s.note ? `<div class="hint" style="margin-top:2px">${esc(s.note)}</div>` : ''}
+        ${s.note ? `<div class="hint" style="margin-top:2px; white-space:pre-line">${esc(s.note)}</div>` : ''}
       </div>
       <div style="display:flex; align-items:center; gap:8px">
         ${s.total == null ? '—' : scoreBar(s.total)}
