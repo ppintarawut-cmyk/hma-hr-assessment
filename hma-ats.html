@@ -1222,7 +1222,8 @@ async function idbSet(key, val) {
 
 function backupPayload() {
   return JSON.stringify({ app: 'hma-ats', version: 1, savedAt: new Date().toISOString(),
-    jobs: DB.jobs, candidates: DB.candidates, emailTemplates: DB.emailTemplates });
+    jobs: DB.jobs, candidates: DB.candidates, emailTemplates: DB.emailTemplates,
+    scorecardCriteria: DB.scorecardCriteria });
 }
 function renderBackupStatus(state) {
   const st = document.getElementById('backupStatus');
@@ -1301,8 +1302,12 @@ function applyRestore(data) {
   if (!confirm(`กู้คืนจากไฟล์สำรอง?\nตำแหน่ง ${data.jobs.length} · ผู้สมัคร ${data.candidates.length}` +
     (data.savedAt ? `\nสำรองเมื่อ ${new Date(data.savedAt).toLocaleString('th-TH')}` : '') +
     `\n\nข้อมูลปัจจุบันจะถูกแทนที่ทั้งหมด`)) return false;
+  // ไฟล์สำรองเก่า (ก่อนมี scorecardCriteria ใน backup) → ใช้หัวข้อเริ่มต้น
+  // ใบประเมินที่บันทึกแล้วไม่กระทบ เพราะแต่ละใบถือ weightsUsed ของตัวเอง
+  const nonEmpty = a => Array.isArray(a) && a.length;
   DB = { jobs: data.jobs, candidates: data.candidates,
-    emailTemplates: (Array.isArray(data.emailTemplates) && data.emailTemplates.length) ? data.emailTemplates : seedEmailTemplates() };
+    emailTemplates: nonEmpty(data.emailTemplates) ? data.emailTemplates : seedEmailTemplates(),
+    scorecardCriteria: nonEmpty(data.scorecardCriteria) ? data.scorecardCriteria : seedScorecardCriteria() };
   saveDB(); renderAll();
   return true;
 }
