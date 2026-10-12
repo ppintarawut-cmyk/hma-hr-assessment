@@ -161,12 +161,27 @@ td select.inline { padding: 5px 8px; border: 1px solid var(--gray-300); border-r
 .dropzone.drag b { color: var(--teal); }
 
 /* KPI metrics */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 18px; }
-.kpi { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow); }
-.kpi-val { font-size: 26px; font-weight: 800; color: var(--gray-900); line-height: 1.1; }
-.kpi-val.accent { color: var(--teal); }
-.kpi-lbl { font-size: 12px; color: var(--gray-400); margin-top: 4px; font-weight: 600; }
-.kpi-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+/* KPI — 2 กลุ่ม × 4 ช่อง (กริดคงที่ ไม่มีช่องค้างแถวสุดท้าย) · ตัวเลขใช้สีหมึก ไม่ใช้สีแบรนด์/สถานะ */
+.dash-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.dash-head .page-sub { margin-bottom: 0; }
+.kpi-group { margin-bottom: 18px; }
+.kpi-group-title { font-size: 13px; font-weight: 700; color: var(--gray-700); margin-bottom: 8px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpi { background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius-lg); padding: 16px 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kpi-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--gray-500); min-height: 28px; }
+.kpi-ico { width: 28px; height: 28px; border-radius: 8px; background: var(--gray-100); color: var(--gray-500); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.kpi-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.kpi-val-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.kpi-val { font-size: 30px; font-weight: 700; color: var(--gray-900); line-height: 1.15; letter-spacing: -.5px; }
+.kpi-val.no-data { color: var(--gray-300); }   /* ไม่ใช้ชื่อ .empty — ชนกับคลาส empty state ของหน้า */
+.kpi-unit { font-size: 14px; font-weight: 600; color: var(--gray-400); letter-spacing: 0; }
+.kpi-sub { font-size: 12px; color: var(--gray-500); line-height: 1.4; }
+.kpi-meter { height: 6px; border-radius: 999px; overflow: hidden; background: var(--gray-100); }
+.kpi-meter.t-hi { background: var(--pass-l); } .kpi-meter.t-mid { background: var(--pend-l); }
+.kpi-meter > span { display: block; height: 100%; border-radius: 999px; }
+.kpi-more { margin-top: auto; font-size: 12px; font-weight: 600; color: var(--teal); }
+.kpi-link { cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.kpi-link:hover, .kpi-link:focus-visible { border-color: var(--teal-b); box-shadow: 0 0 0 3px var(--teal-l); outline: none; }
 
 .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .chart-box { position: relative; height: 280px; }
@@ -250,6 +265,8 @@ mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; paddi
 .kanban-card .kc-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; }
 .kanban-empty { color: var(--gray-400); font-size: 12px; text-align: center; padding: 14px 6px; }
 
+@media (max-width: 960px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .kpi-grid { grid-template-columns: 1fr; } }
 @media (max-width: 820px) {
   .grid2, .grid3, .chart-grid { grid-template-columns: 1fr; }
   .skill-row { grid-template-columns: 1fr 80px 90px 36px; }
@@ -395,15 +412,15 @@ mark.ai { background: #e9d5ff; color: var(--gray-900); border-radius: 3px; paddi
 
   <!-- ============ DASHBOARD TAB ============ -->
   <div id="tab-dashboard" style="display:none">
-    <h1>Dashboard</h1>
-    <p class="page-sub">ภาพรวมผู้สมัคร คะแนน และ pipeline</p>
-
-    <div class="toolbar">
-      <span class="topbar-spacer"></span>
+    <div class="dash-head">
+      <div>
+        <h1>Dashboard</h1>
+        <p class="page-sub">ภาพรวมผู้สมัคร คะแนน และ pipeline</p>
+      </div>
       <button class="btn btn-secondary btn-sm" id="dashExportBtn">⬇ Export CSV (สรุป)</button>
     </div>
 
-    <div class="kpi-grid" id="kpiGrid"></div>
+    <div id="kpiGrid"></div>
 
     <div class="chart-grid">
       <div class="card">
@@ -1794,10 +1811,7 @@ function renderStuckNote() {
   el.innerHTML = `⏳ มีผู้สมัคร ${list.length} ราย ค้างอยู่สถานะเดิมเกิน ${STUCK_DAYS} วัน: ${names}${list.length > 5 ? ' …' : ''}
     <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="sortByStuck()">ดูทั้งหมด</button>`;
 }
-function sortByStuck() {
-  document.getElementById('candSort').value = 'stuck';
-  if (candView === 'board') setCandView('table'); else renderCandidates();
-}
+function sortByStuck() { openCandidatesSortedBy('stuck'); }
 function stageHistoryHTML(c) {
   const h = historyOf(c);
   const rows = h.map((e, i) => {
@@ -2864,29 +2878,85 @@ function barOpts(cc, horizontal) {
   });
 }
 
+/* ไอคอนเส้นขนาด 16px (ดัดแปลงจาก Feather Icons — MIT) · ใช้สีหมึกจาง เป็นตัวช่วยกวาดตา ไม่ได้สื่อความหมายเอง */
+const KPI_ICONS = {
+  users:  '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  funnel: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  check:  '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  clock:  '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  star:   '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  cpu:    '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>',
+  alert:  '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+};
+/* k = { icon, label, value (null = ไม่มีข้อมูล), unit, sub, meter: {pct, tone}, badge, go: ค่าเรียงในแท็บผู้สมัคร } */
+function kpiTileHTML(k) {
+  const empty = k.value == null;
+  const val = empty ? '—' : esc(String(k.value)) + (k.unit ? ` <span class="kpi-unit">${esc(k.unit)}</span>` : '');
+  const meter = k.meter ? `<div class="kpi-meter t-${k.meter.tone}" title="${k.meter.pct}%"><span class="sc-${k.meter.tone}" style="width:${k.meter.pct}%"></span></div>` : '';
+  // ช่องที่มี go กดไปดูรายชื่อในแท็บผู้สมัครได้ (ทั้งเมาส์และคีย์บอร์ด — ดู listener ของ #kpiGrid)
+  const attrs = k.go ? ` class="kpi kpi-link" role="button" tabindex="0" data-go="${esc(k.go)}"` : ' class="kpi"';
+  return `<div${attrs}>
+    <div class="kpi-head"><span class="kpi-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${KPI_ICONS[k.icon]}</svg></span>${esc(k.label)}</div>
+    <div class="kpi-val-row"><div class="kpi-val${empty ? ' no-data' : ''}">${val}</div>${k.badge || ''}</div>
+    ${meter}
+    <div class="kpi-sub">${k.sub}</div>
+    ${k.go ? '<div class="kpi-more">ดูรายชื่อ →</div>' : ''}
+  </div>`;
+}
+function openCandidatesSortedBy(sort) {
+  document.querySelector('.tab[data-tab="candidates"]').click();
+  document.getElementById('candSort').value = sort;
+  if (candView === 'board') setCandView('table'); else renderCandidates();
+}
 function renderDashboard() {
   const cs = DB.candidates;
-  const avgScore = cs.length ? Math.round(cs.reduce((s, c) => s + c.score, 0) / cs.length) : 0;
+  const n = cs.length;
+  const pct = x => n ? Math.round(x / n * 100) : 0;
+  const avgScore = n ? Math.round(cs.reduce((s, c) => s + c.score, 0) / n) : null;
   const hi = cs.filter(c => c.score >= 70).length;
   const hired = cs.filter(c => c.stage === 'Hired').length;
   const aiHigh = cs.filter(c => aiOf(c).level === 'high').length;
   const aiMed = cs.filter(c => aiOf(c).level === 'medium').length;
   const ps = pipelineStats(cs);
   const stuck = stuckCandidates().length;
-  const kpis = [
-    { val: cs.length, lbl: 'ผู้สมัครทั้งหมด', sub: 'ทุกตำแหน่ง' },
-    { val: DB.jobs.filter(j => j.status === 'Open').length, lbl: 'ตำแหน่งเปิดรับ', sub: `จากทั้งหมด ${DB.jobs.length}` },
-    { val: avgScore, lbl: 'คะแนน Match เฉลี่ย', sub: 'จาก 100', accent: true },
-    { val: hi, lbl: 'ผู้สมัครคะแนน ≥ 70', sub: cs.length ? Math.round(hi / cs.length * 100) + '% ของทั้งหมด' : '—', accent: true },
-    { val: cs.filter(c => ['Screening', 'Interview', 'Offer'].includes(c.stage)).length, lbl: 'อยู่ระหว่างคัดเลือก', sub: 'active pipeline' },
-    { val: hired, lbl: 'รับเข้าทำงาน', sub: cs.length ? Math.round(hired / cs.length * 100) + '% conversion' : '—' },
-    { val: aiHigh, lbl: 'สัญญาณใช้ AI สูง', sub: `ปานกลาง ${aiMed} ราย · ใช้ประกอบเท่านั้น` },
-    { val: ps.avgDaysToHire == null ? '—' : ps.avgDaysToHire + ' วัน', lbl: 'เวลาเฉลี่ยจนรับเข้าทำงาน', sub: ps.hireN ? `จาก ${ps.hireN} ราย` : 'ยังไม่มีข้อมูล' },
-    { val: stuck, lbl: `ค้างสถานะเกิน ${STUCK_DAYS} วัน`, sub: 'ยังไม่ปิดเคส', accent: stuck > 0 },
+  const openJobs = DB.jobs.filter(j => j.status === 'Open').length;
+  const recent = cs.filter(c => { const d = daysBetween(c.addedAt, Date.now()); return d != null && d < 30; }).length;
+  const active = ['Screening', 'Interview', 'Offer'];
+  const activeN = cs.filter(c => active.includes(c.stage)).length;
+  const activeSplit = active.map(s => [s, cs.filter(c => c.stage === s).length]).filter(([, k]) => k)
+    .map(([s, k]) => `${s} ${k}`).join(' · ');
+
+  const groups = [
+    { title: 'Pipeline และผลลัพธ์', tiles: [
+      { icon: 'users', label: 'ผู้สมัครทั้งหมด', value: n,
+        sub: `+${recent} ใน 30 วันล่าสุด · ${openJobs} ตำแหน่งเปิดรับ` },
+      { icon: 'funnel', label: 'อยู่ระหว่างคัดเลือก', value: activeN,
+        sub: activeSplit || 'ยังไม่มีผู้สมัครในขั้น Screening–Offer' },
+      { icon: 'check', label: 'รับเข้าทำงาน', value: hired,
+        sub: n ? `${pct(hired)}% ของผู้สมัครทั้งหมด` : 'ยังไม่มีผู้สมัคร' },
+      { icon: 'clock', label: 'เวลาเฉลี่ยจนรับเข้าทำงาน', value: ps.avgDaysToHire, unit: 'วัน',
+        sub: ps.hireN ? `คิดจาก ${ps.hireN} รายที่รับเข้าทำงาน` : 'จะแสดงเมื่อมีผู้สมัครรับเข้าทำงาน' },
+    ] },
+    { title: 'คุณภาพและสิ่งที่ต้องติดตาม', tiles: [
+      { icon: 'target', label: 'คะแนน Match เฉลี่ย', value: avgScore, unit: '/ 100',
+        meter: avgScore == null ? null : { pct: avgScore, tone: scoreClass(avgScore) },
+        sub: n ? `จากผู้สมัคร ${n} ราย` : 'ยังไม่มีผู้สมัคร' },
+      { icon: 'star', label: 'คะแนน Match ≥ 70', value: hi, unit: 'ราย',
+        meter: n ? { pct: pct(hi), tone: 'hi' } : null,
+        sub: n ? `${pct(hi)}% ของผู้สมัครทั้งหมด` : 'ยังไม่มีผู้สมัคร' },
+      { icon: 'cpu', label: 'สัญญาณใช้ AI สูง', value: aiHigh, unit: 'ราย',
+        sub: `ปานกลาง ${aiMed} ราย · ข้อมูลประกอบเท่านั้น`, go: aiHigh + aiMed ? 'ai' : '' },
+      { icon: 'alert', label: `ค้างสถานะเกิน ${STUCK_DAYS} วัน`, value: stuck, unit: 'ราย',
+        badge: stuck ? '<span class="badge pend">⚠ ต้องติดตาม</span>' : (n ? '<span class="badge pass">✓ ไม่มีค้าง</span>' : ''),
+        sub: 'ยังไม่ปิดเคส และอยู่สถานะเดิมนานเกินกำหนด', go: stuck ? 'stuck' : '' },
+    ] },
   ];
-  document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
-    <div class="kpi"><div class="kpi-val ${k.accent ? 'accent' : ''}">${k.val}</div>
-    <div class="kpi-lbl">${k.lbl}</div><div class="kpi-sub">${k.sub || ''}</div></div>`).join('');
+  document.getElementById('kpiGrid').innerHTML = groups.map(g => `
+    <section class="kpi-group">
+      <div class="kpi-group-title">${g.title}</div>
+      <div class="kpi-grid">${g.tiles.map(kpiTileHTML).join('')}</div>
+    </section>`).join('');
   renderCharts();
 }
 
@@ -3050,6 +3120,15 @@ document.getElementById('candAddBtn').addEventListener('click', () => document.g
 document.getElementById('candSaveBtn').addEventListener('click', saveManualCand);
 document.getElementById('candExportBtn').addEventListener('click', exportCSV);
 document.getElementById('dashExportBtn').addEventListener('click', exportDashboardCSV);
+const kpiGridEl = document.getElementById('kpiGrid');
+kpiGridEl.addEventListener('click', e => {
+  const t = e.target.closest('[data-go]');
+  if (t) openCandidatesSortedBy(t.dataset.go);
+});
+kpiGridEl.addEventListener('keydown', e => {
+  const t = e.target.closest('[data-go]');
+  if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openCandidatesSortedBy(t.dataset.go); }
+});
 document.getElementById('em_template').addEventListener('change', () => {
   const c = DB.candidates.find(x => x.id === emailCandId);
   if (c) fillEmailDraft(c, document.getElementById('em_template').value);
